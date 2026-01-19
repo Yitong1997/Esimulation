@@ -50,6 +50,26 @@ from .exceptions import (
     SamplingError,
 )
 
+# ZMX 解析器相关
+from .zmx_parser import (
+    ZmxParser,
+    ZmxDataModel,
+    ZmxSurfaceData,
+    ZmxParseError,
+    ZmxUnsupportedError,
+    ZmxConversionError,
+)
+
+# ZMX 转换器相关
+from .zmx_converter import (
+    ElementConverter,
+    ConvertedElement,
+    CoordinateTransform,
+    CodeGenerator,
+    load_zmx_file,
+    load_zmx_and_generate_code,
+)
+
 # 光源类
 from .source import GaussianBeamSource
 
@@ -88,6 +108,20 @@ __all__ = [
     "SurfaceConfigurationError",
     "SimulationError",
     "SamplingError",
+    # ZMX 解析器相关
+    "ZmxParser",
+    "ZmxDataModel",
+    "ZmxSurfaceData",
+    "ZmxParseError",
+    "ZmxUnsupportedError",
+    "ZmxConversionError",
+    # ZMX 转换器相关
+    "ElementConverter",
+    "ConvertedElement",
+    "CoordinateTransform",
+    "CodeGenerator",
+    "load_zmx_file",
+    "load_zmx_and_generate_code",
     # 光源类
     "GaussianBeamSource",
     # 系统类
