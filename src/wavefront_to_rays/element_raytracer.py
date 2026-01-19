@@ -881,6 +881,7 @@ class ElementRaytracer:
         )
         
         # 初始化其他属性（将由其他方法设置）
+        self.input_rays: Optional[RealRays] = None   # 将由 trace 方法设置（用于雅可比矩阵计算）
         self.output_rays: Optional[RealRays] = None  # 将由 trace 方法设置
         self._chief_ray_traced: bool = False  # 标记主光线是否已追迹
         self.exit_chief_direction: Optional[Tuple[float, float, float]] = None  # 出射主光线方向
@@ -954,6 +955,23 @@ class ElementRaytracer:
         
         x_array = np.asarray(input_rays.x)
         n_rays = len(x_array)
+        
+        # =====================================================================
+        # 保存输入光线（用于雅可比矩阵计算）
+        # =====================================================================
+        
+        # 创建输入光线的副本，避免后续修改影响保存的数据
+        self.input_rays = RealRays(
+            x=np.asarray(input_rays.x).copy(),
+            y=np.asarray(input_rays.y).copy(),
+            z=np.asarray(input_rays.z).copy(),
+            L=np.asarray(input_rays.L).copy(),
+            M=np.asarray(input_rays.M).copy(),
+            N=np.asarray(input_rays.N).copy(),
+            intensity=np.asarray(input_rays.i).copy(),
+            wavelength=np.asarray(input_rays.w).copy(),
+        )
+        self.input_rays.opd = np.asarray(input_rays.opd).copy()
         
         # =====================================================================
         # 处理空输入情况
@@ -1531,6 +1549,87 @@ class ElementRaytracer:
         valid_mask = intensity_valid & position_valid & direction_valid
         
         return valid_mask
+    
+    def get_input_positions(self) -> Tuple[NDArray, NDArray]:
+        """获取输入光线位置（用于雅可比矩阵计算）
+        
+        返回输入光线在入射面局部坐标系中的 (x, y) 位置。
+        这些位置用于计算雅可比矩阵，从而基于能量守恒原理计算振幅变化。
+        
+        返回:
+            Tuple[NDArray, NDArray]: (x, y) 元组
+                - x: 输入光线的 x 坐标数组，单位：mm
+                - y: 输入光线的 y 坐标数组，单位：mm
+        
+        异常:
+            RuntimeError: 如果 trace() 方法尚未调用
+        
+        说明:
+            - 输入光线位置在 trace() 方法中保存
+            - 坐标系为入射面局部坐标系（原点在入射面中心）
+            - 与 get_output_positions() 配合使用，可计算雅可比矩阵
+        
+        示例:
+            >>> raytracer = ElementRaytracer(surfaces=[mirror], wavelength=0.55)
+            >>> raytracer.trace(input_rays)
+            >>> x_in, y_in = raytracer.get_input_positions()
+            >>> x_out, y_out = raytracer.get_output_positions()
+            >>> # 使用输入/输出位置计算雅可比矩阵
+        
+        Validates:
+            - 需求 1.2: 保存输入光线位置，并提供 get_input_positions() 方法
+        """
+        if self.input_rays is None:
+            raise RuntimeError(
+                "尚未执行光线追迹。请先调用 trace() 方法。"
+            )
+        
+        x = np.asarray(self.input_rays.x)
+        y = np.asarray(self.input_rays.y)
+        
+        return x, y
+    
+    def get_output_positions(self) -> Tuple[NDArray, NDArray]:
+        """获取输出光线位置（用于雅可比矩阵计算）
+        
+        返回输出光线在出射面局部坐标系中的 (x, y) 位置。
+        这些位置用于计算雅可比矩阵，从而基于能量守恒原理计算振幅变化。
+        
+        返回:
+            Tuple[NDArray, NDArray]: (x, y) 元组
+                - x: 输出光线的 x 坐标数组，单位：mm
+                - y: 输出光线的 y 坐标数组，单位：mm
+        
+        异常:
+            RuntimeError: 如果 trace() 方法尚未调用
+        
+        说明:
+            - 输出光线位置在 trace() 方法中计算并保存
+            - 坐标系为出射面局部坐标系（原点在出射面中心）
+            - 与 get_input_positions() 配合使用，可计算雅可比矩阵
+            - 雅可比矩阵描述输入面到输出面的坐标映射
+        
+        示例:
+            >>> raytracer = ElementRaytracer(surfaces=[mirror], wavelength=0.55)
+            >>> raytracer.trace(input_rays)
+            >>> x_in, y_in = raytracer.get_input_positions()
+            >>> x_out, y_out = raytracer.get_output_positions()
+            >>> # 使用输入/输出位置计算雅可比矩阵
+            >>> # 雅可比行列式 |J| 表示局部面积放大率
+            >>> # 振幅变化：A_out / A_in = 1 / sqrt(|J|)
+        
+        Validates:
+            - 需求 1.3: 提供 get_output_positions() 方法获取出射光线位置
+        """
+        if self.output_rays is None:
+            raise RuntimeError(
+                "尚未执行光线追迹。请先调用 trace() 方法。"
+            )
+        
+        x = np.asarray(self.output_rays.x)
+        y = np.asarray(self.output_rays.y)
+        
+        return x, y
     
     def get_exit_chief_ray_direction(self) -> Tuple[float, float, float]:
         """获取出射主光线方向（在全局坐标系中）

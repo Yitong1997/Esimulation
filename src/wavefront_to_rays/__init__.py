@@ -9,6 +9,7 @@
 2. 使用 optiland 进行光线追迹
 3. 输出出射光束用于后续计算
 4. 元件光线追迹（反射镜、折射面）
+5. 光线到波前复振幅重建（雅可比矩阵方法）
 """
 
 from .wavefront_sampler import WavefrontToRaysSampler
@@ -21,6 +22,11 @@ from .element_raytracer import (
     compute_rotation_matrix,
     transform_rays_to_global,
     transform_rays_to_local,
+)
+from .reconstructor import RayToWavefrontReconstructor
+from .exceptions import (
+    ReconstructionError,
+    InsufficientRaysError,
 )
 
 __all__ = [
@@ -36,4 +42,9 @@ __all__ = [
     "compute_rotation_matrix",
     "transform_rays_to_global",
     "transform_rays_to_local",
+    # 复振幅重建器
+    "RayToWavefrontReconstructor",
+    # 异常类
+    "ReconstructionError",
+    "InsufficientRaysError",
 ]

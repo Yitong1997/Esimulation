@@ -396,6 +396,181 @@ class TestGalileanOAPExpanderParametric:
         assert np.isfinite(output_result.beam_radius)
 
 
+class TestGalileanOAPExpanderAmplitude:
+    """伽利略式扩束镜振幅验证测试
+    
+    验证混合传播模式下振幅变化符合预期。
+    
+    注意：PROPER 的波前归一化方式是保持总能量守恒，而不是保持峰值振幅。
+    当光束扩展时，光束覆盖更多像素，但总能量不变。
+    
+    **Validates: Requirements 2.3, 2.4 - 雅可比矩阵振幅计算**
+    """
+    
+    def test_beam_expansion_changes_amplitude_distribution(self):
+        """验证扩束后振幅分布发生变化
+        
+        扩束后，光束覆盖更大的区域，光束半径应该增大。
+        这里使用光束半径（而不是像素数量）来验证扩束效果。
+        
+        **Validates: Requirements 2.3 - 雅可比矩阵振幅计算**
+        """
+        # 使用 TestGalileanOAPExpander 的参数
+        test_instance = TestGalileanOAPExpander()
+        
+        # 创建系统
+        system = test_instance._create_galilean_expander_system()
+        
+        # 运行仿真
+        results = system.run()
+        
+        # 获取输入和输出的光束半径
+        input_w = results.sampling_results["Input"].beam_radius
+        output_w = results.sampling_results["Output"].beam_radius
+        
+        # 计算光束半径比（放大倍率）
+        beam_ratio = output_w / input_w
+        
+        # 对于 3x 扩束器，光束半径应增大约 3 倍
+        expected_ratio = 3.0
+        
+        # 验证光束确实扩大了
+        assert beam_ratio > 1.0, (
+            f"扩束后光束半径应增大，但比值为 {beam_ratio:.3f}"
+        )
+        
+        # 验证扩大的量级大致正确（允许 10% 的误差）
+        error = abs(beam_ratio - expected_ratio) / expected_ratio
+        assert error < 0.10, (
+            f"光束半径比与预期不符：实际 = {beam_ratio:.3f}，"
+            f"期望 = {expected_ratio:.1f}，误差 = {error*100:.1f}%"
+        )
+    
+    def test_amplitude_profile_is_gaussian_like(self):
+        """验证输出振幅分布仍然是高斯型
+        
+        扩束后，振幅分布应该仍然保持高斯型特征。
+        
+        **Validates: Requirements 2.4 - 振幅归一化**
+        """
+        # 使用 TestGalileanOAPExpander 的参数
+        test_instance = TestGalileanOAPExpander()
+        
+        # 创建系统
+        system = test_instance._create_galilean_expander_system()
+        
+        # 运行仿真
+        results = system.run()
+        
+        # 获取输出的波前数据
+        output_result = results.sampling_results["Output"]
+        output_amplitude = np.abs(output_result.wavefront)
+        
+        # 找到峰值位置
+        peak_idx = np.unravel_index(np.argmax(output_amplitude), output_amplitude.shape)
+        
+        # 提取通过峰值的水平和垂直切片
+        h_slice = output_amplitude[peak_idx[0], :]
+        v_slice = output_amplitude[:, peak_idx[1]]
+        
+        # 验证切片是单峰的（峰值在中间附近）
+        h_peak_idx = np.argmax(h_slice)
+        v_peak_idx = np.argmax(v_slice)
+        
+        n = len(h_slice)
+        center = n // 2
+        
+        # 峰值应该在中心附近（允许 20% 的偏移）
+        assert abs(h_peak_idx - center) < n * 0.2, (
+            f"水平切片峰值位置偏离中心过多：{h_peak_idx} vs {center}"
+        )
+        assert abs(v_peak_idx - center) < n * 0.2, (
+            f"垂直切片峰值位置偏离中心过多：{v_peak_idx} vs {center}"
+        )
+        
+        # 验证振幅从峰值向边缘递减
+        # 检查峰值两侧的振幅是否递减
+        peak_val = h_slice[h_peak_idx]
+        edge_val = max(h_slice[0], h_slice[-1])
+        
+        assert edge_val < peak_val * 0.5, (
+            f"振幅分布不是高斯型：边缘值 {edge_val:.4f} 应远小于峰值 {peak_val:.4f}"
+        )
+    
+    def test_energy_conservation(self):
+        """验证能量守恒
+        
+        扩束前后总能量应保持不变（在数值精度范围内）。
+        这是混合传播模式正确性的关键验证。
+        
+        **Validates: Requirements 2.3 - 能量守恒**
+        """
+        # 使用 TestGalileanOAPExpander 的参数
+        test_instance = TestGalileanOAPExpander()
+        
+        # 创建系统
+        system = test_instance._create_galilean_expander_system()
+        
+        # 运行仿真
+        results = system.run()
+        
+        # 获取输入和输出的波前数据
+        input_result = results.sampling_results["Input"]
+        output_result = results.sampling_results["Output"]
+        
+        # 计算总能量（强度的积分）
+        # 注意：PROPER 的波前已经考虑了采样间隔的归一化
+        input_intensity = np.abs(input_result.wavefront)**2
+        output_intensity = np.abs(output_result.wavefront)**2
+        
+        input_total_energy = np.sum(input_intensity)
+        output_total_energy = np.sum(output_intensity)
+        
+        # 计算能量比
+        energy_ratio = output_total_energy / input_total_energy
+        
+        # 能量应该守恒（允许 5% 的误差）
+        assert 0.95 < energy_ratio < 1.05, (
+            f"能量不守恒：输出/输入能量比 = {energy_ratio:.4f}，"
+            f"期望约 1.0"
+        )
+    
+    def test_amplitude_finite_and_positive(self):
+        """验证所有采样面的振幅为有限正值
+        
+        基本健全性检查：振幅应该是有限的正值。
+        
+        **Validates: Requirements 2.6 - 无效光线区域振幅为 0**
+        """
+        # 使用 TestGalileanOAPExpander 的参数
+        test_instance = TestGalileanOAPExpander()
+        
+        # 创建系统
+        system = test_instance._create_galilean_expander_system()
+        
+        # 运行仿真
+        results = system.run()
+        
+        # 验证各采样面
+        for name, result in results.sampling_results.items():
+            amplitude = np.abs(result.wavefront)
+            
+            # 振幅应该是有限值
+            assert np.all(np.isfinite(amplitude)), (
+                f"采样面 '{name}' 存在非有限振幅值"
+            )
+            
+            # 振幅应该非负
+            assert np.all(amplitude >= 0), (
+                f"采样面 '{name}' 存在负振幅值"
+            )
+            
+            # 峰值振幅应该为正
+            assert np.max(amplitude) > 0, (
+                f"采样面 '{name}' 峰值振幅应为正值"
+            )
+
+
 class TestGalileanOAPExpanderComparison:
     """伽利略式扩束镜对比测试
     

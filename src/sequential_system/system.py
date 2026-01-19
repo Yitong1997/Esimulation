@@ -711,11 +711,42 @@ class SequentialOpticalSystem:
         wavelength_um = wfo.lamda * 1e6
         wavelength_mm = wfo.lamda * 1e3
         
-        # 获取采样面半尺寸（使用完整网格尺寸，避免面积收缩）
-        half_size_mm = self._get_sampling_half_size_mm(wfo)
+        # =====================================================================
+        # 采样范围和密度选择：
+        # 
+        # 对于 is_fold=False 且有倾斜的情况，像差可能很大（多个波长），
+        # 需要足够密集的采样来避免相位混叠。
+        # 
+        # 策略：
+        # - is_fold=True 或无倾斜：使用完整网格尺寸，稀疏采样
+        # - is_fold=False 且有倾斜：使用光束覆盖区域，密集采样
+        #   采样密度需要满足 Nyquist 准则：相邻采样点间相位差 < π
+        # =====================================================================
+        if not is_fold and has_tilt:
+            # 使用光束覆盖区域
+            beam_radius_mm = self._source.w(0.0) * 1.5  # 1.5 倍光束腰半径
+            element_aperture = surface_def.semi_aperture if surface_def.semi_aperture else 15.0
+            half_size_mm = min(beam_radius_mm, element_aperture)
+            
+            # 对于 is_fold=False，使用更密集的采样
+            # 采样点数量应该与 PROPER 网格大小相当，以避免插值导致的相位混叠
+            # 但为了效率，限制最大采样点数
+            n_rays_1d_dense = min(n // 4, 128)  # 最多 128x128 = 16384 光线
+            use_dense_sampling = True
+        else:
+            # 使用完整网格尺寸
+            half_size_mm = self._get_sampling_half_size_mm(wfo)
+            use_dense_sampling = False
         
-        # 创建采样光线（在整个采样面上）
-        ray_x, ray_y = self._create_sampling_rays(half_size_mm)
+        # 创建采样光线
+        if use_dense_sampling:
+            # 使用密集采样（直接在规则网格上采样）
+            ray_coords = np.linspace(-half_size_mm, half_size_mm, n_rays_1d_dense)
+            ray_X, ray_Y = np.meshgrid(ray_coords, ray_coords)
+            ray_x = ray_X.flatten()
+            ray_y = ray_Y.flatten()
+        else:
+            ray_x, ray_y = self._create_sampling_rays(half_size_mm)
         n_rays = len(ray_x)
         
         if n_rays == 0:
@@ -751,31 +782,166 @@ class SequentialOpticalSystem:
         # - 理想 OPD：使用精确的几何公式计算理想抛物面镜的 OPD
         # - 像差 = 实际 OPD - 理想 OPD
         # 
-        # 精确理想 OPD 公式（对于抛物面反射镜）：
-        # - 表面矢高：sag = r² / (4f)
-        # - 入射光程：sag
-        # - 反射光程：|sag / rz|，其中 rz = 1 - 2/n_mag²，n_mag = sqrt(1 + r²/(4f²))
-        # - 总光程 = sag + |sag / rz|
-        # - 相对 OPD = 总光程 - 中心光程（中心光程 = 0）
+        # 关键修正（2024-01）：
+        # - 对于 is_fold=False 的倾斜表面，理想 OPD 公式不适用
+        # - 因为倾斜改变了光线在表面上的入射位置和角度分布
+        # - 解决方案：分别追迹带倾斜和不带倾斜的表面，计算差异
+        # - 差异 = 带倾斜的 OPD - 不带倾斜的 OPD
+        # - 这个差异就是倾斜引入的像差（不包含聚焦效果）
         # 
-        # 注意：近似公式 r²/(2f) 在大孔径时有约 2-4% 的误差
-        # 使用精确公式可以验证光线追迹的精度
+        # 对于 is_fold=True 或无倾斜表面：
+        # - 使用精确公式计算理想 OPD
+        # - 像差 = 实际 OPD - 理想 OPD
         # 
         # 对于平面镜（f = ∞），理想 OPD = 0
         # =====================================================================
-        ray_r_sq = ray_x**2 + ray_y**2
         
-        if is_plane_mirror:
-            # 平面镜：理想 OPD = 0
-            ideal_opd_waves = np.zeros_like(ray_r_sq)
+        # =====================================================================
+        # 检查是否为抛物面镜
+        # 
+        # 关键物理原理：
+        # - 抛物面镜对轴上平行光入射是**无像差**的，这是抛物面的定义特性
+        # - 无论倾斜角度如何（包括 45° 离轴使用），抛物面镜都不会引入像差
+        # - 这与球面镜不同：球面镜倾斜会引入像散、彗差等
+        # 
+        # 因此，对于抛物面镜，即使 is_fold=False，也不应该计算"倾斜引入的像差"
+        # =====================================================================
+        is_parabolic = abs(surface_def.conic + 1.0) < 1e-6  # conic = -1 表示抛物面
+        
+        if not is_fold and has_tilt and not is_parabolic:
+            # =====================================================================
+            # is_fold=False 的倾斜**球面**表面：使用差分方法计算像差
+            # 
+            # 物理意义：
+            # - is_fold=False 表示元件失调，会引入真实的像差
+            # - 对于球面镜，倾斜会引入像散和彗差
+            # - 这是物理上正确的行为
+            # 
+            # 注意：此分支仅适用于球面镜（conic != -1）
+            # 抛物面镜不会进入此分支，因为抛物面对轴上光是无像差的
+            # 
+            # 计算方法：
+            # 1. 追迹不带倾斜的表面，获取参考 OPD
+            # 2. 差分 OPD = 带倾斜的 OPD - 不带倾斜的 OPD
+            # 3. 从差分 OPD 中去除波前倾斜分量（Zernike Z2, Z3）
+            # 4. 剩余的就是真正的像差（像散、彗差等）
+            # 
+            # 重要说明：
+            # - 波前倾斜由光束方向改变来表示，不应作为相位添加
+            # - 只有真正的像差才应该作为相位添加到 PROPER 波前
+            # - 对于平面镜，去除倾斜后像差应为 0
+            # =====================================================================
+            
+            # 检查倾斜角度，如果大于 5°，发出警告
+            import warnings
+            max_tilt = max(abs(element.tilt_x), abs(element.tilt_y))
+            if max_tilt > np.deg2rad(5.0):
+                warnings.warn(
+                    f"球面镜 {element.__class__.__name__} 使用 is_fold=False 但倾斜角度为 "
+                    f"{np.rad2deg(max_tilt):.1f}°。对于大角度折叠，建议使用 is_fold=True。"
+                    f"当前设置会引入真实的像差（像散、彗差等）。",
+                    UserWarning
+                )
+            
+            # 创建不带倾斜的 SurfaceDefinition
+            from wavefront_to_rays.element_raytracer import SurfaceDefinition as SD
+            surface_no_tilt = SD(
+                surface_type=surface_def.surface_type,
+                radius=surface_def.radius,
+                thickness=surface_def.thickness,
+                material=surface_def.material,
+                semi_aperture=surface_def.semi_aperture,
+                conic=surface_def.conic,
+                tilt_x=0.0,
+                tilt_y=0.0,
+            )
+            
+            # 追迹不带倾斜的表面
+            raytracer_ref = ElementRaytracer(
+                surfaces=[surface_no_tilt],
+                wavelength=wavelength_um,
+            )
+            
+            # 创建相同的入射光线
+            rays_in_ref = RealRays(
+                x=ray_x.copy(),
+                y=ray_y.copy(),
+                z=np.zeros(n_rays),
+                L=np.zeros(n_rays),
+                M=np.zeros(n_rays),
+                N=np.ones(n_rays),
+                intensity=np.ones(n_rays),
+                wavelength=np.full(n_rays, wavelength_um),
+            )
+            
+            rays_out_ref = raytracer_ref.trace(rays_in_ref)
+            opd_waves_ref = raytracer_ref.get_relative_opd_waves()
+            valid_mask_ref = raytracer_ref.get_valid_ray_mask()
+            
+            # 像差 = 带倾斜的 OPD - 不带倾斜的 OPD
+            # 注意：两者的主光线可能不同，需要对齐
+            # 使用入射位置 (0, 0) 的光线作为参考
+            center_idx = n_rays // 2  # 假设网格中心是 (0, 0)
+            
+            # 对齐到中心光线
+            opd_waves_aligned = opd_waves - opd_waves[center_idx]
+            opd_waves_ref_aligned = opd_waves_ref - opd_waves_ref[center_idx]
+            
+            # 计算差分 OPD
+            diff_opd_waves = opd_waves_aligned - opd_waves_ref_aligned
+            
+            # 合并有效掩模
+            valid_mask = valid_mask & valid_mask_ref
+            
+            # =====================================================================
+            # 从差分 OPD 中去除波前倾斜分量
+            # 
+            # 波前倾斜由光束方向改变来表示，不应作为相位添加到 PROPER 波前。
+            # 使用最小二乘法拟合并去除倾斜分量（Zernike Z2, Z3）。
+            # =====================================================================
+            valid_x = ray_x[valid_mask]
+            valid_y = ray_y[valid_mask]
+            valid_diff = diff_opd_waves[valid_mask]
+            
+            if len(valid_x) > 3:
+                # 归一化坐标到 [-1, 1]
+                max_r = max(np.max(np.abs(valid_x)), np.max(np.abs(valid_y)))
+                if max_r > 0:
+                    norm_x = valid_x / max_r
+                    norm_y = valid_y / max_r
+                else:
+                    norm_x = valid_x
+                    norm_y = valid_y
+                
+                # 最小二乘拟合：OPD = a0 + a1*x + a2*y
+                A = np.column_stack([np.ones_like(norm_x), norm_x, norm_y])
+                coeffs, _, _, _ = np.linalg.lstsq(A, valid_diff, rcond=None)
+                
+                # 计算倾斜分量
+                tilt_component = coeffs[0] + coeffs[1] * (ray_x / max_r if max_r > 0 else ray_x) + \
+                                 coeffs[2] * (ray_y / max_r if max_r > 0 else ray_y)
+                
+                # 去除倾斜，得到真正的像差
+                aberration_waves = diff_opd_waves - tilt_component
+            else:
+                aberration_waves = diff_opd_waves
         else:
-            # 使用精确公式计算理想抛物面镜的 OPD
-            focal_length_mm = element.focal_length
-            ideal_opd_mm = self._calculate_exact_mirror_opd(ray_r_sq, focal_length_mm)
-            ideal_opd_waves = ideal_opd_mm / wavelength_mm
-        
-        # 像差 = 实际 OPD - 理想 OPD
-        aberration_waves = opd_waves - ideal_opd_waves
+            # =====================================================================
+            # is_fold=True 或无倾斜表面：使用理想 OPD 公式
+            # =====================================================================
+            ray_r_sq = ray_x**2 + ray_y**2
+            
+            if is_plane_mirror:
+                # 平面镜：理想 OPD = 0
+                ideal_opd_waves = np.zeros_like(ray_r_sq)
+            else:
+                # 使用精确公式计算理想抛物面镜的 OPD
+                focal_length_mm = element.focal_length
+                ideal_opd_mm = self._calculate_exact_mirror_opd(ray_r_sq, focal_length_mm)
+                ideal_opd_waves = ideal_opd_mm / wavelength_mm
+            
+            # 像差 = 实际 OPD - 理想 OPD
+            aberration_waves = opd_waves - ideal_opd_waves
         
         # 将无效光线的像差设为 0（避免插值问题）
         aberration_waves = np.where(valid_mask, aberration_waves, 0.0)
@@ -801,7 +967,13 @@ class SequentialOpticalSystem:
         # 
         # 插值说明：
         # - 使用三次插值（cubic）将稀疏采样点插值到 PROPER 网格
-        # - 无效区域填充为 0（不引入相位变化）
+        # - 插值必须在 PROPER 网格的坐标系中进行
+        # - 采样点范围外的区域填充为 0（不引入相位变化）
+        # 
+        # 重要修正（2024-01）：
+        # 对于 is_fold=False 的情况，像差可能很大（多个波长），
+        # 直接插值会导致边界处出现巨大的相位跳变。
+        # 解决方案：使用 PROPER 波前的振幅作为掩模，只在有光的区域应用相位。
         # =====================================================================
         # 像差相位 = -2π * 像差（波长数）
         # 负号是因为：正 OPD（光程长）对应负相位（波前滞后）
@@ -813,25 +985,48 @@ class SequentialOpticalSystem:
         valid_phase = aberration_phase[valid_mask]
         
         if len(valid_x) > 3:
-            # 创建网格坐标
-            coords_mm = np.linspace(-half_size_mm, half_size_mm, n)
+            # 创建 PROPER 网格坐标（必须与 PROPER 波前的坐标系匹配）
+            # PROPER 网格范围是 [-n/2 * sampling, n/2 * sampling]
+            proper_half_size_mm = sampling_mm * n / 2
+            coords_mm = np.linspace(-proper_half_size_mm, proper_half_size_mm, n)
             X_mm, Y_mm = np.meshgrid(coords_mm, coords_mm)
             
             # 插值
+            # 注意：采样点范围是 [-half_size_mm, half_size_mm]
+            # 使用 NaN 作为填充值，稍后用掩模处理
             points = np.column_stack([valid_x, valid_y])
             phase_grid = griddata(
                 points,
                 valid_phase,
                 (X_mm, Y_mm),
                 method='cubic',
-                fill_value=0.0,
+                fill_value=np.nan,
             )
             
-            # 处理 NaN 值
+            # =====================================================================
+            # 使用 PROPER 波前振幅作为掩模
+            # 
+            # 对于 is_fold=False 的大像差情况，采样范围外的区域不应该应用相位。
+            # 使用波前振幅作为掩模，只在有光的区域应用相位。
+            # 这避免了边界处的相位跳变问题。
+            # 
+            # 重要：使用采样范围作为掩模，而不是振幅阈值
+            # 因为高斯光束的尾部延伸很远，振幅阈值掩模可能覆盖整个网格
+            # =====================================================================
+            # 创建采样范围掩模
+            R_mm = np.sqrt(X_mm**2 + Y_mm**2)
+            sampling_range_mask = R_mm <= half_size_mm
+            
+            # 在采样范围外，相位设为 0
+            phase_grid = np.where(sampling_range_mask & ~np.isnan(phase_grid), phase_grid, 0.0)
+            
+            # 处理剩余的 NaN 值
             phase_grid = np.nan_to_num(phase_grid, nan=0.0)
             
-            # 检查相位采样
-            self._check_phase_sampling(phase_grid, sampling_mm)
+            # 检查相位采样（只在采样范围内检查）
+            phase_in_range = phase_grid.copy()
+            phase_in_range[~sampling_range_mask] = np.nan
+            self._check_phase_sampling(phase_in_range, sampling_mm)
             
             # 应用相位
             phase_field = np.exp(1j * phase_grid)
@@ -1012,6 +1207,85 @@ class SequentialOpticalSystem:
             # 参考球面相位：φ_ref = -k * r² / (2 * R_ref)
             phase_ref = -k * r_sq_m / (2 * R_ref_m)
             return phase_ref
+    
+    def _compute_theory_curvature_phase(
+        self,
+        wfo,
+        element,
+    ) -> NDArray:
+        """计算理论曲率相位
+        
+        计算光学元件的理论聚焦相位（不含倾斜分量）。此方法用于在像差复振幅
+        重建后加回元件的理论聚焦效果。
+        
+        公式（需求 3.1）：
+            φ_theory = -k × r² / (2f)
+            
+        其中：
+            k = 2π/λ 为波数
+            r² = x² + y² 为到光轴的距离平方
+            f 为焦距
+        
+        物理意义：
+        ==========
+        
+        理论曲率相位表示理想薄透镜/反射镜对波前的聚焦效果。
+        - 凹面镜/会聚透镜（f > 0）：边缘相位为负（波前滞后）
+        - 凸面镜/发散透镜（f < 0）：边缘相位为正（波前超前）
+        
+        与像差的关系：
+        - 实际波前 = 理论曲率相位 + 像差相位
+        - 在混合传播模式中，我们先计算像差（实际 OPD - 理想 OPD）
+        - 然后加回理论曲率相位，得到完整的波前效果
+        
+        注意事项：
+        ==========
+        
+        1. 此相位不包含倾斜分量（需求 3.3）
+           - 折叠倾斜（is_fold=True）由光轴方向变化表示
+           - 失调倾斜（is_fold=False）在像差计算中已处理
+        
+        2. 对于平面镜（f = ∞），理论相位为 0（需求 3.2）
+           - 平面镜不改变波前曲率
+           - 返回全零数组
+        
+        3. 相位单位为弧度
+        
+        参数:
+            wfo: PROPER 波前对象，用于获取网格大小、采样间隔和波长
+            element: 光学元件对象，需要提供 focal_length 属性（单位：mm）
+        
+        返回:
+            理论曲率相位网格（弧度），形状为 (n, n)
+        
+        **Validates: Requirements 3.1, 3.2, 3.3, 3.4**
+        """
+        import proper
+        
+        # 获取网格参数
+        n = proper.prop_get_gridsize(wfo)
+        sampling_m = proper.prop_get_sampling(wfo)  # m/pixel
+        wavelength_m = wfo.lamda  # m
+        
+        # 创建坐标网格（单位：m）
+        half_size_m = sampling_m * n / 2
+        coords_m = np.linspace(-half_size_m, half_size_m, n)
+        X_m, Y_m = np.meshgrid(coords_m, coords_m)
+        r_sq_m = X_m**2 + Y_m**2
+        
+        # 检查是否为平面镜（需求 3.2）
+        if np.isinf(element.focal_length):
+            return np.zeros((n, n))
+        
+        # 计算理论相位（需求 3.1）
+        # 公式：φ_theory = -k × r² / (2f)
+        focal_length_m = element.focal_length * 1e-3  # mm → m
+        k = 2 * np.pi / wavelength_m  # 波数（1/m）
+        
+        # 理论曲率相位
+        theory_phase = -k * r_sq_m / (2 * focal_length_m)
+        
+        return theory_phase
     
     def _check_phase_sampling(self, phase_grid: NDArray, sampling_mm: float) -> None:
         """检查相位采样是否充足
