@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\system.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-15, 1e-10, 1e-06, 0.001, 0.5, 1.0, 2.0, 1000.0, 1000000.0, 100, 150, 512, '=', 'Axes', 'Figure', 'INSIDE_', 'OUTSIDE', 'PLANAR', 'SPHERI', '_to_', 'conic', 'cubic', 'inf', 'is_fold', 'off_axis_distance', 'spatial', 'thin_lens', 'tight', '仿真参数:', '光源参数:', '序列光学系统配置摘要']

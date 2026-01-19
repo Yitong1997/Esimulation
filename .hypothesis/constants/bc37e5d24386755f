@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_propagation\pilot_beam.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 0.1, 1.0, 1.5, 20.0, 'GaussianBeam', 'OpticalElement', 'exit', 'inf', '未提供光束发散角数据，跳过检查', '未提供光束尺寸数据，跳过检查', '未提供相位网格数据']

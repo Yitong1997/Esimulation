@@ -1,0 +1,4 @@
+# file: D:\BTS\src\gaussian_beam_simulation\optical_elements.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.0, 1e-15, 1.0, 50.0, 100.0, 200.0, 'flat_mirror', 'mirror', 'parabolic_mirror', 'spherical_mirror', 'thin_lens', 'unnamed', '方向余弦归一化失败']

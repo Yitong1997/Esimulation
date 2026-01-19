@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_propagation\amplitude_reconstruction.py
+# hypothesis_version: 6.150.2
+
+[0.0, 'linear', '没有有效光线，返回零复振幅']

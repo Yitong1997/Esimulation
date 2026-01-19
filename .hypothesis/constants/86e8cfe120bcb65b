@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\visualization.py
+# hypothesis_version: 6.150.2
+
+[0.3, 0.5, 0.7, 0.8, 1.2, 1.5, 100.0, 200, '-', '--', ':', 'Axes', 'Figure', 'b-', 'blue', 'g', 'g<', 'g>', 'k', 'orange', 'r', 'r^', 'rv', 'upper right', '光束包络', '光束半径 (mm)', '光程距离 (mm)', '序列光学系统布局']

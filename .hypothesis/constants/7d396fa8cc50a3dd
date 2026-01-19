@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_propagation\tilted_propagation.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.0, 1e-15, 1e-10, 0.01, 0.999, 1.0, 'xy']
