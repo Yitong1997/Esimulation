@@ -47,6 +47,12 @@ class SurfaceDefinition:
             - < -1: 双曲面
             - -1 < k < 0: 椭球面（扁椭球）
             - > 0: 椭球面（长椭球）
+        tilt_x: 绕 X 轴旋转角度（弧度），默认 0.0
+        tilt_y: 绕 Y 轴旋转角度（弧度），默认 0.0
+        off_axis_distance: 离轴距离（mm），默认 0.0
+            - 用于离轴抛物面镜（OAP）
+            - 表示光束在母抛物面上相对于光轴的偏移距离
+            - 对于 90° OAP，off_axis_distance = 2 * |focal_length|
     
     示例:
         >>> # 创建凹面反射镜（焦距 100mm，曲率半径 200mm）
@@ -84,12 +90,25 @@ class SurfaceDefinition:
         ...     semi_aperture=15.0,
         ...     conic=-1.0  # 抛物面
         ... )
+        
+        >>> # 创建 90° 离轴抛物面镜（OAP）
+        >>> oap_90deg = SurfaceDefinition(
+        ...     surface_type='mirror',
+        ...     radius=200.0,  # R = 2f, f = 100mm
+        ...     thickness=0.0,
+        ...     material='mirror',
+        ...     semi_aperture=15.0,
+        ...     conic=-1.0,  # 抛物面
+        ...     tilt_x=np.pi/4,  # 45° 倾斜
+        ...     off_axis_distance=200.0,  # 2 * |f| = 200mm
+        ... )
     
     注意:
         - 曲率半径符号约定遵循 optiland 标准：
           正值表示曲率中心在表面顶点的 +Z 方向
         - 对于凹面镜，焦距 f = R/2（R 为曲率半径）
         - 抛物面的圆锥常数 k = -1
+        - 离轴距离通过 optiland 的 dy 参数（Y 方向偏心）实现
     
     Validates:
         - Requirements 2.1: 支持定义球面反射镜（通过曲率半径参数）
@@ -108,6 +127,7 @@ class SurfaceDefinition:
     conic: float = 0.0  # 圆锥常数，默认 0.0（球面）
     tilt_x: float = 0.0  # 绕 X 轴旋转角度（弧度）
     tilt_y: float = 0.0  # 绕 Y 轴旋转角度（弧度）
+    off_axis_distance: float = 0.0  # 离轴距离（mm），用于离轴抛物面镜（OAP）
     
     def __post_init__(self) -> None:
         """初始化后验证参数有效性"""
@@ -185,6 +205,17 @@ class SurfaceDefinition:
             raise ValueError(
                 f"Y 轴旋转角度必须为有限值，实际为 {self.tilt_y}"
             )
+        
+        # 验证离轴距离
+        if not isinstance(self.off_axis_distance, (int, float)):
+            raise TypeError(
+                f"离轴距离类型错误：期望 int 或 float，"
+                f"实际为 {type(self.off_axis_distance).__name__}"
+            )
+        if not np.isfinite(self.off_axis_distance):
+            raise ValueError(
+                f"离轴距离必须为有限值，实际为 {self.off_axis_distance}"
+            )
     
     def to_dict(self) -> Dict[str, Any]:
         """将表面定义转换为字典
@@ -219,6 +250,7 @@ class SurfaceDefinition:
             'conic': self.conic,
             'tilt_x': self.tilt_x,
             'tilt_y': self.tilt_y,
+            'off_axis_distance': self.off_axis_distance,
         }
     
     @property
@@ -273,6 +305,10 @@ class SurfaceDefinition:
             tilt_x_deg = np.degrees(self.tilt_x)
             tilt_y_deg = np.degrees(self.tilt_y)
             result += f", tilt=({tilt_x_deg:.1f}°, {tilt_y_deg:.1f}°)"
+        
+        # 添加离轴距离信息（如果有）
+        if self.off_axis_distance != 0.0:
+            result += f", off_axis={self.off_axis_distance:.2f} mm"
         
         result += ")"
         return result
@@ -1283,6 +1319,7 @@ class ElementRaytracer:
                 conic=surface_def.conic,  # 添加圆锥常数支持
                 rx=tilt_x_safe,    # 绕 X 轴旋转（弧度）
                 ry=tilt_y_safe,    # 绕 Y 轴旋转（弧度）
+                dy=surface_def.off_axis_distance,  # 离轴距离（沿 Y 方向偏心）
             )
             
             # 如果指定了半口径，设置表面的 max_aperture

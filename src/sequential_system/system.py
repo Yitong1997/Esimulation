@@ -484,9 +484,9 @@ class SequentialOpticalSystem:
            - 更准确地处理元件处的波前变换
         
         关于倾斜的处理：
-        - is_fold=True（默认）：倾斜用于折叠光路，不引入波前倾斜
-          PROPER 在"展开"的光路上传播，折叠镜只改变传播方向
-        - is_fold=False：倾斜表示元件失调，会引入波前倾斜
+        - is_fold=False（默认）：使用完整光线追迹计算 OPD
+          入射面和出射面垂直于各自的光轴，OPD 不包含整体倾斜
+        - is_fold=True：跳过光线追迹，仅更新光轴方向
         
         参数:
             wfo: PROPER 波前对象
@@ -521,8 +521,8 @@ class SequentialOpticalSystem:
             Y_shifted = Y
         
         # 2. 应用倾斜效果（仅当 is_fold=False 时）
-        # 获取 is_fold 属性，默认为 True（折叠倾斜，不引入波前倾斜）
-        is_fold = getattr(element, 'is_fold', True)
+        # 获取 is_fold 属性，默认为 False（使用光线追迹计算 OPD）
+        is_fold = getattr(element, 'is_fold', False)
         
         if not is_fold and (element.tilt_x != 0 or element.tilt_y != 0):
             # 只有失调倾斜才引入波前倾斜
@@ -634,7 +634,7 @@ class SequentialOpticalSystem:
         """
         import proper
         
-        is_fold = getattr(element, 'is_fold', True)
+        is_fold = getattr(element, 'is_fold', False)
         has_tilt = (element.tilt_x != 0 or element.tilt_y != 0)
         is_plane_mirror = np.isinf(element.focal_length)
         
@@ -649,14 +649,16 @@ class SequentialOpticalSystem:
             return
         
         # =====================================================================
-        # 关于折叠倾斜的处理：
+        # 关于 is_fold 的处理：
         # 
-        # 对于折叠倾斜（is_fold=True），PROPER 在"展开"的光路上传播，
-        # 倾斜只用于计算光轴方向变化，不应该引入波前倾斜。
+        # is_fold=False（默认）：使用完整光线追迹计算 OPD
+        # - 入射面和出射面垂直于各自的光轴
+        # - OPD 不包含整体倾斜（因为参考面垂直于光轴）
+        # - 适用于所有情况，包括大角度折叠镜
         # 
-        # 因此，在光线追迹时，我们需要使用不包含倾斜的 SurfaceDefinition。
-        # 这样 ElementRaytracer 计算的 OPD 只包含元件的聚焦效果和像差，
-        # 不包含倾斜引入的 OPD。
+        # is_fold=True：跳过光线追迹中的倾斜处理
+        # - 仅用于需要简化计算的特殊情况
+        # - 使用不包含倾斜的 SurfaceDefinition 进行追迹
         # =====================================================================
         if is_fold and has_tilt:
             # 创建不包含倾斜的 SurfaceDefinition
@@ -714,13 +716,13 @@ class SequentialOpticalSystem:
         # =====================================================================
         # 采样范围和密度选择：
         # 
-        # 对于 is_fold=False 且有倾斜的情况，像差可能很大（多个波长），
-        # 需要足够密集的采样来避免相位混叠。
+        # is_fold=False（默认）：使用完整光线追迹
+        # - 入射面和出射面垂直于各自的光轴
+        # - OPD 不包含整体倾斜
+        # - 使用完整网格尺寸进行采样
         # 
-        # 策略：
-        # - is_fold=True 或无倾斜：使用完整网格尺寸，稀疏采样
-        # - is_fold=False 且有倾斜：使用光束覆盖区域，密集采样
-        #   采样密度需要满足 Nyquist 准则：相邻采样点间相位差 < π
+        # is_fold=True：简化处理
+        # - 使用完整网格尺寸，稀疏采样
         # =====================================================================
         if not is_fold and has_tilt:
             # 使用光束覆盖区域
@@ -782,16 +784,10 @@ class SequentialOpticalSystem:
         # - 理想 OPD：使用精确的几何公式计算理想抛物面镜的 OPD
         # - 像差 = 实际 OPD - 理想 OPD
         # 
-        # 关键修正（2024-01）：
-        # - 对于 is_fold=False 的倾斜表面，理想 OPD 公式不适用
-        # - 因为倾斜改变了光线在表面上的入射位置和角度分布
-        # - 解决方案：分别追迹带倾斜和不带倾斜的表面，计算差异
-        # - 差异 = 带倾斜的 OPD - 不带倾斜的 OPD
-        # - 这个差异就是倾斜引入的像差（不包含聚焦效果）
-        # 
-        # 对于 is_fold=True 或无倾斜表面：
-        # - 使用精确公式计算理想 OPD
-        # - 像差 = 实际 OPD - 理想 OPD
+        # 核心设计原则：
+        # - 入射面和出射面垂直于各自的光轴
+        # - 因此 OPD 不包含整体波前倾斜
+        # - 光线追迹计算的是从入射面到出射面的光程差
         # 
         # 对于平面镜（f = ∞），理想 OPD = 0
         # =====================================================================
@@ -803,8 +799,6 @@ class SequentialOpticalSystem:
         # - 抛物面镜对轴上平行光入射是**无像差**的，这是抛物面的定义特性
         # - 无论倾斜角度如何（包括 45° 离轴使用），抛物面镜都不会引入像差
         # - 这与球面镜不同：球面镜倾斜会引入像散、彗差等
-        # 
-        # 因此，对于抛物面镜，即使 is_fold=False，也不应该计算"倾斜引入的像差"
         # =====================================================================
         is_parabolic = abs(surface_def.conic + 1.0) < 1e-6  # conic = -1 表示抛物面
         
@@ -813,7 +807,6 @@ class SequentialOpticalSystem:
             # is_fold=False 的倾斜**球面**表面：使用差分方法计算像差
             # 
             # 物理意义：
-            # - is_fold=False 表示元件失调，会引入真实的像差
             # - 对于球面镜，倾斜会引入像散和彗差
             # - 这是物理上正确的行为
             # 
@@ -832,16 +825,12 @@ class SequentialOpticalSystem:
             # - 对于平面镜，去除倾斜后像差应为 0
             # =====================================================================
             
-            # 检查倾斜角度，如果大于 5°，发出警告
+            # 检查倾斜角度，如果大于 5°，发出提示信息
             import warnings
             max_tilt = max(abs(element.tilt_x), abs(element.tilt_y))
             if max_tilt > np.deg2rad(5.0):
-                warnings.warn(
-                    f"球面镜 {element.__class__.__name__} 使用 is_fold=False 但倾斜角度为 "
-                    f"{np.rad2deg(max_tilt):.1f}°。对于大角度折叠，建议使用 is_fold=True。"
-                    f"当前设置会引入真实的像差（像散、彗差等）。",
-                    UserWarning
-                )
+                # 大角度倾斜的球面镜会引入真实的像差，这是物理上正确的行为
+                pass  # 不再发出警告，因为 is_fold=False 是默认行为
             
             # 创建不带倾斜的 SurfaceDefinition
             from wavefront_to_rays.element_raytracer import SurfaceDefinition as SD
@@ -1242,8 +1231,9 @@ class SequentialOpticalSystem:
         ==========
         
         1. 此相位不包含倾斜分量（需求 3.3）
-           - 折叠倾斜（is_fold=True）由光轴方向变化表示
-           - 失调倾斜（is_fold=False）在像差计算中已处理
+           - 入射面和出射面垂直于各自的光轴，不存在波前倾斜
+           - is_fold=True 时跳过倾斜处理
+           - is_fold=False 时（默认）使用完整光线追迹
         
         2. 对于平面镜（f = ∞），理论相位为 0（需求 3.2）
            - 平面镜不改变波前曲率

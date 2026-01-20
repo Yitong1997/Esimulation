@@ -48,16 +48,17 @@ class OpticalElement(ABC):
         tilt_y: 绕 Y 轴旋转角度（rad），默认 0
         decenter_x: X 方向偏心（mm），默认 0
         decenter_y: Y 方向偏心（mm），默认 0
-        is_fold: 是否为折叠倾斜（True=折叠光路，不引入波前倾斜；False=失调，引入波前倾斜）
+        is_fold: 是否为折叠倾斜（True=折叠光路，不引入波前倾斜；False=失调，引入波前倾斜），默认 False
         name: 元件名称，可选
     
     异常:
         ValueError: 当参数不满足约束条件时抛出
     
     注意:
-        - is_fold=True 时，tilt_x/tilt_y 仅用于改变光束传播方向，不添加波前倾斜
-        - is_fold=False 时，tilt_x/tilt_y 表示元件失调，会引入波前倾斜
-        - 在折叠光路设计中，通常设置 is_fold=True
+        - is_fold=False（默认）：使用完整光线追迹计算 OPD
+          入射面和出射面垂直于各自的光轴，OPD 不包含整体倾斜
+        - is_fold=True：跳过光线追迹中的倾斜处理，仅更新光轴方向
+        - 对于大角度折叠镜，推荐使用默认的 is_fold=False
     """
     
     thickness: float  # mm，到下一元件的间距
@@ -66,7 +67,7 @@ class OpticalElement(ABC):
     tilt_y: float = 0.0  # rad
     decenter_x: float = 0.0  # mm
     decenter_y: float = 0.0  # mm
-    is_fold: bool = True  # 默认为折叠倾斜（不引入波前倾斜）
+    is_fold: bool = False  # 默认为失调倾斜（引入波前倾斜）
     name: Optional[str] = None
     
     # 由系统计算的位置（不需要手动指定）
@@ -340,6 +341,7 @@ class ParabolicMirror(OpticalElement):
             conic=self.conic_constant,
             tilt_x=self.tilt_x,
             tilt_y=self.tilt_y,
+            off_axis_distance=self.off_axis_distance,
         )
 
 

@@ -1,266 +1,245 @@
 <!------------------------------------------------------------------------------------
-# 混合光学仿真项目 (Hybrid Optical Simulation) - Agent Steering 规则
+# 混合光学仿真项目 - 核心规范
 
-本文件定义了混合物理光学-几何光学仿真项目的开发规范和指导原则。
-项目核心：使用 PROPER 进行物理光学传输，optiland 进行几何光线追迹计算 OPD。
--------------------------------------------------------------------------------------> 
+项目核心：PROPER（物理光学传输）+ optiland（几何光线追迹 OPD 计算）
+inclusion: always
+------------------------------------------------------------------------------------>
 
-## 项目概述
-
-这是一个类似 Zemax 的混合光学仿真系统，结合：
-- **PROPER 库**：物理光学波前传输（衍射传播、Fresnel/Fraunhofer 传播）
-- **optiland 库**：几何光线追迹（OPD 计算、像差分析、光学系统建模）
-
-## ⚠️ 重要：库的安装与调用方式
-
-### 安装方式
-两个核心库都已通过 pip 安装到 Python 环境中：
-- `optiland`：通过 `pip install optiland` 安装
-- `proper`（PyPROPER3）：通过 `pip install .` 在 `proper_v3.3.4_python` 目录下安装
-
-### 正确的调用方式
-**必须使用 pip 安装的库，而不是直接调用工作区内的源码文件夹！**
+## 库的调用方式
 
 ```python
-# ✅ 正确：从 pip 安装的包导入（注意：optiland 需要从子模块导入类）
-import proper
-import optiland
-from optiland.optic import Optic  # 注意：不是 from optiland import Optic
-from optiland.phase import GridPhaseProfile
-
-# ❌ 错误：不要直接引用工作区内的源码路径
-# import sys
-# sys.path.insert(0, 'optiland-master/optiland')  # 不要这样做！
-# sys.path.insert(0, 'proper_v3.3.4_python/proper')  # 不要这样做！
-
-# ❌ 错误：不要从顶层包直接导入类
-# from optiland import Optic  # 这样会报错！
+import proper                        # 物理光学传输
+from optiland.optic import Optic     # 几何光线追迹（注意：从子模块导入）
 ```
 
-### 工作区内源码文件夹的用途
-- `optiland-master/`：仅作为 API 文档和示例参考，查看 `docs/` 目录了解用法
-- `proper_v3.3.4_python/`：仅作为 API 文档参考，查看 `PROPER_manual_v3.3.4.pdf`
+工作区内的 `optiland-master/` 和 `proper_v3.3.4_python/` 仅作为 API 文档参考。
 
-### 项目自有代码
-项目自有代码位于 `src/` 目录下，测试代码位于 `tests/` 目录下：
-```python
-# 导入项目自有模块时，需要将 src 添加到路径
-import sys
-sys.path.insert(0, 'src')
+---
 
-from wavefront_to_rays import WavefrontToRaysSampler
+## 坐标系统
+
+### 全局坐标系（右手系）
+
+```
+        Y (向上)
+        |
+        |________ Z (光轴方向)
+       /
+      X
 ```
 
-## 核心架构原则
+### 光轴是动态的
 
-### 1. 混合传输模型
-- 元器件之间的传输：使用 PROPER 的物理光学传输功能（`prop_propagate`、`prop_lens` 等）
-- 元器件处的波前 OPD 计算：使用 optiland 的几何光线追迹
-- 两个库之间需要建立统一的波前数据接口
+- 反射元件会改变光轴方向
+- 所有面的倾斜都相对于**当前光轴**定义
+- 系统自动追踪主光线方向变化
 
-### 2. 数据流设计
+---
+
+## PROPER 复振幅存储方式
+
+### ⚠️ 关键：附加参考波前
+
+**PROPER 的复振幅是相对于参考球面波前存储的，而不是绝对相位。**
+
+- `wfarr` 中存储的相位是相对于参考球面的偏差
+- `prop_lens` 更新参考球面参数，而不是直接修改 `wfarr` 中的相位
+- 理想聚焦效果由参考球面跟踪，`wfarr` 中只包含像差
+
+### ⚠️ 关键：PROPER 提取的相位是折叠相位
+
+**`proper.prop_get_phase(wfo)` 返回的是折叠（wrapped）相位，范围在 [-π, π]。**
+
+- 当波前曲率较大时，相位会发生 2π 折叠
+- 直接使用折叠相位进行光线采样会导致出射面重采样时出现 2nπ 的相位误差
+- 必须在光线采样前进行相位解包裹
+
+### 采样面始终垂直于光轴
+
+- PROPER 记录的复振幅在垂直于光轴的平面上采样
+- 波前不具有整体倾斜（Tilt），无论光路是否折叠
+- **不要向 PROPER 波前添加整体倾斜相位**
+
+---
+
+## 入射面与出射面
+
+### ⚠️ 核心定义：永远垂直于光轴
+
+**入射面和出射面永远垂直于光轴，与 `is_fold` 参数无关。**
+
+```
+入射面（⊥入射光轴）    元件      出射面（⊥出射光轴）
+        |               /              |
+        |              /               |
+   PROPER 波前  →  光线追迹  →   PROPER 波前
+   （无倾斜）      计算 OPD      （无倾斜）
+```
+
+---
+
+## 倾斜处理与 is_fold 参数
+
+### ⚠️ 关键：倾斜不导致出入射面有倾斜量
+
+**`is_fold` 只影响元件处的复振幅计算方式，不影响入射面和出射面相对于光轴的角度。**
+
+### is_fold=False（默认）时的倾斜补偿
+
+当 `is_fold=False` 时，虽然元件带有倾斜量，但结果中不会包含波前倾斜：
+
+1. 系统追踪主光轴方向变化
+2. 入射面垂直于入射光轴，出射面垂直于出射光轴
+3. OPD 相对于主光线计算
+4. 倾斜相位被自动补偿
+
+```
+is_fold=False 时的倾斜补偿：
+
+入射光轴 →              入射面（⊥入射光轴）
+    |                        |
+   / ← 45°倾斜元件           | ← OPD 相对于主光线（倾斜被补偿）
+  /                          |
+ ↓                           ↓
+出射光轴              出射面（⊥出射光轴）
+
+结果：OPD 中不包含整体倾斜，只包含真实像差
+```
+
+### is_fold 参数对比
+
+| 特性 | is_fold=False（默认） | is_fold=True |
+|------|----------------------|--------------|
+| 元件处计算 | 带倾斜的光线追迹 | 不带倾斜的简化计算 |
+| 倾斜相位 | 自动补偿 | 不计算 |
+| 波前倾斜 | 无 | 无 |
+
+**总结**：无论元件倾斜角度多大，结果中都不应当具有倾斜量，只包含真实像差。
+
+---
+
+## 符号约定
+
+- **曲率半径**：正值 = 曲率中心在 +Z 方向
+- **厚度**：正值 = 沿 +Z 方向
+- **旋转角度**：正值 = 右手定则
+
+---
+
+## 单位约定
+
+| 项目 | optiland | PROPER |
+|------|----------|--------|
+| 长度 | mm | m |
+| OPD/相位 | 波长数 | 弧度 |
+
+转换：`phase = 2π × opd_waves`
+
+---
+
+## 数据流
+
 ```
 输入光源 → [PROPER: 初始波前] → [optiland: 元件OPD] → [PROPER: 传输] → ... → 输出
 ```
 
-### 3. 坐标系统统一
-- 确保 PROPER 和 optiland 使用一致的坐标系定义
-- 注意两个库的采样网格差异，需要进行适当的插值或重采样
+---
 
-## 代码规范
+## Pilot Beam 与相位解包裹
 
-### Python 风格
-- 遵循 PEP 8 代码风格
-- 使用类型注解（Type Hints）
-- 函数和类需要完整的 docstring（中文说明）
-- 变量命名使用英文，注释使用中文
+### ⚠️ 核心机制：Pilot Beam 参考波前
 
-### 模块组织
-```
-project/
-├── core/                    # 核心功能模块
-│   ├── wavefront.py         # 波前数据结构和操作
-│   ├── propagation.py       # PROPER 传输封装
-│   ├── raytracing.py        # optiland 光线追迹封装
-│   └── interface.py         # 两个库之间的接口层
-├── components/              # 光学元件定义
-│   ├── lens.py              # 透镜
-│   ├── mirror.py            # 反射镜
-│   ├── aperture.py          # 光阑
-│   └── surface.py           # 通用光学面
-├── analysis/                # 分析功能
-│   ├── psf.py               # PSF 计算
-│   ├── mtf.py               # MTF 计算
-│   ├── aberration.py        # 像差分析
-│   └── wavefront_analysis.py # 波前分析
-├── utils/                   # 工具函数
-│   ├── grid.py              # 网格操作
-│   ├── interpolation.py     # 插值工具
-│   └── visualization.py     # 可视化
-└── tests/                   # 测试代码
-```
+**在整个传播过程中，基于 ABCD 法则在每个入射面和出射面处计算理想波前形状（Pilot Beam）。**
 
-## PROPER 使用规范
+Pilot Beam 的特性：
+- 波前相位以**非折叠方式**解析计算
+- 相位定义为相对于主光线的相位延迟
+- 主光线处相位为 0
+- 提供连续、平滑的参考相位分布
 
-### 波前初始化
+### ABCD 法则计算 Pilot Beam
+
 ```python
-# 使用 prop_begin 初始化波前
-wfo = proper.prop_begin(beam_diameter, wavelength, grid_size, beam_ratio)
+# Pilot Beam 参数通过 ABCD 矩阵传播
+# 输入：初始束腰位置 z0、束腰半径 w0、波长 λ
+# 输出：任意位置的曲率半径 R(z) 和光斑大小 w(z)
+
+# 复参数 q 的传播
+q_out = (A * q_in + B) / (C * q_in + D)
+
+# 从 q 提取曲率半径
+R = 1 / Re(1/q)
+
+# Pilot Beam 相位（非折叠，解析计算）
+# 相对于主光线，在半径 r 处的相位延迟
+phi_pilot(r) = k * r² / (2 * R)  # k = 2π/λ
 ```
 
-### 传输操作
-- `prop_propagate`: 自动选择合适的传播算法
-- `prop_lens`: 添加理想透镜相位
-- `prop_circular_aperture`: 圆形光阑
-- `prop_zernikes`: 添加 Zernike 像差
+### ⚠️ 关键：入射面相位解包裹
 
-### 注意事项
-- PROPER 使用复数波前表示（振幅 + 相位）
-- 网格采样需要满足 Nyquist 准则，相邻像素间相位差不应大于pi
-- 注意 `prop_end` 的调用以获取最终结果
+**在几何光线追迹中，对入射面采样光线之前，必须对 PROPER 提取的折叠相位进行解包裹。**
 
-## optiland 使用规范
+#### 解包裹公式
 
-### 光学系统定义
 ```python
-from optiland.optic import Optic  # 注意：从子模块导入
+# T: PROPER 提取的折叠相位（范围 [-π, π]）
+# T_pilot: Pilot Beam 计算的非折叠参考相位
+# T_unwrapped: 解包裹后的相位
 
-lens = Optic()
-lens.add_surface(index=0, ...)  # 添加光学面
-lens.set_aperture(...)          # 设置光阑
-lens.set_field_type(...)        # 设置视场类型
+T_unwrapped = T_pilot + angle(exp(1j * (T - T_pilot)))
+
+# 等价于：
+T_unwrapped = T_pilot + np.angle(np.exp(1j * (T - T_pilot)))
 ```
 
-### OPD 计算
-- 使用 `wavefront` 模块进行 OPD 计算
-- 支持 Zernike 分解
-- 可获取各视场点的波前数据
+其中 `angle()` 函数将括号内的值映射到 [-π, π] 范围。
 
-### 光线追迹
-- 使用 `raytrace` 模块进行光线追迹
-- 支持实际光线和近轴光线
-- 可获取各面的光线数据
+#### 为什么需要解包裹
 
-## 接口层设计要求
+```
+问题场景（不解包裹）：
+┌─────────────────────────────────────────────────────────────┐
+│ 入射面                                                       │
+│   PROPER 相位 T（折叠）: ... 3.0, 3.1, -3.1, -3.0 ...       │
+│                              ↑ 2π 跳变                       │
+│   用于光线采样 → 光线携带折叠相位                            │
+│                                                              │
+│ 出射面                                                       │
+│   光线追迹相位（折叠）与参考相位比较                         │
+│   → 出现 2nπ 的误差                                          │
+│   → OPD 提取错误                                             │
+└─────────────────────────────────────────────────────────────┘
 
-### 波前数据转换
-```python
-class WavefrontInterface:
-    """PROPER 和 optiland 之间的波前数据转换接口"""
-    
-    @staticmethod
-    def proper_to_opd(wfo) -> np.ndarray:
-        """从 PROPER 波前对象提取 OPD 数据"""
-        pass
-    
-    @staticmethod
-    def opd_to_proper(opd: np.ndarray, wfo) -> None:
-        """将 OPD 数据应用到 PROPER 波前对象"""
-        pass
-    
-    @staticmethod
-    def optiland_opd_to_grid(optic, field, wavelength, grid_size) -> np.ndarray:
-        """从 optiland 计算 OPD 并转换为网格数据"""
-        pass
+正确流程（解包裹）：
+┌─────────────────────────────────────────────────────────────┐
+│ 入射面                                                       │
+│   PROPER 相位 T（折叠）: ... 3.0, 3.1, -3.1, -3.0 ...       │
+│   Pilot Beam 相位 T_pilot（非折叠）: ... 3.0, 3.1, 3.2, 3.3 │
+│   解包裹: T_unwrapped = T_pilot + angle(T - T_pilot)         │
+│   结果: ... 3.0, 3.1, 3.2, 3.3 ... （连续）                  │
+│   用于光线采样 → 光线携带非折叠相位                          │
+│                                                              │
+│ 出射面                                                       │
+│   光线追迹相位（非折叠）与参考相位比较                       │
+│   → 相位差平滑连续                                           │
+│   → OPD 正确提取                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 网格重采样
-- 当两个库的网格大小不一致时，需要进行插值
-- 推荐使用双三次插值（bicubic interpolation）
-- 注意边界处理
+### 实现要点
 
-## 测试规范
+1. **入射面处理**：
+   - 计算 Pilot Beam 在入射面的相位分布 `T_pilot_in`
+   - 从 PROPER 提取折叠相位 `T_in`
+   - 解包裹：`T_unwrapped_in = T_pilot_in + angle(T_in - T_pilot_in)`
+   - 使用 `T_unwrapped_in` 构建相位元件进行光线采样
 
-### 单元测试
-- 每个模块都需要对应的测试文件
-- 使用 pytest 框架
-- 测试覆盖率目标 > 80%
+2. **出射面处理**：
+   - 计算 Pilot Beam 在出射面的相位分布 `T_pilot_out`
+   - 光线追迹得到的相位已经是非折叠的
+   - 可以直接与 `T_pilot_out` 比较提取 OPD
+   - OPD 平滑连续，可正确进行网格重采样
 
-### 验证测试
-- 与 Zemax 或其他商业软件的结果进行对比验证
-- 建立标准测试用例库（如 Cooke Triplet、Double Gauss 等）
-
-### 物理一致性测试
-- 验证能量守恒
-- 验证相位连续性
-- 验证几何光学极限下的一致性
-
-## 性能优化指南
-
-### 内存管理
-- 大型波前数组使用 `np.float32` 或 `np.complex64` 节省内存
-- 及时释放不再使用的大数组
-- 考虑使用内存映射文件处理超大数据
-
-### 计算加速
-- 利用 NumPy 向量化操作
-- 考虑使用 optiland 的 PyTorch 后端进行 GPU 加速
-- FFT 操作可使用 FFTW（通过 pyfftw）
-
-## 文档要求
-
-### 代码文档
-- 所有公共 API 需要完整的 docstring
-- 包含参数说明、返回值说明、使用示例
-- 复杂算法需要添加数学公式说明
-
-### 用户文档
-- 提供快速入门指南
-- 提供详细的 API 参考
-- 提供典型应用案例
-
-## 错误处理
-
-### 异常类型
-```python
-class OpticalSimulationError(Exception):
-    """光学仿真基础异常"""
-    pass
-
-class WavefrontError(OpticalSimulationError):
-    """波前相关错误"""
-    pass
-
-class PropagationError(OpticalSimulationError):
-    """传输相关错误"""
-    pass
-
-class RayTracingError(OpticalSimulationError):
-    """光线追迹相关错误"""
-    pass
-```
-
-### 错误信息
-- 使用中文错误信息
-- 提供足够的上下文信息
-- 建议可能的解决方案
-
-## 常用物理常量和单位
-
-### 单位约定
-- 长度：默认使用毫米（mm），微米（μm）用于波长
-- 角度：默认使用弧度（rad），度（°）用于用户接口
-- 波长：微米（μm）
-
-
-
-## 相关 Steering 文件
-
-本项目包含以下 steering 文件，请根据具体任务参考：
-
-1. **optical_system_conventions.md** - 光学系统结构定义与坐标约定（全局生效）
-   - 坐标系统定义（全局坐标系、局部坐标系）
-   - 符号正负号约定（曲率半径、厚度、旋转角度）
-   - 倾斜和离轴系统定义方式
-   - 元器件入射面与出射面定义
-
-2. **proper_usage.md** - PROPER 物理光学库使用规范（条件触发）
-   - 波前初始化和传播操作
-   - 与 optiland 接口的相位单位转换
-
-3. **optiland_usage.md** - optiland 几何光学库使用规范（条件触发）
-   - 光学系统定义和光线追迹
-   - OPD 计算和坐标转换
-
-4. **testing_standards.md** - 测试规范（条件触发）
-   - 单元测试、属性基测试、验证测试规范
+3. **验证检查**：
+   - 入射面：解包裹后相位应与 Pilot Beam 相位差异小于 π
+   - 出射面：重采样后的 OPD 应平滑连续，无 2π 跳变

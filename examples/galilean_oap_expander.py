@@ -75,8 +75,8 @@ wavelength = 10.64      # μm, Nd:YAG
 w0_input = 10.0         # mm, 输入束腰半径
 
 # 扩束镜焦距设计
-f1 = -50.0              # mm, OAP1 焦距（负值 = 凸面，发散）
-f2 = 150.0              # mm, OAP2 焦距（正值 = 凹面，准直）
+f1 = -300.0              # mm, OAP1 焦距（负值 = 凸面，发散）
+f2 = 900.0              # mm, OAP2 焦距（正值 = 凹面，准直）
 magnification = -f2 / f1  # 放大倍率 = 3x
 
 # 离轴参数计算（90° OAP）
@@ -94,9 +94,9 @@ theta_oap2 = np.radians(theta_oap2_deg)
 theta_fold = np.radians(theta_fold_deg)
 
 # 几何参数
-d_oap1_to_fold = 50.0     # mm, OAP1 到折叠镜的距离
-d_fold_to_oap2 = 50.0     # mm, 折叠镜到 OAP2 的距离
-d_oap2_to_output = 100.0  # mm, OAP2 到输出采样面的距离
+d_oap1_to_fold = 300.0     # mm, OAP1 到折叠镜的距离
+d_fold_to_oap2 = 300.0     # mm, 折叠镜到 OAP2 的距离
+d_oap2_to_output = 600.0  # mm, OAP2 到输出采样面的距离
 
 # 计算总光程
 total_path = d_oap1_to_fold + d_fold_to_oap2 + d_oap2_to_output
@@ -153,7 +153,7 @@ source = GaussianBeamSource(
 system = SequentialOpticalSystem(
     source=source,
     grid_size=512,
-    beam_ratio=0.25,
+    beam_ratio=1,
 )
 
 # ============================================================

@@ -26,18 +26,11 @@ import sys
 sys.path.insert(0, 'src')
 
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # 使用非交互式后端，避免 Tkinter 问题
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import proj3d
 import pytest
 from numpy.testing import assert_allclose
-
-# 配置 matplotlib 支持中文显示
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 from optiland.rays import RealRays
 from wavefront_to_rays.element_raytracer import (
@@ -424,7 +417,7 @@ def draw_opd_comparison(
     """
 
     ax6.text(0.1, 0.9, stats_text, transform=ax6.transAxes, fontsize=10,
-             verticalalignment='top')
+             verticalalignment='top', fontfamily='monospace')
     
     plt.tight_layout()
     
