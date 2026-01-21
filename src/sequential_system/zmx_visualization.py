@@ -149,7 +149,11 @@ class ZmxOpticLoader:
             if surface.is_mirror:
                 print(f"  反射镜: 是")
             
-            if not np.isinf(surface.radius):
+            if surface.surface_type == 'paraxial':
+                # 近轴面形显示焦距
+                if not np.isinf(surface.focal_length):
+                    print(f"  焦距: {surface.focal_length:.3f} mm")
+            elif not np.isinf(surface.radius):
                 print(f"  曲率半径: {surface.radius:.3f} mm")
             
             if surface.conic != 0:

@@ -446,7 +446,7 @@ class GlobalSurfaceDefinition:
     
     属性:
         index: 原始 Zemax 表面索引
-        surface_type: 表面类型 ('standard', 'even_asphere', 'flat', 'biconic')
+        surface_type: 表面类型 ('standard', 'even_asphere', 'flat', 'biconic', 'paraxial')
         vertex_position: 表面顶点在全局坐标系中的位置 (mm)
         orientation: 表面姿态矩阵，列向量为表面局部坐标系的 X, Y, Z 轴
         radius: 曲率半径 (mm)，正值表示曲率中心在表面 +Z 方向
@@ -460,6 +460,7 @@ class GlobalSurfaceDefinition:
         thickness: 到下一表面的厚度 (mm)
         radius_x: X 方向曲率半径 (mm)，仅用于双锥面
         conic_x: X 方向圆锥常数，仅用于双锥面
+        focal_length: 焦距 (mm)，仅用于近轴面形（理想薄透镜）
     
     示例:
         >>> surface = GlobalSurfaceDefinition(
@@ -490,6 +491,8 @@ class GlobalSurfaceDefinition:
     # 双锥面参数
     radius_x: float = np.inf     # X 方向曲率半径 (mm)
     conic_x: float = 0.0         # X 方向圆锥常数
+    # 近轴面形参数
+    focal_length: float = np.inf # 焦距 (mm)，用于理想薄透镜
     
     def __post_init__(self):
         """验证并转换输入数据"""
@@ -751,7 +754,9 @@ class SurfaceTraversalAlgorithm:
         **Validates: Requirements 8.1**
         """
         # 确定表面类型
-        if surface.surface_type == 'biconic':
+        if surface.surface_type == 'paraxial':
+            surface_type = 'paraxial'
+        elif surface.surface_type == 'biconic':
             surface_type = 'biconic'
         elif np.isinf(surface.radius):
             surface_type = 'flat'
@@ -776,6 +781,8 @@ class SurfaceTraversalAlgorithm:
             # 双锥面参数
             radius_x=surface.radius_x,
             conic_x=surface.conic_x,
+            # 近轴面形参数
+            focal_length=surface.focal_length,
         )
     
     @property
@@ -938,8 +945,17 @@ class ZemaxToOptilandConverter:
             'rz': float(rz),
         }
         
+        # 处理近轴面形类型（理想薄透镜）
+        if surface.surface_type == 'paraxial':
+            # optiland 使用 surface_type='paraxial' 和 f 参数
+            params['surface_type'] = 'paraxial'
+            params['f'] = surface.focal_length
+            # 近轴面形不需要 radius 和 conic 参数
+            del params['radius']
+            del params['conic']
+        
         # 处理双锥面类型
-        if surface.surface_type == 'biconic':
+        elif surface.surface_type == 'biconic':
             # optiland 使用 surface_type='biconic' 和特定参数
             # radius/conic 是 Y 方向，radius_x/conic_x 是 X 方向
             params['surface_type'] = 'biconic'

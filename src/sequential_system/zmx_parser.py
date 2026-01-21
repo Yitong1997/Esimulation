@@ -232,6 +232,8 @@ class ZmxSurfaceData:
     # Zemax 中 CURV/CONI 是 Y 方向，RARM1/RARM2 是 X 方向
     radius_x: float = np.inf            # X 方向曲率半径 (mm)
     conic_x: float = 0.0                # X 方向圆锥常数
+    # 近轴面形参数（PARAXIAL）
+    focal_length: float = np.inf        # 焦距 (mm)，用于理想薄透镜
     # 原始注释
     comment: str = ""
     
@@ -743,7 +745,8 @@ class ZmxParser:
             'STANDARD': 'standard',
             'COORDBRK': 'coordinate_break',
             'EVENASPH': 'even_asphere',
-            'BICONIC': 'biconic',
+            'BICONICX': 'biconic',
+            'PARAXIAL': 'paraxial',
         }
         
         if type_name in type_mapping:
@@ -954,12 +957,14 @@ class ZmxParser:
             GLAS 操作符格式：GLAS <material_name> [other_params...]
             
             - 如果材料名称是 "MIRROR"（不区分大小写），设置 is_mirror = True
+            - 如果材料名称是 "__BLANK"，设置为空气（避免读取玻璃库）
             - 否则设置 material = 材料名称
         
         示例:
             ZMX 文件中的行：
             - "GLAS MIRROR 0 0 1.5 40" -> is_mirror = True, material = "mirror"
             - "GLAS N-BK7 0 0 1.5 40" -> is_mirror = False, material = "N-BK7"
+            - "GLAS __BLANK 0 0 1.5 40" -> is_mirror = False, material = "air"
             - "GLAS BK7" -> is_mirror = False, material = "BK7"
         """
         if not data or self._current_surface is None:
@@ -971,6 +976,10 @@ class ZmxParser:
         if material_name.upper() == "MIRROR":
             self._current_surface.is_mirror = True
             self._current_surface.material = "mirror"
+        # 检查是否为 __BLANK（空白材料，视为空气）
+        elif material_name == "__BLANK":
+            self._current_surface.is_mirror = False
+            self._current_surface.material = "air"
         else:
             self._current_surface.is_mirror = False
             self._current_surface.material = material_name
@@ -978,11 +987,13 @@ class ZmxParser:
     def _parse_parm(self, data: List[str]) -> None:
         """解析 PARM 操作符（参数）
         
-        解析表面参数，对于坐标断点（COORDBRK）类型，提取偏心和倾斜参数。
+        解析表面参数，根据表面类型提取不同的参数：
+        - 坐标断点（COORDBRK）：偏心和倾斜参数
+        - 近轴面形（PARAXIAL）：焦距参数
         
         参数:
             data: PARM 操作符后的数据列表
-                - data[0]: 参数索引（1-6 对于 COORDBRK）
+                - data[0]: 参数索引
                 - data[1]: 参数值
         
         说明:
@@ -996,16 +1007,19 @@ class ZmxParser:
             - PARM 5 → tilt_z (度，绕 Z 轴旋转)
             - PARM 6 → order (旋转顺序标志，可忽略)
             
+            对于 PARAXIAL 表面类型，参数映射如下：
+            - PARM 1 → focal_length (mm)，理想薄透镜焦距
+            
             注意：角度值以度为单位存储在 tilt_x_deg, tilt_y_deg, tilt_z_deg 字段中。
             转换为弧度的工作在 ElementConverter 中进行。
         
         示例:
-            ZMX 文件中的行：
+            ZMX 文件中的行（COORDBRK）：
             - "PARM 1 0" -> decenter_x = 0.0 mm
-            - "PARM 2 5" -> decenter_y = 5.0 mm
             - "PARM 3 45" -> tilt_x_deg = 45.0 度
-            - "PARM 4 30" -> tilt_y_deg = 30.0 度
-            - "PARM 5 0" -> tilt_z_deg = 0.0 度
+            
+            ZMX 文件中的行（PARAXIAL）：
+            - "PARM 1 100" -> focal_length = 100.0 mm
         
         异常:
             ZmxParseError: 如果参数索引或参数值无效
@@ -1014,8 +1028,8 @@ class ZmxParser:
         if len(data) < 2 or self._current_surface is None:
             return
         
-        # 只处理坐标断点类型的表面
-        if self._current_surface.surface_type != 'coordinate_break':
+        # 只处理坐标断点和近轴面形类型的表面
+        if self._current_surface.surface_type not in ('coordinate_break', 'paraxial'):
             return
         
         # 解析参数索引
@@ -1038,24 +1052,31 @@ class ZmxParser:
                 line_content=self._current_line_content
             )
         
-        # 根据参数索引设置对应的属性
-        # COORDBRK 参数映射（Zemax 约定）
-        if param_index == 1:
-            # PARM 1 → decenter_x (mm)
-            self._current_surface.decenter_x = param_value
-        elif param_index == 2:
-            # PARM 2 → decenter_y (mm)
-            self._current_surface.decenter_y = param_value
-        elif param_index == 3:
-            # PARM 3 → tilt_x (度，绕 X 轴旋转)
-            self._current_surface.tilt_x_deg = param_value
-        elif param_index == 4:
-            # PARM 4 → tilt_y (度，绕 Y 轴旋转)
-            self._current_surface.tilt_y_deg = param_value
-        elif param_index == 5:
-            # PARM 5 → tilt_z (度，绕 Z 轴旋转)
-            self._current_surface.tilt_z_deg = param_value
-        # PARM 6 是旋转顺序标志，可以忽略
+        # 根据表面类型和参数索引设置对应的属性
+        if self._current_surface.surface_type == 'coordinate_break':
+            # COORDBRK 参数映射（Zemax 约定）
+            if param_index == 1:
+                # PARM 1 → decenter_x (mm)
+                self._current_surface.decenter_x = param_value
+            elif param_index == 2:
+                # PARM 2 → decenter_y (mm)
+                self._current_surface.decenter_y = param_value
+            elif param_index == 3:
+                # PARM 3 → tilt_x (度，绕 X 轴旋转)
+                self._current_surface.tilt_x_deg = param_value
+            elif param_index == 4:
+                # PARM 4 → tilt_y (度，绕 Y 轴旋转)
+                self._current_surface.tilt_y_deg = param_value
+            elif param_index == 5:
+                # PARM 5 → tilt_z (度，绕 Z 轴旋转)
+                self._current_surface.tilt_z_deg = param_value
+            # PARM 6 是旋转顺序标志，可以忽略
+        
+        elif self._current_surface.surface_type == 'paraxial':
+            # PARAXIAL 参数映射（Zemax 约定）
+            if param_index == 1:
+                # PARM 1 → focal_length (mm)
+                self._current_surface.focal_length = param_value
     
     def _parse_enpd(self, data: List[str]) -> None:
         """解析 ENPD 操作符（入瞳直径）
