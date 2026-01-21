@@ -211,13 +211,14 @@ class ZmxSurfaceData:
         >>> print(f"表面 {surface.index}: R={surface.radius} mm")
     """
     index: int                          # 表面索引
-    surface_type: str                   # 表面类型：standard, coordinate_break, even_asphere
-    radius: float = np.inf              # 曲率半径 (mm)
+    surface_type: str                   # 表面类型：standard, coordinate_break, even_asphere, biconic
+    radius: float = np.inf              # 曲率半径 (mm)，对于双锥面为 Y 方向曲率半径
     thickness: float = 0.0              # 厚度/间距 (mm)
-    conic: float = 0.0                  # 圆锥常数
+    conic: float = 0.0                  # 圆锥常数，对于双锥面为 Y 方向圆锥常数
     material: str = "air"               # 材料
     is_mirror: bool = False             # 是否为反射镜
     is_stop: bool = False               # 是否为光阑
+    is_ignored: bool = False            # 是否被忽略（HIDE 第六位为 1）
     semi_diameter: float = 0.0          # 半口径 (mm)
     # 坐标断点参数
     decenter_x: float = 0.0             # X 偏心 (mm)
@@ -227,6 +228,10 @@ class ZmxSurfaceData:
     tilt_z_deg: float = 0.0             # Z 轴旋转 (度)
     # 非球面系数
     asphere_coeffs: List[float] = field(default_factory=list)
+    # 双锥面参数（BICONIC）
+    # Zemax 中 CURV/CONI 是 Y 方向，RARM1/RARM2 是 X 方向
+    radius_x: float = np.inf            # X 方向曲率半径 (mm)
+    conic_x: float = 0.0                # X 方向圆锥常数
     # 原始注释
     comment: str = ""
     
@@ -234,6 +239,8 @@ class ZmxSurfaceData:
         """返回表面的字符串表示"""
         parts = [f"ZmxSurfaceData(index={self.index}, type='{self.surface_type}'"]
         
+        if self.is_ignored:
+            parts.append(", is_ignored=True")
         if self.radius != np.inf:
             parts.append(f", radius={self.radius:.4f}")
         if self.thickness != 0.0:
@@ -263,6 +270,13 @@ class ZmxSurfaceData:
                 parts.append(f", tilt_y_deg={self.tilt_y_deg:.4f}")
             if self.tilt_z_deg != 0.0:
                 parts.append(f", tilt_z_deg={self.tilt_z_deg:.4f}")
+        
+        # 双锥面参数
+        if self.surface_type == 'biconic':
+            if self.radius_x != np.inf:
+                parts.append(f", radius_x={self.radius_x:.4f}")
+            if self.conic_x != 0.0:
+                parts.append(f", conic_x={self.conic_x:.4f}")
         
         parts.append(")")
         return "".join(parts)
@@ -441,6 +455,8 @@ class ZmxParser:
         "COMM": "_parse_comm",
         "ENPD": "_parse_enpd",
         "WAVM": "_parse_wavm",
+        "RARM": "_parse_rarm",  # 双锥面 X 方向参数
+        "HIDE": "_parse_hide",  # 忽略表面标记
     }
     
     def __init__(self, filepath: str):
@@ -727,6 +743,7 @@ class ZmxParser:
             'STANDARD': 'standard',
             'COORDBRK': 'coordinate_break',
             'EVENASPH': 'even_asphere',
+            'BICONIC': 'biconic',
         }
         
         if type_name in type_mapping:
@@ -1144,3 +1161,95 @@ class ZmxParser:
         # 如果权重为 1，设置为主波长
         if weight == 1.0:
             self._data_model.primary_wavelength_index = list_index
+
+    def _parse_rarm(self, data: List[str]) -> None:
+        """解析 RARM 操作符（双锥面 X 方向参数）
+        
+        解析双锥面（BICONIC）表面的 X 方向曲率半径和圆锥常数。
+        
+        参数:
+            data: RARM 操作符后的数据列表
+                - data[0]: 参数索引（1 = X 方向曲率半径，2 = X 方向圆锥常数）
+                - data[1]: 参数值
+        
+        说明:
+            RARM 操作符格式：RARM <param_index> <value>
+            
+            Zemax 双锥面参数约定：
+            - CURV/CONI: Y 方向曲率和圆锥常数（使用标准解析）
+            - RARM 1: X 方向曲率半径（注意：是半径，不是曲率）
+            - RARM 2: X 方向圆锥常数
+        
+        示例:
+            ZMX 文件中的行：
+            - "RARM 1 50.0" -> radius_x = 50.0 mm
+            - "RARM 2 -1.0" -> conic_x = -1.0（抛物面）
+        
+        异常:
+            ZmxParseError: 如果参数索引或参数值无效
+        """
+        if len(data) < 2 or self._current_surface is None:
+            return
+        
+        # 解析参数索引
+        try:
+            param_index = int(data[0])
+        except ValueError:
+            raise ZmxParseError(
+                f"无效的 RARM 参数索引: {data[0]}",
+                line_number=self._current_line_number,
+                line_content=self._current_line_content
+            )
+        
+        # 解析参数值
+        try:
+            param_value = float(data[1])
+        except ValueError:
+            raise ZmxParseError(
+                f"无效的 RARM 参数值: {data[1]}",
+                line_number=self._current_line_number,
+                line_content=self._current_line_content
+            )
+        
+        # 根据参数索引设置对应的属性
+        if param_index == 1:
+            # RARM 1 → X 方向曲率半径 (mm)
+            self._current_surface.radius_x = param_value
+        elif param_index == 2:
+            # RARM 2 → X 方向圆锥常数
+            self._current_surface.conic_x = param_value
+
+    def _parse_hide(self, data: List[str]) -> None:
+        """解析 HIDE 操作符（表面隐藏/忽略标记）
+        
+        解析表面的隐藏标记，当第六位为 1 时，该表面应被忽略。
+        
+        参数:
+            data: HIDE 操作符后的数据列表，包含 12 个标志位
+                - data[5]: 第六位，1 表示忽略该表面
+        
+        说明:
+            HIDE 操作符格式：HIDE <flag1> <flag2> ... <flag12>
+            
+            当第六位（索引 5）为 1 时，该表面应被完全忽略：
+            - 不进行光线追迹
+            - 不进行绘制
+            - 不考虑坐标变换
+        
+        示例:
+            ZMX 文件中的行：
+            - "HIDE 0 0 0 0 0 1 0 0 0 0 0 0" -> is_ignored = True
+            - "HIDE 0 0 0 0 0 0 0 0 0 0 0 0" -> is_ignored = False
+        """
+        if self._current_surface is None:
+            return
+        
+        # 检查是否有足够的数据（至少需要 6 个值）
+        if len(data) >= 6:
+            try:
+                # 第六位（索引 5）为 1 表示忽略该表面
+                ignore_flag = int(data[5])
+                self._current_surface.is_ignored = (ignore_flag == 1)
+            except (ValueError, IndexError):
+                # 解析失败时保持默认值（不忽略）
+                pass

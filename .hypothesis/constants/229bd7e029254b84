@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\zmx_converter.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.0, 1e-09, 1e-06, 2.0, 5.0, 10.0, 10000000000.0, '# 元件为空', '# 没有转换的元件', ')', ', ', '.', '0', 'CodeGenerator', 'ConvertedElement', 'CoordinateTransform', 'CoordinateTransform(', 'ElementConverter', 'ParabolicMirror', 'SphericalMirror', 'Unknown', 'ZmxDataModel', 'ZmxSurfaceData', '_', '__', 'air', 'coordinate_break', 'decenter_x', 'decenter_y', "float('-inf')", "float('inf')", "float('nan')", 'identity', 'is_fold', 'load_zmx_file', 'off_axis_distance', 'parent_focal_length', 'radius_of_curvature', 'semi_aperture', 'thickness', 'tilt_x', 'tilt_y']

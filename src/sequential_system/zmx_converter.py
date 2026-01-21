@@ -433,11 +433,14 @@ class ElementConverter:
         - Requirements 5.7: 折叠镜识别（tilt >= 5°）
         - Requirements 5.8: 失调识别（tilt < 5°）
         - Requirements 7.1: 生成正确顺序的 OpticalElement 列表
+    
+    注意:
+        is_fold 参数必须始终为 False，不再根据角度阈值判断。
+        所有反射镜都使用完整光线追迹计算 OPD。
     """
     
-    # 折叠镜角度阈值（度）
-    # 倾斜角度 >= 此阈值的反射镜被识别为折叠镜（is_fold=True）
-    # 倾斜角度 < 此阈值的反射镜被视为失调（is_fold=False）
+    # 折叠镜角度阈值（度）- 仅用于 is_fold_mirror 标记，不影响 is_fold 参数
+    # is_fold 参数始终为 False
     FOLD_ANGLE_THRESHOLD: float = 5.0
     
     def __init__(self, data_model: 'ZmxDataModel'):
@@ -897,9 +900,8 @@ class ElementConverter:
             3. 其他: 创建 SphericalMirror（球面镜）
             
             折叠镜判断：
-            - 根据倾斜角度判断是否为折叠镜
-            - 倾斜角度 >= 5° 时设置 is_fold=True
-            - 倾斜角度 < 5° 时设置 is_fold=False（表示失调）
+            - 根据倾斜角度判断是否为折叠镜（用于 is_fold_mirror 标记）
+            - is_fold 参数始终为 False（使用完整光线追迹）
         
         示例:
             >>> # 创建平面折叠镜（45度倾斜）
@@ -915,7 +917,7 @@ class ElementConverter:
             >>> print(type(mirror).__name__)
             FlatMirror
             >>> print(mirror.is_fold)
-            True
+            False
             
             >>> # 创建抛物面镜
             >>> surface = ZmxSurfaceData(index=5, radius=200.0, conic=-1.0, is_mirror=True)

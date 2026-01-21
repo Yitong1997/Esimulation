@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\zmx_parser.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1.0, ')', ', ', ', is_ignored=True', ', is_mirror=True', ', is_stop=True', 'BICONIC', 'COMM', 'CONI', 'COORDBRK', 'CURV', 'DIAM', 'DISZ', 'ENPD', 'EVENASPH', 'GLAS', 'HIDE', 'INFINITY', 'MIRROR', 'MODE', 'PARM', 'RARM', 'SEQ', 'STANDARD', 'STOP', 'SURF', 'TYPE', 'WAVM', '_parse_comm', '_parse_coni', '_parse_curv', '_parse_diam', '_parse_disz', '_parse_enpd', '_parse_glas', '_parse_hide', '_parse_mode', '_parse_parm', '_parse_rarm', '_parse_stop', '_parse_surface', '_parse_type', '_parse_wavm', 'air', 'biconic', 'coordinate_break', 'even_asphere', 'iso-8859-1', 'mirror', 'r', 'standard', 'utf-16', 'utf-8']

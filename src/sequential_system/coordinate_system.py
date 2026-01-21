@@ -446,17 +446,20 @@ class GlobalSurfaceDefinition:
     
     属性:
         index: 原始 Zemax 表面索引
-        surface_type: 表面类型 ('standard', 'even_asphere', 'flat')
+        surface_type: 表面类型 ('standard', 'even_asphere', 'flat', 'biconic')
         vertex_position: 表面顶点在全局坐标系中的位置 (mm)
         orientation: 表面姿态矩阵，列向量为表面局部坐标系的 X, Y, Z 轴
         radius: 曲率半径 (mm)，正值表示曲率中心在表面 +Z 方向
-        conic: 圆锥常数
+                对于双锥面，这是 Y 方向曲率半径
+        conic: 圆锥常数，对于双锥面，这是 Y 方向圆锥常数
         is_mirror: 是否为反射镜
         semi_aperture: 半口径 (mm)
         material: 材料名称
         asphere_coeffs: 非球面系数列表（用于偶次非球面）
         comment: 注释/名称
         thickness: 到下一表面的厚度 (mm)
+        radius_x: X 方向曲率半径 (mm)，仅用于双锥面
+        conic_x: X 方向圆锥常数，仅用于双锥面
     
     示例:
         >>> surface = GlobalSurfaceDefinition(
@@ -484,6 +487,9 @@ class GlobalSurfaceDefinition:
     asphere_coeffs: List[float] = field(default_factory=list)
     comment: str = ""
     thickness: float = 0.0
+    # 双锥面参数
+    radius_x: float = np.inf     # X 方向曲率半径 (mm)
+    conic_x: float = 0.0         # X 方向圆锥常数
     
     def __post_init__(self):
         """验证并转换输入数据"""
@@ -642,6 +648,7 @@ class SurfaceTraversalAlgorithm:
         """处理单个表面
         
         根据表面类型：
+        - is_ignored=True: 完全跳过，不更新坐标系，不生成表面定义
         - coordinate_break: 更新当前坐标系
         - standard/even_asphere: 生成全局坐标定义，然后更新坐标系
         
@@ -650,6 +657,11 @@ class SurfaceTraversalAlgorithm:
         
         **Validates: Requirements 5.4**
         """
+        # 检查是否为被忽略的表面（HIDE 第六位为 1）
+        if surface.is_ignored:
+            # 被忽略的表面：不进行光线追迹、不绘制、不考虑坐标变换
+            return
+        
         if self._is_virtual_surface(surface):
             # 坐标断点：只更新坐标系，不生成表面定义
             self._process_coordinate_break(surface)
@@ -739,7 +751,9 @@ class SurfaceTraversalAlgorithm:
         **Validates: Requirements 8.1**
         """
         # 确定表面类型
-        if np.isinf(surface.radius):
+        if surface.surface_type == 'biconic':
+            surface_type = 'biconic'
+        elif np.isinf(surface.radius):
             surface_type = 'flat'
         elif surface.surface_type == 'even_asphere':
             surface_type = 'even_asphere'
@@ -758,7 +772,10 @@ class SurfaceTraversalAlgorithm:
             material=surface.material,
             asphere_coeffs=surface.asphere_coeffs.copy() if surface.asphere_coeffs else [],
             comment=surface.comment,
-            thickness=surface.thickness
+            thickness=surface.thickness,
+            # 双锥面参数
+            radius_x=surface.radius_x,
+            conic_x=surface.conic_x,
         )
     
     @property
@@ -920,6 +937,19 @@ class ZemaxToOptilandConverter:
             'ry': float(ry),
             'rz': float(rz),
         }
+        
+        # 处理双锥面类型
+        if surface.surface_type == 'biconic':
+            # optiland 使用 surface_type='biconic' 和特定参数
+            # radius/conic 是 Y 方向，radius_x/conic_x 是 X 方向
+            params['surface_type'] = 'biconic'
+            params['radius_y'] = surface.radius  # Y 方向曲率半径
+            params['conic_y'] = surface.conic    # Y 方向圆锥常数
+            params['radius_x'] = surface.radius_x  # X 方向曲率半径
+            params['conic_x'] = surface.conic_x    # X 方向圆锥常数
+            # 移除标准参数，因为 biconic 使用 radius_x/radius_y
+            del params['radius']
+            del params['conic']
         
         # 添加非球面系数（如果有）
         if surface.surface_type == 'even_asphere' and surface.asphere_coeffs:
