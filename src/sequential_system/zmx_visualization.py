@@ -153,11 +153,27 @@ class ZmxOpticLoader:
                 # 近轴面形显示焦距
                 if not np.isinf(surface.focal_length):
                     print(f"  焦距: {surface.focal_length:.3f} mm")
-            elif not np.isinf(surface.radius):
-                print(f"  曲率半径: {surface.radius:.3f} mm")
-            
-            if surface.conic != 0:
-                print(f"  圆锥常数: {surface.conic:.6f}")
+            elif surface.surface_type == 'biconic':
+                # 双锥面显示两个方向的曲率半径和圆锥常数
+                print(f"  双锥面参数:")
+                if not np.isinf(surface.radius):
+                    print(f"    Y 方向曲率半径: {surface.radius:.3f} mm")
+                else:
+                    print(f"    Y 方向曲率半径: 无穷大 (平面)")
+                if surface.conic != 0:
+                    print(f"    Y 方向圆锥常数: {surface.conic:.6f}")
+                if not np.isinf(surface.radius_x):
+                    print(f"    X 方向曲率半径: {surface.radius_x:.3f} mm")
+                else:
+                    print(f"    X 方向曲率半径: 无穷大 (平面)")
+                if surface.conic_x != 0:
+                    print(f"    X 方向圆锥常数: {surface.conic_x:.6f}")
+            else:
+                # 标准表面显示曲率半径
+                if not np.isinf(surface.radius):
+                    print(f"  曲率半径: {surface.radius:.3f} mm")
+                if surface.conic != 0:
+                    print(f"  圆锥常数: {surface.conic:.6f}")
 
 
 import numpy as np

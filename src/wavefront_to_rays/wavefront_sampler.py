@@ -2,21 +2,23 @@
 波前采样为几何光线的核心模块
 
 本模块实现将入射波前复振幅采样为几何光线的功能。
-输入为入射面的波面复振幅，输出为出射光束的光线数据。
+输入为入射面的波面振幅和相位（分离存储），输出为出射光束的光线数据。
 
 工作原理：
-1. 从波前复振幅中提取相位信息
-2. 创建一个相位面（薄元件），其相位分布与输入波前相位匹配
+1. 接收振幅网格和相位网格（相位为非折叠实数）
+2. 创建一个相位面（薄元件），其相位分布与输入相位匹配
 3. 产生平面波光束入射到相位面
 4. 通过 optiland 进行光线追迹
 5. 输出出射光束的光线数据
+
+重要：相位以非折叠实数形式存储，避免了 np.angle() 导致的相位折叠问题。
 
 作者：混合光学仿真项目
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 import numpy as np
 
 from optiland.optic import Optic
@@ -106,52 +108,70 @@ def _extend_phase_grid(
     return extended_phase, extended_x, extended_y
 
 
+
 class WavefrontToRaysSampler:
-    """将波前复振幅采样为几何光线的采样器
+    """将波前采样为几何光线的采样器
     
-    本类实现将入射波前（复振幅形式）转换为几何光线的功能。
+    本类实现将入射波前（振幅和相位分离存储）转换为几何光线的功能。
     通过创建一个相位面来模拟波前的相位分布，然后使用平面波入射
     进行光线追迹，得到出射光线。
     
+    重要：相位以非折叠实数形式接收，避免了 np.angle() 导致的相位折叠问题。
+    
     参数:
-        wavefront_amplitude (NDArray): 波前复振幅数组，形状为 (N, N)
+        amplitude (NDArray): 振幅网格（实数，非负），形状为 (N, N)
+        phase (NDArray): 相位网格（实数，非折叠，弧度），形状为 (N, N)
         physical_size (float): 波前的物理尺寸（直径），单位：mm
         wavelength (float): 波长，单位：μm
-        num_rays (int): 期望的采样光线数量，默认 100。
-            注意：对于 hexapolar 分布，实际光线数会略有不同，
-            因为 hexapolar 分布的光线数由环数决定。
-            实际光线数 = 1 + 3*n*(n+1)，其中 n 是环数。
+        num_rays (int): 期望的采样光线数量，默认 100
         distribution (str): 光线分布类型，默认 'hexapolar'
-        edge_extend_pixels (int): 相位网格边缘扩展像素数，默认 2。
-            用于避免边缘像素的插值失败。设为 0 禁用扩展。
+        edge_extend_pixels (int): 相位网格边缘扩展像素数，默认 2
     
     属性:
-        phase_grid (NDArray): 从波前提取的相位网格（弧度）
-        amplitude_grid (NDArray): 从波前提取的振幅网格
+        phase_grid (NDArray): 输入的相位网格（弧度）
+        amplitude_grid (NDArray): 输入的振幅网格
         optic (Optic): 包含相位面的光学系统
         output_rays (RealRays): 出射光线数据
     """
     
     def __init__(
         self,
-        wavefront_amplitude: NDArray,
+        amplitude: NDArray,
+        phase: NDArray,
         physical_size: float,
         wavelength: float,
         num_rays: int = 100,
         distribution: str = "hexapolar",
         edge_extend_pixels: int = 2,
+        # 向后兼容：支持旧的 wavefront_amplitude 参数
+        wavefront_amplitude: NDArray = None,
     ):
         """初始化波前采样器
         
         参数:
-            wavefront_amplitude: 波前复振幅数组，形状为 (N, N)，复数类型
+            amplitude: 振幅网格（实数，非负），形状为 (N, N)
+            phase: 相位网格（实数，非折叠，弧度），形状为 (N, N)
             physical_size: 波前的物理尺寸（直径），单位：mm
             wavelength: 波长，单位：μm
             num_rays: 采样光线数量
             distribution: 光线分布类型
             edge_extend_pixels: 相位网格边缘扩展像素数，默认 2
+            wavefront_amplitude: 向后兼容参数（已废弃）
         """
-        self.wavefront_amplitude = np.asarray(wavefront_amplitude)
+        # 向后兼容：处理旧的 wavefront_amplitude 参数
+        if wavefront_amplitude is not None:
+            import warnings
+            warnings.warn(
+                "wavefront_amplitude 参数已废弃，请使用分离的 amplitude 和 phase 参数",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            wavefront_amplitude = np.asarray(wavefront_amplitude)
+            amplitude = np.abs(wavefront_amplitude)
+            phase = np.angle(wavefront_amplitude)
+        
+        self.amplitude_grid = np.asarray(amplitude)
+        self.phase_grid = np.asarray(phase)
         self.physical_size = physical_size
         self.wavelength = wavelength
         self.num_rays = num_rays
@@ -161,10 +181,6 @@ class WavefrontToRaysSampler:
         # 验证输入
         self._validate_input()
         
-        # 提取相位和振幅
-        self.phase_grid = self._extract_phase()
-        self.amplitude_grid = self._extract_amplitude()
-        
         # 创建坐标网格
         self._create_coordinate_grids()
         
@@ -173,17 +189,28 @@ class WavefrontToRaysSampler:
         
         # 执行光线追迹
         self.output_rays = self._trace_rays()
-    
+
     def _validate_input(self):
         """验证输入参数"""
-        if self.wavefront_amplitude.ndim != 2:
+        if self.amplitude_grid.ndim != 2:
             raise ValueError(
-                f"波前数组必须是二维的，当前维度: {self.wavefront_amplitude.ndim}"
+                f"振幅数组必须是二维的，当前维度: {self.amplitude_grid.ndim}"
             )
         
-        if self.wavefront_amplitude.shape[0] != self.wavefront_amplitude.shape[1]:
+        if self.phase_grid.ndim != 2:
             raise ValueError(
-                f"波前数组必须是正方形，当前形状: {self.wavefront_amplitude.shape}"
+                f"相位数组必须是二维的，当前维度: {self.phase_grid.ndim}"
+            )
+        
+        if self.amplitude_grid.shape != self.phase_grid.shape:
+            raise ValueError(
+                f"振幅和相位数组形状必须相同，"
+                f"振幅: {self.amplitude_grid.shape}, 相位: {self.phase_grid.shape}"
+            )
+        
+        if self.amplitude_grid.shape[0] != self.amplitude_grid.shape[1]:
+            raise ValueError(
+                f"数组必须是正方形，当前形状: {self.amplitude_grid.shape}"
             )
         
         if self.physical_size <= 0:
@@ -192,48 +219,19 @@ class WavefrontToRaysSampler:
         if self.wavelength <= 0:
             raise ValueError(f"波长必须为正数，当前值: {self.wavelength}")
     
-    def _extract_phase(self) -> NDArray:
-        """从波前复振幅中提取相位
-        
-        返回:
-            相位数组（弧度），形状与输入波前相同
-        """
-        # 使用 np.angle 提取相位，范围 [-π, π]
-        phase = np.angle(self.wavefront_amplitude)
-        return phase
-    
-    def _extract_amplitude(self) -> NDArray:
-        """从波前复振幅中提取振幅
-        
-        返回:
-            振幅数组，形状与输入波前相同
-        """
-        amplitude = np.abs(self.wavefront_amplitude)
-        return amplitude
-    
     def _create_coordinate_grids(self):
         """创建物理坐标网格"""
-        n = self.wavefront_amplitude.shape[0]
+        n = self.amplitude_grid.shape[0]
         half_size = self.physical_size / 2.0
         
-        # 创建物理坐标（单位：mm）
         coords = np.linspace(-half_size, half_size, n)
         self.x_coords = coords
         self.y_coords = coords
         
-        # 创建网格
         self.x_grid, self.y_grid = np.meshgrid(coords, coords)
     
     def _create_optic(self) -> Optic:
         """创建包含相位面的光学系统
-        
-        创建一个简单的光学系统，包含：
-        1. 物面（无穷远）
-        2. 相位面（位于入射面，厚度为 0）
-        3. 像面
-        
-        注意：为了避免边缘像素的插值失败，相位网格会被扩展。
-        扩展使用边缘值外推，不改变相位的计算逻辑。
         
         重要：optiland 的相位面存在单位不一致问题：
         - 相位梯度单位是 rad/mm（因为坐标单位是 mm）
@@ -241,19 +239,17 @@ class WavefrontToRaysSampler:
         - 这导致相位梯度对光线方向的影响被放大了 1000 倍
         - 为了修正这个问题，我们将相位值缩小 1000 倍
         
+        注意：optiland 的 PhaseInteractionModel 计算的 OPD 存在单位和符号问题，
+        我们在 _trace_rays 后会单独计算正确的 OPD，不依赖 optiland 的 OPD 计算。
+        
         返回:
             配置好的 Optic 对象
         """
         optic = Optic()
         
-        # 设置孔径（入瞳直径等于波前物理尺寸）
         optic.set_aperture(aperture_type='EPD', value=self.physical_size)
-        
-        # 设置视场类型为角度，轴上视场
         optic.set_field_type(field_type='angle')
         optic.add_field(y=0, x=0)
-        
-        # 设置波长
         optic.add_wavelength(value=self.wavelength, is_primary=True)
         
         # 扩展相位网格以避免边缘插值失败
@@ -265,32 +261,26 @@ class WavefrontToRaysSampler:
         )
         
         # 修正 optiland 的单位问题：将相位值缩小 1000 倍
-        # 这样相位梯度也会缩小 1000 倍，从而得到正确的光线方向
         corrected_phase = extended_phase / 1000.0
         
-        # 创建相位分布（使用扩展后的网格）
         phase_profile = GridPhaseProfile(
             x_coords=extended_x,
             y_coords=extended_y,
             phase_grid=corrected_phase,
         )
         
-        # 添加物面（index=0）
         optic.add_surface(index=0, radius=np.inf, thickness=np.inf)
         
-        # 添加相位面（平面）
-        # index=1 是第一个光学面
         optic.add_surface(
             index=1,
             surface_type='standard',
-            radius=np.inf,  # 平面
-            thickness=0.0,  # 厚度
+            radius=np.inf,
+            thickness=0.0,
             material='air',
             is_stop=True,
             phase_profile=phase_profile,
         )
         
-        # 添加像面（index=2）
         optic.add_surface(
             index=2,
             surface_type='standard',
@@ -300,52 +290,68 @@ class WavefrontToRaysSampler:
         )
         
         return optic
-    
+
     def _trace_rays(self) -> RealRays:
         """执行光线追迹
         
         使用平面波入射到相位面，追迹光线并返回出射光线数据。
         
-        注意：optiland 的 hexapolar 分布的 num_rays 参数实际上是环数（num_rings），
-        不是光线数。实际光线数 = 1 + 3*num_rings*(num_rings+1)。
-        例如：num_rays=6 产生 127 条光线，num_rays=10 产生 331 条光线。
-        
-        为了让 num_rays 参数更直观，我们将其转换为合适的环数。
+        重要：optiland 的 PhaseInteractionModel 计算的 OPD 存在单位和符号问题，
+        我们在追迹后单独计算正确的 OPD：
+        - 从输入相位网格插值得到每条光线位置的相位
+        - 将相位转换为 OPD：OPD_mm = phase_rad * wavelength_mm / (2π)
+        - 符号约定：正相位 → 正 OPD（相位延迟）
         
         返回:
             出射光线数据 (RealRays 对象)
         """
         # 将期望的光线数转换为 hexapolar 环数
-        # 实际光线数 = 1 + 3*n*(n+1)，解方程得 n ≈ sqrt(num_rays/3) - 0.5
         if self.distribution_type == "hexapolar":
-            # 计算需要的环数
             num_rings = max(1, int(np.sqrt(self.num_rays / 3.0)))
             actual_rays = 1 + 3 * num_rings * (num_rings + 1)
-            # 如果实际光线数太少，增加一环
             while actual_rays < self.num_rays and num_rings < 100:
                 num_rings += 1
                 actual_rays = 1 + 3 * num_rings * (num_rings + 1)
         else:
             num_rings = self.num_rays
         
-        # 使用 optic.trace 进行光线追迹
-        # Hx=0, Hy=0 表示轴上视场（平面波入射）
         rays = self.optic.trace(
             Hx=0,
             Hy=0,
             wavelength=self.wavelength,
-            num_rays=num_rings,  # 对于 hexapolar，这是环数
+            num_rays=num_rings,
             distribution=self.distribution_type,
         )
+        
+        # 单独计算正确的 OPD（不依赖 optiland 的错误 OPD 计算）
+        ray_x = np.asarray(rays.x)
+        ray_y = np.asarray(rays.y)
+        
+        from scipy.interpolate import RegularGridInterpolator
+        
+        # 创建插值器（使用原始相位网格，不是缩小 1000 倍的版本）
+        interpolator = RegularGridInterpolator(
+            (self.y_coords, self.x_coords),
+            self.phase_grid,
+            method='linear',
+            bounds_error=False,
+            fill_value=0.0,
+        )
+        
+        points = np.column_stack([ray_y, ray_x])
+        phase_at_rays = interpolator(points)
+        
+        # 将相位转换为 OPD
+        # OPD_mm = phase_rad * wavelength_mm / (2π)
+        wavelength_mm = self.wavelength * 1e-3
+        opd_mm = phase_at_rays * wavelength_mm / (2 * np.pi)
+        
+        rays.opd = opd_mm
         
         return rays
     
     def get_output_rays(self) -> RealRays:
-        """获取出射光线数据
-        
-        返回:
-            出射光线数据 (RealRays 对象)
-        """
+        """获取出射光线数据"""
         return self.output_rays
     
     def get_ray_positions(self) -> tuple[NDArray, NDArray]:
@@ -368,44 +374,31 @@ class WavefrontToRaysSampler:
         M = np.asarray(self.output_rays.M)
         N = np.asarray(self.output_rays.N)
         return L, M, N
-    
+
     def get_ray_opd(self) -> NDArray:
         """获取出射光线的 OPD（相对于主光线，单位：波长数）
-        
-        注意：optiland 的 rays.opd 是从物面到像面的总光程（单位：mm）。
-        本方法返回相对于主光线的 OPD，并转换为波长数。
-        
-        重要：由于我们在 _create_optic 中将相位缩小了 1000 倍来修正
-        光线方向的单位问题，相位引入的 OPD 也被缩小了 1000 倍。
-        但 optiland 的 OPD 计算本身就有 1000 倍放大问题，所以两者抵消了。
         
         返回:
             OPD 数组，单位：波长数（相对于主光线）
         """
-        # 获取主光线 OPD 作为参考
-        chief_ray = self.optic.trace_generic(
-            Hx=0, Hy=0, Px=0, Py=0, wavelength=self.wavelength
-        )
-        chief_opd_mm = float(np.asarray(chief_ray.opd).item())
+        ray_x = np.asarray(self.output_rays.x)
+        ray_y = np.asarray(self.output_rays.y)
         
-        # 计算相对于主光线的 OPD（单位：mm）
+        distances = np.sqrt(ray_x**2 + ray_y**2)
+        chief_ray_index = np.argmin(distances)
+        
         opd_mm = np.asarray(self.output_rays.opd)
+        chief_opd_mm = opd_mm[chief_ray_index]
+        
         relative_opd_mm = opd_mm - chief_opd_mm
         
-        # 由于相位被缩小了 1000 倍，OPD 也被缩小了 1000 倍
-        # 但 optiland 的 OPD 计算有 1000 倍放大问题，两者抵消
-        # 所以不需要额外的修正
-        
-        # 转换为波长数：OPD(mm) / wavelength(mm)
-        wavelength_mm = self.wavelength * 1e-3  # μm -> mm
+        wavelength_mm = self.wavelength * 1e-3
         opd_waves = relative_opd_mm / wavelength_mm
         
         return opd_waves
     
     def get_ray_opd_raw(self) -> NDArray:
         """获取出射光线的原始 OPD（单位：mm）
-        
-        返回 optiland 计算的原始 OPD 值，不做任何转换。
         
         返回:
             OPD 数组，单位：mm
@@ -426,5 +419,4 @@ class WavefrontToRaysSampler:
         返回:
             OPD 网格，单位：波长数
         """
-        # 相位（弧度）转 OPD（波长数）：OPD = phase / (2π)
         return self.phase_grid / (2 * np.pi)
