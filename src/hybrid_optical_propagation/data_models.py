@@ -437,11 +437,15 @@ class GridSampling:
     def get_coordinate_arrays(self) -> Tuple[NDArray, NDArray]:
         """获取坐标数组
         
+        使用与 PROPER 一致的坐标系统：
+        - 中心点（索引 n//2）对应坐标 0
+        - 坐标 = (索引 - n//2) * 采样间隔
+        
         返回:
             (X, Y) 网格坐标数组，单位 mm
         """
-        half_size = self.physical_size_mm / 2
-        coords = np.linspace(-half_size, half_size, self.grid_size)
+        n = self.grid_size
+        coords = (np.arange(n) - n // 2) * self.sampling_mm
         X, Y = np.meshgrid(coords, coords)
         return X, Y
 
@@ -631,16 +635,42 @@ class SourceDefinition:
         """
         import proper
         
-        # 创建 PROPER 波前
-        beam_diameter_m = self.physical_size_mm * 1e-3
+        # 计算高斯光束参数
+        wavelength_mm = self.wavelength_um * 1e-3
         wavelength_m = self.wavelength_um * 1e-6
+        z_R_mm = np.pi * self.w0_mm**2 / wavelength_mm  # 瑞利长度 (mm)
+        z_R_m = z_R_mm * 1e-3  # 瑞利长度 (m)
+        z_mm = -self.z0_mm  # 当前位置相对于束腰的距离 (mm)
+        z_m = z_mm * 1e-3  # (m)
+        
+        # 创建 PROPER 波前
+        # beam_diameter = 2 * w0
+        beam_diameter_m = 2 * self.w0_mm * 1e-3
+        grid_width_m = self.physical_size_mm * 1e-3
+        beam_diam_fraction = beam_diameter_m / grid_width_m
+        beam_diam_fraction = max(0.1, min(0.9, beam_diam_fraction))
         
         wfo = proper.prop_begin(
             beam_diameter_m,
             wavelength_m,
             self.grid_size,
-            0.5,  # beam_ratio
+            beam_diam_fraction,
         )
+        
+        # 同步 PROPER 高斯光束参数（关键！）
+        wfo.w0 = self.w0_mm * 1e-3  # 束腰半径 (m)
+        wfo.z_Rayleigh = z_R_m  # 瑞利长度 (m)
+        wfo.z = z_m  # 当前位置 (m)
+        wfo.z_w0 = 0.0  # 束腰位置 (m)，假设束腰在原点
+        
+        # 确定参考面类型
+        rayleigh_factor = proper.rayleigh_factor
+        if abs(wfo.z - wfo.z_w0) < rayleigh_factor * wfo.z_Rayleigh:
+            wfo.beam_type_old = "INSIDE_"
+            wfo.reference_surface = "PLANAR"
+        else:
+            wfo.beam_type_old = "OUTSIDE"
+            wfo.reference_surface = "SPHERI"
         
         # 创建坐标网格
         n = self.grid_size
@@ -651,19 +681,14 @@ class SourceDefinition:
         X, Y = np.meshgrid(coords, coords)
         R_sq = X**2 + Y**2
         
-        # 计算高斯光束参数
-        wavelength_mm = self.wavelength_um * 1e-3
-        z_R = np.pi * self.w0_mm**2 / wavelength_mm  # 瑞利长度
-        z = -self.z0_mm  # 当前位置相对于束腰的距离
-        
         # 光斑大小
-        w = self.w0_mm * np.sqrt(1 + (z / z_R)**2) if z_R > 0 else self.w0_mm
+        w = self.w0_mm * np.sqrt(1 + (z_mm / z_R_mm)**2) if z_R_mm > 0 else self.w0_mm
         
-        # 曲率半径
-        if abs(z) < 1e-15:
+        # 曲率半径（严格公式）
+        if abs(z_mm) < 1e-15:
             R = np.inf
         else:
-            R = z * (1 + (z_R / z)**2)
+            R = z_mm * (1 + (z_R_mm / z_mm)**2)
         
         # 高斯振幅（实数，非负）
         amplitude = np.exp(-R_sq / w**2)
@@ -676,7 +701,6 @@ class SourceDefinition:
             phase = k * R_sq / (2 * R)
         
         # 应用初始像差
-        # 优先使用新的分离参数
         if self.initial_phase_aberration is not None:
             phase = phase + self.initial_phase_aberration
         
@@ -694,8 +718,23 @@ class SourceDefinition:
             amplitude = amplitude * np.abs(self.initial_aberration)
             phase = phase + np.angle(self.initial_aberration)
         
-        # 将波前写入 PROPER（需要移到 FFT 坐标系）
-        complex_amplitude = amplitude * np.exp(1j * phase)
+        # 将波前写入 PROPER
+        # 对于 SPHERI 参考面，需要减去参考球面相位
+        if wfo.reference_surface == "SPHERI":
+            R_ref_m = wfo.z - wfo.z_w0
+            r_sq_m = (X * 1e-3)**2 + (Y * 1e-3)**2
+            k_m = 2 * np.pi / wavelength_m
+            ref_phase = k_m * r_sq_m / (2 * R_ref_m)  # 正号
+            residual_phase = phase - ref_phase * (wavelength_m / wavelength_mm)  # 单位转换
+            # 实际上 ref_phase 已经是弧度，phase 也是弧度，直接相减
+            # 但需要注意坐标单位：ref_phase 用的是 m，phase 用的是 mm
+            # 重新计算：
+            ref_phase_rad = k_m * r_sq_m / (2 * R_ref_m)
+            residual_phase = phase - ref_phase_rad
+            complex_amplitude = amplitude * np.exp(1j * residual_phase)
+        else:
+            complex_amplitude = amplitude * np.exp(1j * phase)
+        
         wfo.wfarr = proper.prop_shift_center(complex_amplitude)
         
         # 创建 Pilot Beam 参数

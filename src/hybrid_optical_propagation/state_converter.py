@@ -36,9 +36,15 @@ class StateConverter:
     之间进行转换。
     
     关键概念：
-    - PROPER 参考面相位：φ_proper_ref = -k × r² / (2 × R_ref)（负号！）
+    - PROPER 参考面相位：φ_ref = +k × r² / (2 × R_ref)（正号！）
     - Pilot Beam 相位：φ_pilot = +k × r² / (2 × R_pilot)（正号！）
-    - 两者符号相反，但高斯光束参数（w0, z_R）理论上同步
+    - 两者符号相同，但曲率半径公式不同：
+      - PROPER: R_ref = z - z_w0（远场近似）
+      - Pilot Beam: R = z × (1 + (z_R/z)²)（严格公式）
+    
+    数据流：
+    - 写入 PROPER (SPHERI): wfarr = 仿真复振幅 × exp(-i × φ_ref)
+    - 读取 PROPER (SPHERI): 完整相位 = PROPER相位 + φ_ref
     
     属性:
         wavelength_um: 波长 (μm)
@@ -77,9 +83,10 @@ class StateConverter:
         
         PROPER 参考面类型：
         - "PLANAR"：平面参考，相位为零（在瑞利距离内）
-        - "SPHERI"：球面参考，φ_ref = -k × r² / (2 × R_ref)（在瑞利距离外）
+        - "SPHERI"：球面参考，φ_ref = +k × r² / (2 × R_ref)（在瑞利距离外）
         
-        注意：PROPER 参考面相位有负号！
+        注意：PROPER 参考面相位使用正号！
+        - R_ref = z - z_w0（PROPER 远场近似曲率半径）
         
         参数:
             wfo: PROPER 波前对象
@@ -104,7 +111,8 @@ class StateConverter:
         r_sq_m = (X_mm * 1e-3)**2 + (Y_mm * 1e-3)**2
         
         k = 2 * np.pi / wfo.lamda
-        proper_ref_phase = -k * r_sq_m / (2 * R_ref_m)
+        # 正号！参考球面相位
+        proper_ref_phase = k * r_sq_m / (2 * R_ref_m)
         
         return proper_ref_phase
 
@@ -148,14 +156,15 @@ class StateConverter:
         """从 PROPER 提取振幅和相位
         
         流程:
-        1. 从 PROPER 提取残差相位（相对于 PROPER 参考面）
+        1. 从 PROPER 提取残差相位（相对于 PROPER 参考面，折叠的）
         2. 计算 PROPER 参考面相位
-        3. 重建绝对相位 = PROPER 参考面相位 + 残差相位
+        3. 重建绝对相位 = PROPER 参考面相位 + 残差相位（仍然是折叠的）
+        4. 使用 Pilot Beam 解包裹得到非折叠相位
         
         参数:
             wfo: PROPER 波前对象
             grid_sampling: 网格采样信息
-            pilot_beam_params: Pilot Beam 参数（可选，用于验证）
+            pilot_beam_params: Pilot Beam 参数（必须提供，用于解包裹）
         
         返回:
             (amplitude, phase) 元组
@@ -167,15 +176,30 @@ class StateConverter:
         import proper
         
         amplitude = proper.prop_get_amplitude(wfo)
-        residual_phase = proper.prop_get_phase(wfo)
+        residual_phase = proper.prop_get_phase(wfo)  # 折叠相位 [-π, π]
         
         proper_ref_phase = self.compute_proper_reference_phase(wfo, grid_sampling)
-        absolute_phase = proper_ref_phase + residual_phase
+        wrapped_phase = proper_ref_phase + residual_phase  # 仍然是折叠的
         
+        # 使用 Pilot Beam 解包裹
         if pilot_beam_params is not None:
+            # 计算 Pilot Beam 参考相位（非折叠）
+            pilot_phase = self.compute_pilot_beam_phase(pilot_beam_params, grid_sampling)
+            # 解包裹公式: T_unwrapped = T_pilot + angle(exp(1j * (T - T_pilot)))
+            phase_diff = wrapped_phase - pilot_phase
+            unwrapped_phase = pilot_phase + np.angle(np.exp(1j * phase_diff))
+            
             self._check_residual_phase_range(residual_phase, amplitude)
-        
-        return amplitude, absolute_phase
+            
+            return amplitude, unwrapped_phase
+        else:
+            # 如果没有提供 Pilot Beam 参数，返回折叠相位（不推荐）
+            warnings.warn(
+                "未提供 pilot_beam_params，返回的相位可能是折叠的。"
+                "建议始终提供 pilot_beam_params 以获得正确的非折叠相位。",
+                UserWarning,
+            )
+            return amplitude, wrapped_phase
 
     # 向后兼容方法
     def proper_to_simulation(
@@ -280,12 +304,28 @@ class StateConverter:
         wfo: Any,
         pilot_beam_params: PilotBeamParams,
     ) -> None:
-        """同步 PROPER 高斯光束参数与 Pilot Beam 参数"""
+        """同步 PROPER 高斯光束参数与 Pilot Beam 参数
+        
+        PROPER 坐标约定：
+        - wfo.z: 当前位置（PROPER 内部坐标，prop_begin 后为 0）
+        - wfo.z_w0: 束腰位置（PROPER 内部坐标）
+        - z - z_w0: 当前位置相对于束腰的距离
+        
+        PilotBeamParams 约定：
+        - waist_position_mm: 束腰相对于当前位置的距离
+        - 负值表示束腰在当前位置之前
+        
+        转换关系：
+        - 当前位置相对于束腰的距离 = -waist_position_mm
+        - z_w0 = z - (-waist_position_mm) = z + waist_position_mm
+        """
         import proper
         
         wfo.w0 = pilot_beam_params.waist_radius_mm * 1e-3
         wfo.z_Rayleigh = pilot_beam_params.rayleigh_length_mm * 1e-3
-        wfo.z_w0 = wfo.z - pilot_beam_params.waist_position_mm * 1e-3
+        # 正确的转换：z_w0 = z + waist_position_mm
+        # 因为 waist_position_mm 是束腰相对于当前位置的距离（负值表示在之前）
+        wfo.z_w0 = wfo.z + pilot_beam_params.waist_position_mm * 1e-3
         
         rayleigh_factor = proper.rayleigh_factor
         

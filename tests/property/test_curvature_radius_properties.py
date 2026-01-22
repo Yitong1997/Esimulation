@@ -294,11 +294,12 @@ def test_property_2_proper_reference_phase_formula(
     proper_ref_phase = converter.compute_proper_reference_phase(wfo, grid_sampling)
     
     # 手动计算期望值
+    # 根据 amplitude_conversion.md 规范：φ_ref = +k × r² / (2 × R_ref)（正号）
     R_ref_m = wfo.z - wfo.z_w0  # 远场近似
     X_mm, Y_mm = grid_sampling.get_coordinate_arrays()
     r_sq_m = (X_mm * 1e-3)**2 + (Y_mm * 1e-3)**2
     k = 2 * np.pi / wfo.lamda
-    expected_phase = -k * r_sq_m / (2 * R_ref_m)
+    expected_phase = k * r_sq_m / (2 * R_ref_m)  # 正号！
     
     # 验证
     assert_allclose(

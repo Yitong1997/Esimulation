@@ -240,26 +240,34 @@ def test_pilot_beam_vs_proper_reference_near_field(
     r_sq = X**2 + Y**2
     
     k = 2 * np.pi / wavelength_mm
-    # PROPER 参考面相位（注意负号）
-    proper_ref_phase = -k * r_sq / (2 * R_approx)
+    # PROPER 参考面相位（正号！根据 amplitude_conversion.md 规范）
+    proper_ref_phase = k * r_sq / (2 * R_approx)
     
-    # 在近场，两者应有显著差异
+    # 在近场，两者符号相同但数值不同
     # Pilot Beam: φ = k × r² / (2 × R_strict)
-    # PROPER: φ = -k × r² / (2 × R_approx)
-    # 差异来自：1) 符号相反 2) 曲率半径不同
+    # PROPER: φ = k × r² / (2 × R_approx)
+    # 差异来自：曲率半径公式不同（严格公式 vs 远场近似）
     
-    # 验证符号相反
+    # 验证符号相同
     center = grid_size // 2
     edge = 0
     
     pilot_edge = pilot_phase[edge, edge]
     proper_edge = proper_ref_phase[edge, edge]
     
-    # 符号应相反（Pilot Beam 正，PROPER 负）
-    assert pilot_edge * proper_edge < 0 or (pilot_edge == 0 and proper_edge == 0), (
-        f"Pilot Beam 和 PROPER 参考面相位符号应相反: "
-        f"Pilot={pilot_edge:.4f}, PROPER={proper_edge:.4f}"
-    )
+    # 符号应相同（都是正号）
+    if abs(pilot_edge) > 1e-10 and abs(proper_edge) > 1e-10:
+        assert pilot_edge * proper_edge > 0, (
+            f"Pilot Beam 和 PROPER 参考面相位符号应相同: "
+            f"Pilot={pilot_edge:.4f}, PROPER={proper_edge:.4f}"
+        )
+    
+    # 验证数值不同（在近场，严格公式给出更大的曲率半径，因此相位更小）
+    if near_field_factor <= 1.5:
+        # 在近场，R_strict > R_approx，所以 pilot_phase < proper_ref_phase
+        assert np.max(np.abs(pilot_phase)) < np.max(np.abs(proper_ref_phase)) * 1.1, (
+            f"近场时 Pilot Beam 相位应小于 PROPER 参考面相位"
+        )
 
 
 # ============================================================================

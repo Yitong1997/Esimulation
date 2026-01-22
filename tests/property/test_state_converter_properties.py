@@ -359,11 +359,12 @@ def test_proper_reference_phase_sign(
     z0_mm: float,
 ):
     """
-    测试：PROPER 参考面相位应该有负号（与 Pilot Beam 相位符号相反）。
+    测试：PROPER 参考面相位应该有正号（与 Pilot Beam 相位符号相同）。
     
     根据 amplitude_conversion.md 规范：
-    - PROPER 参考面相位：φ_proper_ref = -k × r² / (2 × R_ref)（负号）
+    - PROPER 参考面相位：φ_proper_ref = +k × r² / (2 × R_ref)（正号）
     - Pilot Beam 相位：φ_pilot = +k × r² / (2 × R_pilot)（正号）
+    - 两者符号相同，但曲率半径公式不同
     """
     import proper
     
@@ -394,8 +395,7 @@ def test_proper_reference_phase_sign(
     # 计算 Pilot Beam 相位
     pilot_phase = converter.compute_pilot_beam_phase(pilot_params, grid_sampling)
     
-    # 验证：两者符号应该相反（在非零区域）
-    # 由于高斯光束参数可能略有不同，我们只检查符号关系
+    # 验证：两者符号应该相同（都是正号）
     center = grid_size // 2
     offset = grid_size // 4
     
@@ -403,11 +403,11 @@ def test_proper_reference_phase_sign(
     proper_val = proper_ref_phase[center, center + offset]
     pilot_val = pilot_phase[center, center + offset]
     
-    # 如果两者都非零，符号应该相反
+    # 如果两者都非零，符号应该相同
     if abs(proper_val) > 1e-6 and abs(pilot_val) > 1e-6:
-        # 符号相反意味着乘积为负
-        assert proper_val * pilot_val < 0, (
-            f"PROPER 参考面相位与 Pilot Beam 相位符号应该相反: "
+        # 符号相同意味着乘积为正
+        assert proper_val * pilot_val > 0, (
+            f"PROPER 参考面相位与 Pilot Beam 相位符号应该相同: "
             f"proper={proper_val:.4f}, pilot={pilot_val:.4f}"
         )
 
