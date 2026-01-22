@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\optic\optic.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-06, 1.0, 100, 800, 1200, 'XY', 'XZ', 'YZ', 'air', 'all', 'angle', 'aperture', 'apodization', 'field_definition', 'field_type', 'fields', 'hexapolar', 'ignore', 'max_iter', 'mode', 'object_height', 'paraxial', 'pickups', 'polarization', 'primary', 'real_image_height', 'ring', 'solves', 'standard', 'surface_group', 'tol', 'um', 'version', 'wavelengths']

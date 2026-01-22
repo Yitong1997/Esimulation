@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\visualization\system\lens.py
+# hypothesis_version: 6.150.2
+
+[0.5, 0.6, 0.8, 0.9, 1.0, 50.0, 256, '#E5E5FF', 'Lens', 'XY', 'XZ', 'YZ', 'axes.edgecolor', 'lens.color']

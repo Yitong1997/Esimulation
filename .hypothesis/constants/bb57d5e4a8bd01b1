@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\chebyshev.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 100, 'Chebyshev Polynomial', 'coefficients', 'conic', 'cs', 'max_iter', 'norm_x', 'norm_y', 'radius', 'tol']

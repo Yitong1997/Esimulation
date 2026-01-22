@@ -150,13 +150,14 @@ class HybridElementPropagator:
         )
         
         # 2. 创建表面定义并进行光线追迹
-        surface_def = self._create_surface_definition(surface)
+        surface_def = self._create_surface_definition(surface, entrance_axis)
         
         raytracer = ElementRaytracer(
             surfaces=[surface_def],
             wavelength=self._wavelength_um,
             chief_ray_direction=tuple(entrance_axis.direction.to_array()),
             entrance_position=tuple(entrance_axis.position.to_array()),
+            exit_chief_direction=tuple(exit_axis.direction.to_array()),
         )
         
         output_rays = raytracer.trace(input_rays)
@@ -184,8 +185,9 @@ class HybridElementPropagator:
         # 创建有效光线掩模（所有光线都有效）
         valid_mask = np.ones(len(np.asarray(input_rays.x)), dtype=bool)
         
-        # 重建出射面复振幅
-        exit_complex = reconstructor.reconstruct(
+        # 使用 reconstruct_amplitude_phase 直接获取振幅和相位网格
+        # 避免 np.angle() 导致的相位折叠问题
+        exit_amplitude, exit_phase = reconstructor.reconstruct_amplitude_phase(
             ray_x_in=np.asarray(input_rays.x),
             ray_y_in=np.asarray(input_rays.y),
             ray_x_out=np.asarray(output_rays.x),
@@ -194,17 +196,8 @@ class HybridElementPropagator:
             valid_mask=valid_mask,
         )
         
-        # 分离振幅和相位
-        exit_amplitude = np.abs(exit_complex)
-        exit_phase = np.angle(exit_complex)
-        
-        # 使用 Pilot Beam 解包裹出射相位
-        # 注意：reconstructor 返回的相位可能是折叠的
-        exit_phase = self._state_converter.unwrap_with_pilot_beam(
-            exit_phase,
-            state.pilot_beam_params,
-            state.grid_sampling,
-        )
+        # 注意：exit_phase 已经是非折叠的相位（来自 OPD 直接计算）
+        # 不需要再使用 unwrap_with_pilot_beam 解包裹
         
         # 6. 更新 Pilot Beam 参数
         new_pilot_params = self._update_pilot_beam(
@@ -508,11 +501,15 @@ class HybridElementPropagator:
     def _create_surface_definition(
         self,
         surface: "GlobalSurfaceDefinition",
+        entrance_axis: "OpticalAxisState",
     ) -> "SurfaceDefinition":
         """从 GlobalSurfaceDefinition 创建 SurfaceDefinition
         
+        计算表面在入射面局部坐标系中的倾斜角度。
+        
         参数:
             surface: 全局表面定义
+            entrance_axis: 入射光轴状态
         
         返回:
             ElementRaytracer 使用的表面定义
@@ -529,6 +526,51 @@ class HybridElementPropagator:
             surface_type = 'refract'
             material = surface.material
         
+        # 计算表面在入射面局部坐标系中的倾斜角度
+        # 入射面局部坐标系：Z 轴为入射方向
+        # 表面法向量在全局坐标系中：surface.surface_normal
+        # 需要将表面法向量转换到入射面局部坐标系
+        
+        # 入射面的旋转矩阵（从局部到全局）
+        from wavefront_to_rays.element_raytracer import compute_rotation_matrix
+        entrance_dir = entrance_axis.direction.to_array()
+        R_entrance = compute_rotation_matrix(tuple(entrance_dir))
+        
+        # 表面法向量在全局坐标系中（指向入射侧，即 -Z 方向）
+        surface_normal_global = surface.surface_normal
+        
+        # 将表面法向量转换到入射面局部坐标系
+        # v_local = R.T @ v_global
+        surface_normal_local = R_entrance.T @ surface_normal_global
+        
+        # 从表面法向量计算倾斜角度
+        # 在入射面局部坐标系中，未倾斜的表面法向量为 (0, 0, -1)
+        # 倾斜后的法向量为 surface_normal_local
+        # 
+        # 旋转顺序：X → Y
+        # 绕 X 轴旋转 rx 后：n = (0, sin(rx), -cos(rx))
+        # 绕 Y 轴旋转 ry 后：n = (sin(ry)*cos(rx), sin(rx), -cos(ry)*cos(rx))
+        #
+        # 从法向量反推角度：
+        # sin(rx) = n_y
+        # sin(ry) = -n_x / cos(rx)  (当 cos(rx) != 0)
+        
+        nx, ny, nz = surface_normal_local
+        
+        # 计算 rx（绕 X 轴旋转）
+        # sin(rx) = ny
+        tilt_x = np.arcsin(np.clip(ny, -1, 1))
+        
+        # 计算 ry（绕 Y 轴旋转）
+        cos_rx = np.cos(tilt_x)
+        if abs(cos_rx) > 1e-10:
+            # sin(ry) = -nx / cos(rx)
+            sin_ry = -nx / cos_rx
+            tilt_y = np.arcsin(np.clip(sin_ry, -1, 1))
+        else:
+            # cos(rx) ≈ 0，即 rx ≈ ±90°，此时 ry 不确定
+            tilt_y = 0.0
+        
         return SurfaceDefinition(
             surface_type=surface_type,
             radius=surface.radius,
@@ -536,6 +578,8 @@ class HybridElementPropagator:
             material=material,
             semi_aperture=surface.semi_aperture,
             conic=surface.conic,
+            tilt_x=tilt_x,
+            tilt_y=tilt_y,
         )
     
     def _compute_opd(

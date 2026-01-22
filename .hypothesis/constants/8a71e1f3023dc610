@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\visualization\palettes.py
+# hypothesis_version: 6.150.2
+
+['#002b36', '#00D2D2', '#073642', '#0B0C0F', '#17becf', '#1B1B1B', '#1f77b4', '#25C8D8', '#262626', '#268bd2', '#2F89E2', '#2aa198', '#2ca02c', '#333333', '#34C759', '#3C3C3C', '#3DA5FF', '#404040', '#586e75', '#5AFF6E', '#5E5E5E', '#657b83', '#6c71c4', '#7f7f7f', '#808080', '#839496', '#859900', '#8c564b', '#93a1a1', '#9467bd', '#9A9A9A', '#A07FFF', '#A0A0A0', '#C47A54', '#C79AFF', '#CCCCCC', '#CFCFCF', '#D1D64E', '#DCDCDC', '#E0E0E0', '#E6E6E6', '#FF4F4F', '#FF6464', '#FF7BD1', '#FF8AC6', '#FF9F43', '#FFA340', '#FFD666', '#FFFFFF', '#bcbd22', '#cb4b16', '#d33682', '#d62728', '#e377c2', '#eee8d5', '#fdf6e3', '#ff7f0e', 'axis', 'background', 'edges', 'grid', 'lens', 'ray_cycle', 'text']

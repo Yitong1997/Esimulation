@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\rays\polarization_state.py
+# hypothesis_version: 6.150.2
+
+['H', 'L+45', 'L-45', 'LCP', 'RCP', 'Unpolarized Light', 'V', 'unpolarized']

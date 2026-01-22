@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\optic\optic_updater.py
+# hypothesis_version: 6.150.2
+
+[1.25, 'EPD', 'chebyshev', 'float_by_stop_size', 'forbes_q2d', 'forbes_qbfs', 'ignore', 'is_fitted', 'norm_radius', 'norm_x', 'norm_y', 'solves', 'zernike']

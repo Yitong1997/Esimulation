@@ -168,6 +168,58 @@ is_fold=False 时的倾斜补偿：
 
 ---
 
+## ⚠️ 传播距离计算
+
+### 核心原则：使用主光线交点距离
+
+**自由空间传播距离必须根据事先追迹的主光线，用相邻面上的交点距离计算，而不是由面的厚度参数直接得到。**
+
+```
+❌ 错误：propagation_distance = surface.thickness
+✅ 正确：propagation_distance = |intersection_point_2 - intersection_point_1|
+```
+
+### 计算方法
+
+1. **事先追迹主光线**：在混合传播开始前，先用几何光线追迹追踪主光线穿过整个系统
+2. **记录交点**：记录主光线与每个面的交点坐标
+3. **计算距离**：相邻面之间的传播距离 = 两个交点之间的欧氏距离
+
+```python
+# 正确的传播距离计算
+chief_ray_intersections = trace_chief_ray(optical_system)
+propagation_distance = np.linalg.norm(
+    chief_ray_intersections[i+1] - chief_ray_intersections[i]
+)
+```
+
+### 原因
+
+在离轴系统、倾斜元件等情况下，面的厚度参数与主光线实际传播距离不相等：
+
+```
+离轴情况示意：
+                    
+    面1 ────────── 面2
+     \              |
+      \  主光线    |
+       \           |
+        \──────────┘
+        
+厚度参数：面1到面2的轴向距离
+主光线距离：主光线实际走过的路径长度（交点间距离）
+
+两者在离轴时不相等！
+```
+
+### 实现要点
+
+- Pilot Beam 的 z 坐标更新必须使用主光线交点距离
+- PROPER 传播距离必须使用主光线交点距离
+- 主光线追迹应在混合传播开始前完成，结果供后续所有步骤使用
+
+---
+
 ## Pilot Beam 与相位解包裹
 
 ### ⚠️ 核心机制：Pilot Beam 参考波前

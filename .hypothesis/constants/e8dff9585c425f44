@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\scatter.py
+# hypothesis_version: 6.150.2
+
+[0.999, 'GaussianBSDF', 'LambertianBSDF', 'sigma', 'type']

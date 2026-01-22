@@ -1,0 +1,4 @@
+# file: D:\BTS\src\wavefront_to_rays\wavefront_sampler.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 1.0, 2.0, 3.0, 1000.0, 100, 'EPD', 'air', 'angle', 'hexapolar', 'linear', 'standard']

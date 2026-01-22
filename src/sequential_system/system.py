@@ -1151,18 +1151,17 @@ class SequentialOpticalSystem:
         2. SPHERI 参考面（球面参考）
            - 当光束在瑞利距离外（beam_type = "OUTSIDE"）时使用
            - 波前近似球面，参考球面曲率半径 R_ref = z - z_w0
-           - 参考相位公式：φ_ref = -k * r² / (2 * R_ref)
+           - 参考相位公式：φ_ref = +k * r² / (2 * R_ref)（正号！）
            - 其中 k = 2π/λ 是波数，r 是到光轴的距离
         
         物理意义：
         ==========
         
         参考相位表示理想高斯光束在当前位置的波前曲率。
-        通过减去参考相位，可以得到相对于理想波前的偏差（波前误差）。
         
-        在混合传播模式中，我们使用 ElementRaytracer 计算的 OPD 减去
-        理想聚焦 OPD，而不是使用此方法计算的参考相位。这是因为
-        ElementRaytracer 的 OPD 已经包含了完整的光程信息。
+        数据流：
+        - 写入 PROPER (SPHERI): wfarr = 仿真复振幅 × exp(-i × φ_ref)
+        - 读取 PROPER (SPHERI): 完整相位 = PROPER相位 + φ_ref
         
         参数:
             wfo: PROPER 波前对象，包含参考面类型和束腰位置信息
@@ -1193,8 +1192,8 @@ class SequentialOpticalSystem:
                 # 参考球面曲率半径接近零，视为平面
                 return np.zeros_like(r_sq_m)
             
-            # 参考球面相位：φ_ref = -k * r² / (2 * R_ref)
-            phase_ref = -k * r_sq_m / (2 * R_ref_m)
+            # 参考球面相位：φ_ref = +k * r² / (2 * R_ref)（正号！）
+            phase_ref = k * r_sq_m / (2 * R_ref_m)
             return phase_ref
     
     def _compute_theory_curvature_phase(

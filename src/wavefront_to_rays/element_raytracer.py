@@ -764,6 +764,7 @@ class ElementRaytracer:
         wavelength: float,
         chief_ray_direction: Tuple[float, float, float] = (0, 0, 1),
         entrance_position: Tuple[float, float, float] = (0, 0, 0),
+        exit_chief_direction: Optional[Tuple[float, float, float]] = None,
     ) -> None:
         """初始化元件光线追迹器
         
@@ -774,6 +775,9 @@ class ElementRaytracer:
                                 必须是归一化的方向余弦
             entrance_position: 入射面中心在全局坐标系中的位置，默认 (0, 0, 0)
                               单位：mm
+            exit_chief_direction: 出射主光线方向向量 (L, M, N)，可选
+                                 如果提供，将直接使用此方向而不是从表面倾斜计算
+                                 必须是归一化的方向余弦
         
         异常:
             TypeError: 如果输入参数类型错误
@@ -902,6 +906,48 @@ class ElementRaytracer:
             )
         
         # =====================================================================
+        # 验证 exit_chief_direction 参数（可选）
+        # =====================================================================
+        
+        exit_direction_validated: Optional[Tuple[float, float, float]] = None
+        
+        if exit_chief_direction is not None:
+            # 检查类型：必须是元组或列表
+            if not isinstance(exit_chief_direction, (tuple, list)):
+                raise TypeError(
+                    f"exit_chief_direction 参数类型错误：期望 tuple 或 list，"
+                    f"实际为 {type(exit_chief_direction).__name__}"
+                )
+            
+            # 检查长度
+            if len(exit_chief_direction) != 3:
+                raise ValueError(
+                    f"exit_chief_direction 必须包含 3 个元素 (L, M, N)，"
+                    f"实际包含 {len(exit_chief_direction)} 个元素"
+                )
+            
+            # 检查元素类型
+            for i, val in enumerate(exit_chief_direction):
+                if not isinstance(val, (int, float)):
+                    raise TypeError(
+                        f"exit_chief_direction[{i}] 类型错误：期望 int 或 float，"
+                        f"实际为 {type(val).__name__}"
+                    )
+            
+            # 转换为 numpy 数组并检查归一化
+            exit_dir = np.array(exit_chief_direction, dtype=np.float64)
+            exit_norm_squared = np.sum(exit_dir ** 2)
+            
+            # 检查是否归一化（允许小误差）
+            if not np.isclose(exit_norm_squared, 1.0, rtol=1e-6):
+                raise ValueError(
+                    f"exit_chief_direction 方向余弦未归一化："
+                    f"L² + M² + N² = {exit_norm_squared:.6f}，期望为 1.0"
+                )
+            
+            exit_direction_validated = tuple(exit_dir)
+        
+        # =====================================================================
         # 存储属性
         # =====================================================================
         
@@ -910,6 +956,7 @@ class ElementRaytracer:
         self.wavelength: float = float(wavelength)
         self.chief_ray_direction: Tuple[float, float, float] = tuple(direction)
         self.entrance_position: Tuple[float, float, float] = tuple(position)
+        self._provided_exit_direction: Optional[Tuple[float, float, float]] = exit_direction_validated
         
         # 计算坐标转换旋转矩阵
         self.rotation_matrix: NDArray = compute_rotation_matrix(
@@ -1051,14 +1098,16 @@ class ElementRaytracer:
             )
         
         # =====================================================================
-        # 将输入光线从入射面局部坐标系转换到全局坐标系
+        # 在入射面局部坐标系中进行追迹
         # =====================================================================
-        
-        rays_global = transform_rays_to_global(
-            input_rays,
-            self.rotation_matrix,
-            self.entrance_position,
-        )
+        # 
+        # 关键设计决策：
+        # - optiland 的光学系统在入射面局部坐标系中定义（Z 轴为入射方向）
+        # - 输入光线已经在入射面局部坐标系中
+        # - 追迹在入射面局部坐标系中进行
+        # - 追迹完成后，将结果转换到出射面局部坐标系
+        #
+        # 这样可以正确处理任意入射方向的情况。
         
         # =====================================================================
         # 复制光线对象，避免修改原始数据
@@ -1066,16 +1115,16 @@ class ElementRaytracer:
         # =====================================================================
         
         traced_rays = RealRays(
-            x=np.asarray(rays_global.x).copy(),
-            y=np.asarray(rays_global.y).copy(),
-            z=np.asarray(rays_global.z).copy(),
-            L=np.asarray(rays_global.L).copy(),
-            M=np.asarray(rays_global.M).copy(),
-            N=np.asarray(rays_global.N).copy(),
-            intensity=np.asarray(rays_global.i).copy(),
-            wavelength=np.asarray(rays_global.w).copy(),
+            x=np.asarray(input_rays.x).copy(),
+            y=np.asarray(input_rays.y).copy(),
+            z=np.asarray(input_rays.z).copy(),
+            L=np.asarray(input_rays.L).copy(),
+            M=np.asarray(input_rays.M).copy(),
+            N=np.asarray(input_rays.N).copy(),
+            intensity=np.asarray(input_rays.i).copy(),
+            wavelength=np.asarray(input_rays.w).copy(),
         )
-        traced_rays.opd = np.asarray(rays_global.opd).copy()
+        traced_rays.opd = np.asarray(input_rays.opd).copy()
         
         # =====================================================================
         # 调用带符号 OPD 的光线追迹
@@ -1089,16 +1138,60 @@ class ElementRaytracer:
         # 将输出光线从全局坐标系转换到出射面局部坐标系
         # =====================================================================
         
-        # 出射面位置与入射面相同（元件顶点位置）
-        exit_position = self.entrance_position
+        # =====================================================================
+        # 将输出光线从入射面局部坐标系转换到出射面局部坐标系
+        # =====================================================================
+        #
+        # 追迹是在入射面局部坐标系中进行的，出射光线也在入射面局部坐标系中。
+        # 我们需要将其转换到出射面局部坐标系。
+        #
+        # 变换步骤：
+        # 1. 入射面局部坐标系 → 全局坐标系（使用 rotation_matrix）
+        # 2. 全局坐标系 → 出射面局部坐标系（使用 exit_rotation_matrix.T）
+        #
+        # 组合变换矩阵：R_exit.T @ R_entrance
+        # 位置变换：出射面原点在入射面局部坐标系中是 (0, 0, 0)
         
-        # 使用出射面的旋转矩阵进行坐标变换
-        # exit_rotation_matrix 在 _create_optic() 中根据出射主光线方向计算
-        output_rays = transform_rays_to_local(
-            traced_rays,
-            self.exit_rotation_matrix,
-            exit_position,
+        # 计算从入射面局部坐标系到出射面局部坐标系的旋转矩阵
+        # R_entrance_to_exit = R_exit.T @ R_entrance
+        R_entrance_to_exit = self.exit_rotation_matrix.T @ self.rotation_matrix
+        
+        # 获取光线数据
+        x_entrance = np.asarray(traced_rays.x)
+        y_entrance = np.asarray(traced_rays.y)
+        z_entrance = np.asarray(traced_rays.z)
+        L_entrance = np.asarray(traced_rays.L)
+        M_entrance = np.asarray(traced_rays.M)
+        N_entrance = np.asarray(traced_rays.N)
+        
+        # 位置转换
+        pos_entrance = np.stack([x_entrance, y_entrance, z_entrance], axis=0)
+        pos_exit = R_entrance_to_exit @ pos_entrance
+        
+        x_exit = pos_exit[0]
+        y_exit = pos_exit[1]
+        z_exit = pos_exit[2]
+        
+        # 方向转换
+        dir_entrance = np.stack([L_entrance, M_entrance, N_entrance], axis=0)
+        dir_exit = R_entrance_to_exit @ dir_entrance
+        
+        L_exit = dir_exit[0]
+        M_exit = dir_exit[1]
+        N_exit = dir_exit[2]
+        
+        # 创建输出光线
+        output_rays = RealRays(
+            x=x_exit,
+            y=y_exit,
+            z=z_exit,
+            L=L_exit,
+            M=M_exit,
+            N=N_exit,
+            intensity=np.asarray(traced_rays.i),
+            wavelength=np.asarray(traced_rays.w),
         )
+        output_rays.opd = np.asarray(traced_rays.opd).copy()
         
         # =====================================================================
         # 存储输出光线
@@ -1333,25 +1426,42 @@ class ElementRaytracer:
         # 计算出射主光线方向并添加倾斜的透明平面作为出射面
         # =====================================================================
         
-        # 计算出射主光线方向
-        self.exit_chief_direction = self._compute_exit_chief_direction()
+        # 计算出射主光线方向（全局坐标系）
+        # 如果提供了 exit_chief_direction 参数，直接使用；否则从表面倾斜计算
+        if self._provided_exit_direction is not None:
+            self.exit_chief_direction = self._provided_exit_direction
+        else:
+            self.exit_chief_direction = self._compute_exit_chief_direction()
         
-        # 从方向计算旋转角度
-        exit_rx, exit_ry = self._direction_to_rotation_angles(self.exit_chief_direction)
+        # 计算出射面的旋转矩阵（全局坐标系）
+        self.exit_rotation_matrix = compute_rotation_matrix(self.exit_chief_direction)
+        
+        # =====================================================================
+        # 关键修复：出射面的倾斜角度需要在入射面局部坐标系中计算
+        # =====================================================================
+        # optiland 的光学系统是在入射面局部坐标系中定义的
+        # 出射面的法向量应该是出射方向在入射面局部坐标系中的表示
+        # 
+        # 步骤：
+        # 1. 将出射方向从全局坐标系转换到入射面局部坐标系
+        # 2. 从局部坐标系中的出射方向计算倾斜角度
+        
+        exit_dir_global = np.array(self.exit_chief_direction, dtype=np.float64)
+        exit_dir_local = self.rotation_matrix.T @ exit_dir_global
+        
+        # 从入射面局部坐标系中的出射方向计算倾斜角度
+        exit_rx, exit_ry = self._direction_to_rotation_angles(tuple(exit_dir_local))
         
         # 避免精确 45° 的数值问题
         exit_rx_safe = _avoid_exact_45_degrees(exit_rx)
         exit_ry_safe = _avoid_exact_45_degrees(exit_ry)
-        
-        # 计算出射面的旋转矩阵
-        self.exit_rotation_matrix = compute_rotation_matrix(self.exit_chief_direction)
         
         # 出射面的 index 为最后一个光学表面的 index + 1
         exit_surface_index = len(self.surfaces) + 1
         
         # 添加倾斜的透明平面作为出射面
         # material='air' 表示透明，光线直接穿过
-        # rx, ry 设置为出射主光线方向对应的旋转角度
+        # rx, ry 设置为出射主光线方向对应的旋转角度（在入射面局部坐标系中）
         optic.add_surface(
             index=exit_surface_index,
             radius=np.inf,      # 平面

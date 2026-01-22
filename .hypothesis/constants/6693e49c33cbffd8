@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\rays\ray_aiming\robust.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-08, 0.001, 1.0, 2.0, 'is_infinite', 'robust']

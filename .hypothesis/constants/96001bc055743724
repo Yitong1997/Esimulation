@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\zernike.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-14, 1e-10, 1.0, 100, 'Zernike Polynomial', 'coefficients', 'conic', 'cs', 'fringe', 'max_iter', 'noll', 'norm_radius', 'radius', 'standard', 'tol', 'zernike_type']

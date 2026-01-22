@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\materials\material.py
+# hypothesis_version: 6.150.2
+
+['catalog_nk.csv', 'category_name', 'category_name_full', 'data-nk', 'filename', 'filename_no_ext', 'max_wavelength', 'min_wavelength', 'name', 'optiland.database', 'reference', 'robust_search', 'similarity_score']

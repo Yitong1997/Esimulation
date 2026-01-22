@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\newton_raphson.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-14, 1e-10, 100, 'Newton Raphson', 'conic', 'cs', 'ignore', 'item', 'max_iter', 'ndim', 'radius', 'tol']

@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\visualization\system\optic_viewer.py
+# hypothesis_version: 6.150.2
+
+['2d', 'X [mm]', 'XY', 'XZ', 'Y [mm]', 'YZ', 'Z [mm]', 'all', 'axes.edgecolor', 'axes.facecolor', 'axes.labelcolor', 'bottom', 'figure.facecolor', 'figure.figsize', 'grid.alpha', 'grid.color', 'hexapolar', 'image', 'left', 'line_x', 'line_y', 'primary', 'right', 'text.color', 'top', 'x', 'xtick.color', 'y', 'ytick.color']

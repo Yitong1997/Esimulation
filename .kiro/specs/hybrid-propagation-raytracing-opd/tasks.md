@@ -16,7 +16,7 @@
 - [x] 1.2 实现 `_compute_reference_phase` 方法
   - 根据 PROPER 参考面类型（PLANAR/SPHERI）计算参考相位
   - PLANAR 参考面返回零相位
-  - SPHERI 参考面返回二次相位 φ_ref = -k * r² / (2 * R_ref)
+  - SPHERI 参考面返回二次相位 φ_ref = +k * r² / (2 * R_ref)（正号！）
   - **Validates: Requirements 2.1, 2.2, 2.3, 2.4**
 
 - [x] 1.3 实现 `_check_phase_sampling` 方法

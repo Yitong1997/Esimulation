@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\surfaces\factories\surface_factory.py
+# hypothesis_version: 6.150.2
+
+[0.0, 'aperture', 'bsdf', 'coating', 'diffractive', 'f', 'focal_length', 'grating', 'interaction_type', 'mirror', 'paraxial', 'phase', 'phase_profile', 'thickness', 'thin_lens']

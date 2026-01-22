@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\wavelength.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.001, 0.5, 1.0, 1000, 10000, 1000000, 'Index out of range', 'chebyshev', 'cm', 'freq', 'frequency', 'is_primary', 'log', 'logarithmic', 'm', 'mm', 'nm', 'um', 'uniform', 'unit', 'value', 'wavelength', 'wavelengths', 'weight']

@@ -415,6 +415,59 @@ class RayToWavefrontReconstructor:
         
         return amp_grid, phase_grid
 
+    def reconstruct_amplitude_phase(
+        self,
+        ray_x_in: np.ndarray,
+        ray_y_in: np.ndarray,
+        ray_x_out: np.ndarray,
+        ray_y_out: np.ndarray,
+        opd_waves: np.ndarray,
+        valid_mask: np.ndarray,
+        check_phase_discontinuity: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """重建振幅和相位网格（不转换为复振幅）
+        
+        这是推荐的接口方法，直接返回振幅和相位网格，避免 np.angle() 导致的相位折叠。
+        
+        处理流程：
+        1. 使用雅可比矩阵计算振幅和相位
+        2. 重采样到 PROPER 网格（使用输出位置）
+        3. 检测相位突变（可选）
+        
+        参数:
+            ray_x_in: 输入面光线 x 坐标 (mm)
+            ray_y_in: 输入面光线 y 坐标 (mm)
+            ray_x_out: 输出面光线 x 坐标 (mm)
+            ray_y_out: 输出面光线 y 坐标 (mm)
+            opd_waves: OPD (波长数)
+            valid_mask: 有效光线掩模
+            check_phase_discontinuity: 是否检测相位突变（默认 True）
+        
+        返回:
+            (amplitude_grid, phase_grid) 元组
+            - amplitude_grid: 振幅网格 (grid_size × grid_size)
+            - phase_grid: 相位网格 (grid_size × grid_size)，单位弧度，非折叠
+        """
+        # 1. 使用雅可比矩阵计算振幅和相位
+        amplitude, phase = self._compute_amplitude_phase_jacobian(
+            ray_x_in, ray_y_in, 
+            ray_x_out, ray_y_out, 
+            opd_waves, valid_mask
+        )
+        
+        # 2. 重采样到 PROPER 网格（使用输出位置）
+        amp_grid, phase_grid = self._resample_to_grid_separate(
+            ray_x_out, ray_y_out, 
+            amplitude, phase, 
+            valid_mask
+        )
+        
+        # 3. 检测相位突变
+        if check_phase_discontinuity:
+            self._check_phase_discontinuity_on_grid(phase_grid, amp_grid)
+        
+        return amp_grid, phase_grid
+
     def reconstruct(
         self,
         ray_x_in: np.ndarray,

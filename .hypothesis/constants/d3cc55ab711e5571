@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_optical_propagation\hybrid_element_propagator.py
+# hypothesis_version: 6.150.2
+
+[0.001, 200, 'ElementRaytracer', 'OpticalAxisState', 'RealRays', 'SurfaceDefinition', 'exit', 'local_raytracing', 'mirror', 'refract']

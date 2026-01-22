@@ -81,7 +81,8 @@
 │ 4. 计算参考面相位                   │
 │    - 使用更新后的 z_w0              │
 │    - R_ref = z - z_w0               │
-│    - φ_ref = -k * r² / (2 * R_ref)  │
+│    - φ_ref = +k * r² / (2 * R_ref)  │
+│    （正号！）                       │
 └─────────────────────────────────────┘
       │
       ▼
@@ -230,8 +231,8 @@ def _compute_reference_phase(
             # 参考球面曲率半径接近零，视为平面
             return np.zeros_like(r_sq_m)
         
-        # 参考球面相位：φ_ref = -k * r² / (2 * R_ref)
-        phase_ref = -k * r_sq_m / (2 * R_ref_m)
+        # 参考球面相位：φ_ref = +k * r² / (2 * R_ref)（正号！）
+        phase_ref = k * r_sq_m / (2 * R_ref_m)
         return phase_ref
 ```
 
