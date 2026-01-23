@@ -32,12 +32,31 @@ class SimulationConfig:
         physical_size_mm: 物理尺寸 (mm)
         num_rays: 光线采样数量
         propagation_method: 传播方法
+        beam_diam_fraction: PROPER beam_diam_fraction 参数
+            
+            该参数控制 PROPER 中光束直径与网格宽度的比例。
+            
+            实际效果：
+            - beam_diam_fraction = beam_diameter / grid_width
+            - 其中 beam_diameter = 2 × w0（束腰直径）
+            - grid_width = physical_size_mm（网格物理尺寸）
+            
+            影响：
+            - 较小的值（如 0.1-0.3）：光束占网格比例小，边缘采样更充分，
+              适合需要观察远场衍射的情况
+            - 较大的值（如 0.5-0.8）：光束占网格比例大，中心区域采样更密集，
+              适合近场传播
+            
+            默认值 None 表示自动计算：beam_diam_fraction = 2*w0 / physical_size_mm
+            
+            有效范围：0.1 ~ 0.9
     """
     wavelength_um: float
     grid_size: int
     physical_size_mm: float
     num_rays: int = 200
     propagation_method: str = "local_raytracing"
+    beam_diam_fraction: Optional[float] = None
 
 
 @dataclass

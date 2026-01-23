@@ -1211,30 +1211,22 @@ class ElementRaytracer:
             direction: 方向向量 (L, M, N)，必须归一化
         
         返回:
-            (rx, ry): 旋转角度（弧度）
+            (rx, ry): 旋转角度（弧度），使得 optiland 表面法向量等于 direction
         
         说明:
-            旋转顺序为 X → Y
-            初始方向为 (0, 0, 1)
-            旋转后方向为 direction
+            此方法用于定义出射面，使其法向量与出射方向一致。
             
-        推导:
-            设方向为 (L, M, N)
-            初始方向为 d0 = (0, 0, 1)
+            optiland 的表面法向量计算：
+            n = Ry(ry) @ Rx(rx) @ [0, 0, 1]
+              = [sin(ry)*cos(rx), -sin(rx), cos(ry)*cos(rx)]
             
-            绕 X 轴旋转 rx 后：
-            d1 = (0, sin(rx), cos(rx))
-            
-            绕 Y 轴旋转 ry 后：
-            d2 = (sin(ry)*cos(rx), sin(rx), cos(ry)*cos(rx))
-            
-            要使 d2 = (L, M, N)：
+            要使 n = (L, M, N)：
             sin(ry)*cos(rx) = L
-            sin(rx) = M
+            -sin(rx) = M
             cos(ry)*cos(rx) = N
             
             解得：
-            rx = arcsin(M)
+            rx = -arcsin(M)
             ry = arctan2(L, N)
         
         Validates:
@@ -1242,10 +1234,11 @@ class ElementRaytracer:
         """
         L, M, N = direction
         
-        # rx = arcsin(M)
+        # rx = -arcsin(M)
         # 限制 M 在 [-1, 1] 范围内，避免数值误差导致的 arcsin 错误
+        # 注意：负号是关键！optiland 的法向量 Y 分量是 -sin(rx)
         M_clamped = np.clip(M, -1.0, 1.0)
-        rx = np.arcsin(M_clamped)
+        rx = -np.arcsin(M_clamped)
         
         # ry = arctan2(L, N)
         ry = np.arctan2(L, N)

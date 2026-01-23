@@ -7,10 +7,8 @@ fileMatchPattern: '**/raytracing/**,**/optiland/**,**/*raytrac*,**/*opd*'
 
 ## 调用方式
 
-```python
-from optiland.optic import Optic      # 注意：从子模块导入
-from optiland.wavefront import Wavefront
-```
+- `from optiland.optic import Optic` — 注意：从子模块导入
+- `from optiland.wavefront import Wavefront`
 
 **不要**：`from optiland import Optic`（会报错）
 

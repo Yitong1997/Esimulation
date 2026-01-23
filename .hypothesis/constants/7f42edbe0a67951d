@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\optical_system.py
+# hypothesis_version: 6.150.2
+
+[0.0, 25.0, 'MIRROR', 'OpticalSystem', 'Unnamed System', 'YZ', 'inf', 'paraxial', 'standard']

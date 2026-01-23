@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_simulation\simulator.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 25.0, 200, 256, 'HybridSimulator', 'Initial', 'MIRROR', 'PropagationResult', 'PropagationState', 'SourceDefinition', 'conic', 'entrance', 'exit', 'is_mirror', 'paraxial', 'radius', 'semi_aperture', 'source', 'standard', 'surface_type', '仿真完成！', '开始仿真...']

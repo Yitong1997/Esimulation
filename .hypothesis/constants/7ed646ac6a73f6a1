@@ -1,0 +1,4 @@
+# file: D:\BTS\src\wavefront_to_rays\reconstructor.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 1e-06, 1.0, 'cubic', 'thin_plate_spline']

@@ -220,10 +220,31 @@ class HybridElementPropagator:
         # 对于理想球面镜，两者大小相等符号相反，残差 ≈ 0
         residual_opd_waves = absolute_opd_waves + pilot_opd_waves
         
-        # 7. 计算雅可比矩阵振幅
-        jacobian_amplitude = self._compute_jacobian_amplitude(
-            input_rays, output_rays, raytracer
+        # 7. 在光线位置处插值输入振幅
+        # 这是为了在重建时保留输入振幅分布（高斯分布等）
+        from scipy.interpolate import RegularGridInterpolator
+        
+        x_in = np.asarray(input_rays.x)
+        y_in = np.asarray(input_rays.y)
+        
+        # 创建输入振幅的插值器
+        half_size = state.grid_sampling.physical_size_mm / 2
+        n = state.grid_sampling.grid_size
+        coords = np.linspace(-half_size, half_size, n)
+        
+        # 注意：RegularGridInterpolator 期望 (y, x) 顺序的坐标
+        amp_interp = RegularGridInterpolator(
+            (coords, coords),  # (y, x) 坐标
+            state.amplitude,
+            method='linear',
+            bounds_error=False,
+            fill_value=0.0,
         )
+        
+        # 在光线位置处插值输入振幅
+        # 注意：插值点格式为 (y, x)
+        ray_points = np.column_stack([y_in, x_in])
+        input_amplitude_at_rays = amp_interp(ray_points)
         
         # 8. 重建振幅/残差相位
         reconstructor = RayToWavefrontReconstructor(
@@ -233,17 +254,19 @@ class HybridElementPropagator:
         )
         
         # 创建有效光线掩模（所有光线都有效）
-        valid_mask = np.ones(len(np.asarray(input_rays.x)), dtype=bool)
+        valid_mask = np.ones(len(x_in), dtype=bool)
         
         # 使用残差 OPD 进行重建
         # 重建得到的是残差相位（相对于 Pilot Beam 的偏差）
+        # 传递输入振幅以保留振幅分布
         exit_amplitude, residual_phase = reconstructor.reconstruct_amplitude_phase(
-            ray_x_in=np.asarray(input_rays.x),
-            ray_y_in=np.asarray(input_rays.y),
+            ray_x_in=x_in,
+            ray_y_in=y_in,
             ray_x_out=x_out,
             ray_y_out=y_out,
             opd_waves=residual_opd_waves,
             valid_mask=valid_mask,
+            input_amplitude=input_amplitude_at_rays,
         )
         
         # 9. 加回 Pilot Beam 相位，得到完整相位

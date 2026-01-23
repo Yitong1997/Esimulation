@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_simulation\serialization.py
+# hypothesis_version: 6.150.2
+
+[200, 'SimulationResult', 'SurfaceRecord', 'WavefrontData', 'config.json', 'conic', 'curvature_radius_mm', 'entrance', 'entrance_direction', 'entrance_position', 'error_message', 'exit', 'exit_direction', 'exit_position', 'geometry', 'grid_size', 'index', 'inf', 'info.json', 'is_mirror', 'local_raytracing', 'name', 'num_rays', 'num_surfaces', 'optical_axis', 'path_length', 'physical_size_mm', 'propagation_method', 'r', 'radius', 'sampling_mm', 'semi_aperture', 'source.json', 'spot_size_mm', 'success', 'summary.json', 'surface_normal', 'surface_type', 'surfaces', 'total_path_length', 'utf-8', 'vertex_position', 'w', 'w0_mm', 'waist_position_mm', 'waist_radius_mm', 'wavelength_um', 'z0_mm', 'z_rayleigh_mm']

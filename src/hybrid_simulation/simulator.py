@@ -63,6 +63,7 @@ class HybridSimulator:
         self._grid_size: int = 256
         self._physical_size_mm: Optional[float] = None
         self._num_rays: int = 200
+        self._beam_diam_fraction: Optional[float] = None
         self._verbose = verbose
 
     def load_zmx(self, path: str) -> "HybridSimulator":
@@ -176,6 +177,7 @@ class HybridSimulator:
         grid_size: int = 256,
         physical_size_mm: Optional[float] = None,
         z0_mm: float = 0.0,
+        beam_diam_fraction: Optional[float] = None,
     ) -> "HybridSimulator":
         """定义高斯光源
         
@@ -185,6 +187,24 @@ class HybridSimulator:
             grid_size: 网格大小，默认 256
             physical_size_mm: 物理尺寸 (mm)，默认 8 倍束腰
             z0_mm: 束腰位置 (mm)，默认 0
+            beam_diam_fraction: PROPER beam_diam_fraction 参数（可选）
+                
+                该参数控制 PROPER 中光束直径与网格宽度的比例。
+                
+                实际效果：
+                - beam_diam_fraction = beam_diameter / grid_width
+                - 其中 beam_diameter = 2 × w0（束腰直径）
+                - grid_width = physical_size_mm（网格物理尺寸）
+                
+                影响：
+                - 较小的值（如 0.1-0.3）：光束占网格比例小，边缘采样更充分，
+                  适合需要观察远场衍射的情况
+                - 较大的值（如 0.5-0.8）：光束占网格比例大，中心区域采样更密集，
+                  适合近场传播
+                
+                默认值 None 表示自动计算：beam_diam_fraction = 2*w0 / physical_size_mm
+                
+                有效范围：0.1 ~ 0.9
         
         返回:
             self（支持链式调用）
@@ -197,6 +217,7 @@ class HybridSimulator:
         self._wavelength_um = wavelength_um
         self._grid_size = grid_size
         self._physical_size_mm = physical_size_mm
+        self._beam_diam_fraction = beam_diam_fraction
         
         self._source = SourceDefinition(
             wavelength_um=wavelength_um,
@@ -204,10 +225,12 @@ class HybridSimulator:
             z0_mm=z0_mm,
             grid_size=grid_size,
             physical_size_mm=physical_size_mm,
+            beam_diam_fraction=beam_diam_fraction,
         )
         
         if self._verbose:
-            print(f"已设置光源: λ={wavelength_um}μm, w0={w0_mm}mm, grid={grid_size}")
+            fraction_str = f", beam_diam_fraction={beam_diam_fraction}" if beam_diam_fraction else ""
+            print(f"已设置光源: λ={wavelength_um}μm, w0={w0_mm}mm, grid={grid_size}{fraction_str}")
         
         return self
     
@@ -284,6 +307,7 @@ class HybridSimulator:
             grid_size=self._grid_size,
             physical_size_mm=self._physical_size_mm,
             num_rays=self._num_rays,
+            beam_diam_fraction=self._beam_diam_fraction,
         )
         
         # 创建光源参数

@@ -603,6 +603,28 @@ class SourceDefinition:
         initial_amplitude_aberration: 初始振幅像差（可选，实数，乘法因子）
         grid_size: 网格大小
         physical_size_mm: 物理尺寸 (mm)
+        beam_diam_fraction: PROPER beam_diam_fraction 参数（可选）
+            
+            该参数控制 PROPER 中光束直径与网格宽度的比例。
+            
+            实际效果：
+            - beam_diam_fraction = beam_diameter / grid_width
+            - 其中 beam_diameter 是传给 prop_begin 的第一个参数
+            - grid_width = physical_size_mm（网格物理尺寸）
+            
+            PROPER 内部使用：
+            - ndiam = grid_n * beam_diam_fraction（光束直径对应的像素数）
+            - 采样间隔 = beam_diameter / ndiam
+            
+            影响：
+            - 较小的值（如 0.1-0.3）：光束占网格比例小，边缘采样更充分，
+              适合需要观察远场衍射的情况
+            - 较大的值（如 0.5-0.8）：光束占网格比例大，中心区域采样更密集，
+              适合近场传播
+            
+            默认值 None 表示自动计算：beam_diam_fraction = 2*w0 / physical_size_mm
+            
+            有效范围：0.1 ~ 0.9
     
     **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6**
     """
@@ -613,6 +635,7 @@ class SourceDefinition:
     initial_amplitude_aberration: Optional[NDArray[np.floating]] = None
     grid_size: int = 512
     physical_size_mm: float = 50.0
+    beam_diam_fraction: Optional[float] = None
     
     # 向后兼容：支持旧的 initial_aberration 参数
     initial_aberration: Optional[NDArray[np.complexfloating]] = field(
@@ -647,7 +670,16 @@ class SourceDefinition:
         # beam_diameter = 2 * w0
         beam_diameter_m = 2 * self.w0_mm * 1e-3
         grid_width_m = self.physical_size_mm * 1e-3
-        beam_diam_fraction = beam_diameter_m / grid_width_m
+        
+        # 计算 beam_diam_fraction
+        if self.beam_diam_fraction is not None:
+            # 使用用户指定的值
+            beam_diam_fraction = self.beam_diam_fraction
+        else:
+            # 自动计算：beam_diameter / grid_width
+            beam_diam_fraction = beam_diameter_m / grid_width_m
+        
+        # 限制在有效范围内
         beam_diam_fraction = max(0.1, min(0.9, beam_diam_fraction))
         
         wfo = proper.prop_begin(
@@ -750,8 +782,17 @@ class SourceDefinition:
         返回:
             GridSampling 对象
         """
+        # 计算实际使用的 beam_ratio
+        if self.beam_diam_fraction is not None:
+            beam_ratio = self.beam_diam_fraction
+        else:
+            beam_diameter_m = 2 * self.w0_mm * 1e-3
+            grid_width_m = self.physical_size_mm * 1e-3
+            beam_ratio = beam_diameter_m / grid_width_m
+        beam_ratio = max(0.1, min(0.9, beam_ratio))
+        
         return GridSampling.create(
             grid_size=self.grid_size,
             physical_size_mm=self.physical_size_mm,
-            beam_ratio=0.5,
+            beam_ratio=beam_ratio,
         )

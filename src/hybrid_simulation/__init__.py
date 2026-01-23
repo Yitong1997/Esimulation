@@ -43,6 +43,13 @@ from .data_models import (
     OpticalAxisInfo,
 )
 from .exceptions import ConfigurationError, SimulationError
+from .plotting import (
+    plot_surface_detail,
+    plot_surface_3d,
+    plot_surface_detail_3d,
+    plot_all_surfaces,
+    plot_all_surfaces_extended,
+)
 
 __all__ = [
     # 主类
@@ -58,4 +65,10 @@ __all__ = [
     # 异常
     "ConfigurationError",
     "SimulationError",
+    # 绘图函数
+    "plot_surface_detail",
+    "plot_surface_3d",
+    "plot_surface_detail_3d",
+    "plot_all_surfaces",
+    "plot_all_surfaces_extended",
 ]

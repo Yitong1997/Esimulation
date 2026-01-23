@@ -203,6 +203,7 @@ class RayToWavefrontReconstructor:
         ray_y_out: np.ndarray,
         opd_waves: np.ndarray,
         valid_mask: np.ndarray,
+        input_amplitude: np.ndarray = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """计算复振幅的振幅和相位分量（基于雅可比矩阵）
         
@@ -215,6 +216,7 @@ class RayToWavefrontReconstructor:
         - 能量守恒：I_in × dA_in = I_out × dA_out
         - 振幅比：A_out / A_in = sqrt(I_out / I_in) = 1 / sqrt(|J|)
         - 其中 |J| 是雅可比行列式（局部面积放大率）
+        - 输出振幅 = 输入振幅 × (1 / sqrt(|J|))
         
         参数:
             ray_x_in: 输入面光线 x 坐标 (mm)，来自采样光线
@@ -223,6 +225,8 @@ class RayToWavefrontReconstructor:
             ray_y_out: 输出面光线 y 坐标 (mm)，来自追迹结果
             opd_waves: OPD (波长数)
             valid_mask: 有效光线掩模
+            input_amplitude: 输入振幅数组（可选），如果提供则保留输入振幅分布
+                            形状必须与 ray_x_in 相同
         
         返回:
             (amplitude, phase) 元组
@@ -240,6 +244,12 @@ class RayToWavefrontReconstructor:
         valid_x_out = ray_x_out[valid_mask]
         valid_y_out = ray_y_out[valid_mask]
         valid_opd = opd_waves[valid_mask]
+        
+        # 获取有效光线的输入振幅
+        if input_amplitude is not None:
+            valid_input_amp = input_amplitude[valid_mask]
+        else:
+            valid_input_amp = None
         
         # 检查有效光线数量（需求 6.1）
         if len(valid_x_in) < 4:
@@ -297,16 +307,23 @@ class RayToWavefrontReconstructor:
         min_jacobian = 1e-10
         jacobian_det = np.maximum(jacobian_det, min_jacobian)
         
-        # 振幅 = 1 / sqrt(|J|)（能量守恒）
+        # 计算雅可比振幅因子：1 / sqrt(|J|)（能量守恒）
         # 当 |J| > 1 时，光束扩展，振幅减小
         # 当 |J| < 1 时，光束收缩，振幅增大
-        amplitude_valid = 1.0 / np.sqrt(jacobian_det)
+        jacobian_amplitude_factor = 1.0 / np.sqrt(jacobian_det)
         
-        # 归一化振幅（需求 2.4）
-        # 使归一化后的平均振幅为 1，保持相对变化
-        mean_amplitude = np.mean(amplitude_valid)
-        if mean_amplitude > 0:
-            amplitude_valid = amplitude_valid / mean_amplitude
+        # 计算输出振幅
+        # 正确公式：output_amplitude = input_amplitude × (1 / sqrt(|J|))
+        if valid_input_amp is not None:
+            # 保留输入振幅分布，乘以雅可比因子
+            amplitude_valid = valid_input_amp * jacobian_amplitude_factor
+        else:
+            # 没有输入振幅时，只使用雅可比因子（归一化）
+            amplitude_valid = jacobian_amplitude_factor
+            # 归一化使平均振幅为 1
+            mean_amplitude = np.mean(amplitude_valid)
+            if mean_amplitude > 0:
+                amplitude_valid = amplitude_valid / mean_amplitude
         
         # 构建完整的振幅数组
         # 无效光线区域振幅为 0（需求 2.6）
@@ -424,6 +441,7 @@ class RayToWavefrontReconstructor:
         opd_waves: np.ndarray,
         valid_mask: np.ndarray,
         check_phase_discontinuity: bool = True,
+        input_amplitude: np.ndarray = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """重建振幅和相位网格（不转换为复振幅）
         
@@ -442,6 +460,8 @@ class RayToWavefrontReconstructor:
             opd_waves: OPD (波长数)
             valid_mask: 有效光线掩模
             check_phase_discontinuity: 是否检测相位突变（默认 True）
+            input_amplitude: 输入振幅数组（可选），如果提供则保留输入振幅分布
+                            形状必须与 ray_x_in 相同
         
         返回:
             (amplitude_grid, phase_grid) 元组
@@ -452,7 +472,8 @@ class RayToWavefrontReconstructor:
         amplitude, phase = self._compute_amplitude_phase_jacobian(
             ray_x_in, ray_y_in, 
             ray_x_out, ray_y_out, 
-            opd_waves, valid_mask
+            opd_waves, valid_mask,
+            input_amplitude=input_amplitude,
         )
         
         # 2. 重采样到 PROPER 网格（使用输出位置）
@@ -477,6 +498,7 @@ class RayToWavefrontReconstructor:
         opd_waves: np.ndarray,
         valid_mask: np.ndarray,
         check_phase_discontinuity: bool = True,
+        input_amplitude: np.ndarray = None,
     ) -> np.ndarray:
         """重建复振幅（使用雅可比矩阵方法）
         
@@ -490,7 +512,7 @@ class RayToWavefrontReconstructor:
         4. 组合为复振幅
         
         物理原理：
-        - 振幅：基于能量守恒，A = 1 / sqrt(|J|)，其中 |J| 是雅可比行列式
+        - 振幅：基于能量守恒，A_out = A_in / sqrt(|J|)，其中 |J| 是雅可比行列式
         - 相位：φ = -2π × OPD
         - 复振幅：A × exp(j × φ)
         
@@ -510,6 +532,8 @@ class RayToWavefrontReconstructor:
             check_phase_discontinuity: 是否检测相位突变（默认 True）
                                       如果为 True，在重采样后检测相邻像素相位差
                                       如果检测到相位差 > π，发出 UserWarning
+            input_amplitude: 输入振幅数组（可选），如果提供则保留输入振幅分布
+                            形状必须与 ray_x_in 相同
         
         返回:
             复振幅网格 (grid_size × grid_size 复数数组)
@@ -549,12 +573,13 @@ class RayToWavefrontReconstructor:
             - _check_phase_discontinuity_on_grid: 相位突变检测（任务 6.1）
         """
         # 1. 使用雅可比矩阵计算振幅和相位
-        # 振幅基于能量守恒：A = 1 / sqrt(|J|)
+        # 振幅基于能量守恒：A_out = A_in / sqrt(|J|)
         # 相位基于 OPD：φ = -2π × OPD
         amplitude, phase = self._compute_amplitude_phase_jacobian(
             ray_x_in, ray_y_in, 
             ray_x_out, ray_y_out, 
-            opd_waves, valid_mask
+            opd_waves, valid_mask,
+            input_amplitude=input_amplitude,
         )
         
         # 2. 重采样到 PROPER 网格（使用输出位置）

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\optical_system.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.3, 0.5, 0.633, 10.0, 25.0, 150, '\n(系统为空，尚未添加任何表面)', '-', '--', 'AIR', 'MIRROR', 'OpticalSystem', 'Unnamed System', 'X (mm)', 'XZ', 'YZ', 'blue', 'box', 'center', 'equal', 'gray', 'inf', 'paraxial', 'standard', 'tight', '双曲面', '扁椭球面', '抛物面', '球面', '系统为空', '警告: 系统为空，无法绘制光路图', '长椭球面']

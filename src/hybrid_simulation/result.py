@@ -66,6 +66,31 @@ class WavefrontData:
             self.grid.physical_size_mm,
         )
     
+    def get_pilot_beam_amplitude(self) -> NDArray[np.floating]:
+        """计算 Pilot Beam 参考振幅（高斯分布）
+        
+        返回:
+            Pilot Beam 振幅网格，归一化到与实际振幅相同的峰值
+        """
+        n = self.grid.grid_size
+        half_size = self.grid.physical_size_mm / 2
+        coords = np.linspace(-half_size, half_size, n)
+        X, Y = np.meshgrid(coords, coords)
+        r_sq = X**2 + Y**2
+        
+        # 使用 Pilot Beam 的光斑大小
+        w = self.pilot_beam.spot_size_mm
+        
+        # 高斯振幅分布
+        pilot_amplitude = np.exp(-r_sq / w**2)
+        
+        # 归一化到与实际振幅相同的峰值
+        max_actual = np.max(self.amplitude)
+        if max_actual > 0:
+            pilot_amplitude = pilot_amplitude * max_actual
+        
+        return pilot_amplitude
+    
     def get_residual_phase(self) -> NDArray[np.floating]:
         """计算相对于 Pilot Beam 的残差相位
         
@@ -74,6 +99,15 @@ class WavefrontData:
         """
         pilot_phase = self.get_pilot_beam_phase()
         return np.angle(np.exp(1j * (self.phase - pilot_phase)))
+    
+    def get_residual_amplitude(self) -> NDArray[np.floating]:
+        """计算振幅残差（实际振幅 - Pilot Beam 振幅）
+        
+        返回:
+            振幅残差网格
+        """
+        pilot_amplitude = self.get_pilot_beam_amplitude()
+        return self.amplitude - pilot_amplitude
     
     def get_residual_rms_waves(self) -> float:
         """计算残差相位 RMS（波长数）
@@ -114,6 +148,24 @@ class WavefrontData:
         
         pv_rad = np.max(residual[valid_mask]) - np.min(residual[valid_mask])
         return pv_rad / (2 * np.pi)
+    
+    def get_amplitude_residual_rms(self) -> float:
+        """计算振幅残差 RMS
+        
+        仅在有效区域内计算。
+        
+        返回:
+            振幅残差 RMS
+        """
+        residual = self.get_residual_amplitude()
+        
+        norm_amp = self.amplitude / np.max(self.amplitude) if np.max(self.amplitude) > 0 else self.amplitude
+        valid_mask = norm_amp > 0.01
+        
+        if np.sum(valid_mask) == 0:
+            return np.nan
+        
+        return np.sqrt(np.mean(residual[valid_mask] ** 2))
 
 
 @dataclass
@@ -208,7 +260,7 @@ class SimulationResult:
         print("=" * 60)
     
     def plot_all(self, save_path: Optional[str] = None, show: bool = True) -> None:
-        """绘制所有表面的振幅和相位
+        """绘制所有表面的振幅和相位（2D）
         
         参数:
             save_path: 保存路径（可选）
@@ -217,13 +269,25 @@ class SimulationResult:
         from .plotting import plot_all_surfaces
         plot_all_surfaces(self, save_path, show)
     
+    def plot_all_extended(self, save_path: Optional[str] = None, show: bool = True) -> None:
+        """绘制所有表面的扩展概览图（2D）
+        
+        包含：振幅、残差相位、Pilot Beam 振幅、振幅残差
+        
+        参数:
+            save_path: 保存路径（可选）
+            show: 是否显示图表
+        """
+        from .plotting import plot_all_surfaces_extended
+        plot_all_surfaces_extended(self, save_path, show)
+    
     def plot_surface(
         self,
         index: int,
         save_path: Optional[str] = None,
         show: bool = True,
     ) -> None:
-        """绘制指定表面的详细图表
+        """绘制指定表面的详细图表（2D）
         
         参数:
             index: 表面索引
@@ -233,6 +297,57 @@ class SimulationResult:
         from .plotting import plot_surface_detail
         surface = self.get_surface(index)
         plot_surface_detail(surface, self.config.wavelength_um, save_path, show)
+    
+    def plot_surface_3d(
+        self,
+        index: int,
+        plot_type: str = "residual_phase",
+        save_path: Optional[str] = None,
+        show: bool = True,
+        elevation: float = 30,
+        azimuth: float = -60,
+    ) -> None:
+        """绘制指定表面的 3D 图表
+        
+        参数:
+            index: 表面索引
+            plot_type: 绘图类型，可选：
+                - "amplitude": 振幅
+                - "phase": 相位
+                - "residual_phase": 残差相位
+                - "pilot_amplitude": Pilot Beam 振幅
+                - "residual_amplitude": 振幅残差
+            save_path: 保存路径（可选）
+            show: 是否显示图表
+            elevation: 3D 视角仰角（度）
+            azimuth: 3D 视角方位角（度）
+        """
+        from .plotting import plot_surface_3d
+        surface = self.get_surface(index)
+        plot_surface_3d(
+            surface, self.config.wavelength_um, plot_type,
+            save_path, show, elevation, azimuth
+        )
+    
+    def plot_surface_detail_3d(
+        self,
+        index: int,
+        save_path: Optional[str] = None,
+        show: bool = True,
+    ) -> None:
+        """绘制指定表面的完整 3D 详细图表
+        
+        包含 6 个子图：振幅、相位、Pilot Beam 相位、残差相位、
+                      Pilot Beam 振幅、振幅残差
+        
+        参数:
+            index: 表面索引
+            save_path: 保存路径（可选）
+            show: 是否显示图表
+        """
+        from .plotting import plot_surface_detail_3d
+        surface = self.get_surface(index)
+        plot_surface_detail_3d(surface, self.config.wavelength_um, save_path, show)
     
     def save(self, path: str) -> None:
         """保存结果到目录
@@ -255,3 +370,61 @@ class SimulationResult:
         """
         from .serialization import load_result
         return load_result(path)
+    
+    def get_final_wavefront(self) -> WavefrontData:
+        """获取最终表面的出射波前数据
+        
+        返回:
+            最终表面的出射 WavefrontData 对象
+        
+        异常:
+            ValueError: 没有表面或最终表面没有出射波前数据
+        """
+        if not self.surfaces:
+            raise ValueError("仿真结果中没有表面数据")
+        
+        final_surface = self.surfaces[-1]
+        if final_surface.exit is None:
+            raise ValueError(f"最终表面 [{final_surface.index}] {final_surface.name} 没有出射波前数据")
+        
+        return final_surface.exit
+    
+    def get_entrance_wavefront(self, surface_index: int) -> WavefrontData:
+        """获取指定表面的入射波前数据
+        
+        参数:
+            surface_index: 表面索引
+        
+        返回:
+            指定表面的入射 WavefrontData 对象
+        
+        异常:
+            KeyError: 未找到指定索引的表面
+            ValueError: 指定表面没有入射波前数据
+        """
+        surface = self.get_surface(surface_index)
+        
+        if surface.entrance is None:
+            raise ValueError(f"表面 [{surface.index}] {surface.name} 没有入射波前数据")
+        
+        return surface.entrance
+    
+    def get_exit_wavefront(self, surface_index: int) -> WavefrontData:
+        """获取指定表面的出射波前数据
+        
+        参数:
+            surface_index: 表面索引
+        
+        返回:
+            指定表面的出射 WavefrontData 对象
+        
+        异常:
+            KeyError: 未找到指定索引的表面
+            ValueError: 指定表面没有出射波前数据
+        """
+        surface = self.get_surface(surface_index)
+        
+        if surface.exit is None:
+            raise ValueError(f"表面 [{surface.index}] {surface.name} 没有出射波前数据")
+        
+        return surface.exit
