@@ -1,0 +1,8 @@
+{
+  "wavelength_um": 0.633,
+  "w0_mm": 5.0,
+  "z0_mm": 0.0,
+  "z_rayleigh_mm": 124075.53924130305,
+  "grid_size": 256,
+  "physical_size_mm": 40.0
+}

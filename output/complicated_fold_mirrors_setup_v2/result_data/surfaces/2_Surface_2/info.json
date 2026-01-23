@@ -1,0 +1,44 @@
+{
+  "index": 2,
+  "name": "Surface_2",
+  "surface_type": "flat",
+  "geometry": {
+    "vertex_position": [
+      0.0,
+      0.0,
+      10.0
+    ],
+    "surface_normal": [
+      -0.0,
+      -0.0,
+      -1.0
+    ],
+    "radius": "inf",
+    "conic": 0.0,
+    "semi_aperture": 10.0,
+    "is_mirror": false
+  },
+  "optical_axis": {
+    "entrance_position": [
+      0.0,
+      0.0,
+      10.0
+    ],
+    "entrance_direction": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "exit_position": [
+      0.0,
+      0.0,
+      10.0
+    ],
+    "exit_direction": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "path_length": 10.0
+  }
+}

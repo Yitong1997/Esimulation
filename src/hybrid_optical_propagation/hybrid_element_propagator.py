@@ -120,17 +120,19 @@ class HybridElementPropagator:
         流程:
         1. 从振幅/相位采样光线（相位是非折叠实数）
         2. 使用 ElementRaytracer 进行光线追迹
-        3. 出射光线的光程直接代表从入射面到出射面的光程差
-        4. 使用雅可比矩阵方法计算振幅变化
-        5. 使用 RayToWavefrontReconstructor 重建振幅/相位
-        6. 转换为 PROPER 形式
+        3. 计算出射 Pilot Beam 参数
+        4. 计算残差 OPD = 绝对 OPD - Pilot Beam 理论 OPD
+        5. 使用雅可比矩阵方法计算振幅变化
+        6. 使用 RayToWavefrontReconstructor 重建振幅/残差相位
+        7. 加回 Pilot Beam 相位，得到完整相位
+        8. 转换为 PROPER 形式
         
         物理说明:
         - 入射面：垂直于入射光轴，原点为主光线与表面交点
         - 出射面：垂直于出射光轴，原点为主光线与表面交点
-        - 光线从入射面出发，经过由波前相位定义的薄相位元件，
-          再经过元件表面，最终到达出射面
-        - 出射光线携带的光程直接反映了从入射面到出射面的总光程差
+        - 光线追迹计算的是绝对 OPD（从入射面到出射面的总光程差）
+        - 残差 OPD = 绝对 OPD - Pilot Beam 理论 OPD
+        - 残差 OPD 应该很小（理想系统为 0），可以安全地进行网格重采样
         
         **Validates: Requirements 6.2-6.9**
         """
@@ -162,49 +164,99 @@ class HybridElementPropagator:
         
         output_rays = raytracer.trace(input_rays)
         
-        # 3. 计算 OPD（相对于主光线）
-        opd_waves = self._compute_opd(
+        # 3. 计算绝对 OPD（相对于主光线）
+        absolute_opd_waves = self._compute_opd(
             input_rays, output_rays, raytracer, surface
         )
         
-        # 4. 计算雅可比矩阵振幅
+        # 4. 更新 Pilot Beam 参数（在计算残差 OPD 之前）
+        new_pilot_params = self._update_pilot_beam(
+            state.pilot_beam_params, surface
+        )
+        
+        # 5. 计算出射面 Pilot Beam 理论 OPD
+        # 
+        # 关键符号约定：
+        # - 光线追迹 OPD（absolute_opd_waves）：几何光程增加量，正值表示边缘光线走更长路径
+        # - Pilot Beam OPD（pilot_opd_waves）：相位延迟对应的等效光程，= r²/(2R)
+        #   当 R < 0（会聚波）时，pilot_opd_waves < 0
+        # 
+        # 在 RayToWavefrontReconstructor 中，相位 = -2π × OPD
+        # 所以：
+        # - 光线追迹相位 = -2π × absolute_opd_waves（负值）
+        # - Pilot Beam 相位 = 2π × pilot_opd_waves = k × r²/(2R)（负值，当 R < 0）
+        # 
+        # 对于理想球面镜：
+        # - 光线追迹相位 ≈ Pilot Beam 相位
+        # - 即 -2π × absolute_opd_waves ≈ 2π × pilot_opd_waves
+        # - 即 absolute_opd_waves ≈ -pilot_opd_waves
+        # 
+        # 残差相位 = 光线追迹相位 - Pilot Beam 相位
+        #          = -2π × absolute_opd_waves - 2π × pilot_opd_waves
+        #          = -2π × (absolute_opd_waves + pilot_opd_waves)
+        # 
+        # 所以残差 OPD = absolute_opd_waves + pilot_opd_waves
+        # 对于理想球面镜，残差 OPD ≈ 0
+        
+        x_out = np.asarray(output_rays.x)
+        y_out = np.asarray(output_rays.y)
+        r_sq_out = x_out**2 + y_out**2
+        
+        R_out = new_pilot_params.curvature_radius_mm
+        wavelength_mm = self._wavelength_um * 1e-3
+        
+        if np.isinf(R_out):
+            pilot_opd_mm = np.zeros_like(r_sq_out)
+        else:
+            pilot_opd_mm = r_sq_out / (2 * R_out)
+        
+        # 转换为波长数（相对于主光线，主光线处 OPD = 0）
+        chief_idx = np.argmin(r_sq_out)
+        pilot_opd_waves = (pilot_opd_mm - pilot_opd_mm[chief_idx]) / wavelength_mm
+        
+        # 6. 计算残差 OPD
+        # 注意：是加法，不是减法！
+        # 因为 absolute_opd_waves > 0，pilot_opd_waves < 0（当 R < 0）
+        # 对于理想球面镜，两者大小相等符号相反，残差 ≈ 0
+        residual_opd_waves = absolute_opd_waves + pilot_opd_waves
+        
+        # 7. 计算雅可比矩阵振幅
         jacobian_amplitude = self._compute_jacobian_amplitude(
             input_rays, output_rays, raytracer
         )
         
-        # 5. 重建振幅/相位
+        # 8. 重建振幅/残差相位
         reconstructor = RayToWavefrontReconstructor(
             grid_size=state.grid_sampling.grid_size,
             sampling_mm=state.grid_sampling.sampling_mm,
             wavelength_um=self._wavelength_um,
         )
         
-        # 获取输入振幅用于插值
-        input_amplitude = state.amplitude
-        
         # 创建有效光线掩模（所有光线都有效）
         valid_mask = np.ones(len(np.asarray(input_rays.x)), dtype=bool)
         
-        # 使用 reconstruct_amplitude_phase 直接获取振幅和相位网格
-        # 避免 np.angle() 导致的相位折叠问题
-        exit_amplitude, exit_phase = reconstructor.reconstruct_amplitude_phase(
+        # 使用残差 OPD 进行重建
+        # 重建得到的是残差相位（相对于 Pilot Beam 的偏差）
+        exit_amplitude, residual_phase = reconstructor.reconstruct_amplitude_phase(
             ray_x_in=np.asarray(input_rays.x),
             ray_y_in=np.asarray(input_rays.y),
-            ray_x_out=np.asarray(output_rays.x),
-            ray_y_out=np.asarray(output_rays.y),
-            opd_waves=opd_waves,
+            ray_x_out=x_out,
+            ray_y_out=y_out,
+            opd_waves=residual_opd_waves,
             valid_mask=valid_mask,
         )
         
-        # 注意：exit_phase 已经是非折叠的相位（来自 OPD 直接计算）
-        # 不需要再使用 unwrap_with_pilot_beam 解包裹
-        
-        # 6. 更新 Pilot Beam 参数
-        new_pilot_params = self._update_pilot_beam(
-            state.pilot_beam_params, surface
+        # 9. 加回 Pilot Beam 相位，得到完整相位
+        # 计算网格上的 Pilot Beam 相位
+        pilot_phase_grid = new_pilot_params.compute_phase_grid(
+            state.grid_sampling.grid_size,
+            state.grid_sampling.physical_size_mm,
         )
         
-        # 7. 转换为 PROPER 形式
+        # 完整相位 = 残差相位 + Pilot Beam 相位
+        exit_phase = residual_phase + pilot_phase_grid
+        
+        # 10. 转换为 PROPER 形式
         new_wfo = self._state_converter.amplitude_phase_to_proper(
             exit_amplitude,
             exit_phase,

@@ -6,6 +6,49 @@ inclusion: fileMatch
 fileMatchPattern: '**/tests/**,**/*test*,**/*spec*'
 ------------------------------------------------------------------------------------>
 
+## ⚠️ 主程序使用规范（最高优先级）
+
+### 唯一官方入口
+
+**`examples/zmx_simulation_main.py` 是混合光学仿真系统的 "the only one and final" 主程序。**
+
+```python
+from examples.zmx_simulation_main import ZmxSimulationMain
+
+# 标准用法
+main = ZmxSimulationMain("system.zmx", wavelength_um=0.633, w0_mm=5.0)
+main.visualize()           # 可视化光路
+result = main.simulate()   # 执行仿真
+main.show_results()        # 展示结果
+main.save_results()        # 保存结果
+
+# 或一步完成
+result = main.run_all()
+```
+
+### 强制规定
+
+1. **所有测试和验证必须通过主程序完成**
+2. **禁止自行定义或修改主程序接口**
+3. **禁止绕过主程序直接调用底层模块进行端到端测试**
+4. **如需扩展功能，必须通过修改主程序实现**
+
+### 路径配置标准
+
+```python
+from pathlib import Path
+
+# 标准路径配置（不要修改）
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root / 'src'))
+sys.path.insert(0, str(project_root / 'optiland-master'))
+
+# ZMX 文件目录
+zmx_dir = project_root / 'optiland-master' / 'tests' / 'zemax_files'
+```
+
+---
+
 ## 测试框架
 
 - **pytest**：单元测试和集成测试

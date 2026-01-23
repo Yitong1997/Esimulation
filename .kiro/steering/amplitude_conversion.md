@@ -153,6 +153,34 @@ prop_get_amplitude / prop_get_phase（自动移回中心）
 
 ## 验证结果
 
-经过验证：
-- 近场 (PLANAR)：相位误差 RMS ≈ 0.000007 rad ✓
-- 远场 (SPHERI)：相位误差 RMS ≈ 0.000009 rad ✓
+### StateConverter 写入/读取精度
+
+经过验证，StateConverter 的写入/读取是**完美可逆的**：
+
+| 测试条件 | 参考面类型 | 相位误差 RMS |
+|----------|------------|--------------|
+| z = 0 (近场) | PLANAR | 0.000000 waves |
+| z = 1×z_R | SPHERI | 0.000000 waves |
+| z = 3×z_R | SPHERI | 0.000000 waves |
+| z = 10×z_R | SPHERI | 0.000000 waves |
+
+### PROPER 自由空间传播精度
+
+PROPER 传播后，入射面相位与 Pilot Beam 的比较：
+
+| 表面 | 误差 RMS | 结论 |
+|------|----------|------|
+| Surface 2 入射面 | 0.0001 milli-waves | **极其精确** |
+| Surface 3 入射面 | 0.0002 milli-waves | **极其精确** |
+| Surface 4 入射面 | 22 milli-waves | 误差来自表面处理 |
+| Surface 5 入射面 | 33 milli-waves | 误差来自表面处理 |
+
+### 关键结论
+
+1. **PROPER 自由空间传播本身不是误差来源**
+2. **StateConverter 的写入/读取是完美可逆的**
+3. **误差发生在表面处理（几何光线追迹）过程中**
+
+验证脚本：
+- `scripts/verify_proper_pilot_beam_consistency.py`
+- `scripts/debug_far_field_error_source.py`

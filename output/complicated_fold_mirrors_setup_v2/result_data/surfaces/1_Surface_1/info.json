@@ -1,0 +1,21 @@
+{
+  "index": 1,
+  "name": "Surface_1",
+  "surface_type": "flat",
+  "geometry": {
+    "vertex_position": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "surface_normal": [
+      -0.0,
+      -0.0,
+      -1.0
+    ],
+    "radius": "inf",
+    "conic": 0.0,
+    "semi_aperture": 10.0,
+    "is_mirror": false
+  }
+}

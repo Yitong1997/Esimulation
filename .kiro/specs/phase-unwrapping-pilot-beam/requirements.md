@@ -29,7 +29,7 @@ T_unwrapped = T_pilot + angle(exp(1j * (T - T_pilot)))
 其中：
 - `T`: PROPER 提取的折叠相位
 - `T_pilot`: Pilot Beam 计算的非折叠参考相位
-- `angle()`: 将复数映射到 [-π, π] 的相位
+- `angle()`: 将复数映射到 （-π, π] 的相位
 
 ## 用户故事
 

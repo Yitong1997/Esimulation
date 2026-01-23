@@ -18,12 +18,31 @@ fileMatchPattern: '**/propagation/**,**/proper/**,**/*propagat*'
 
 **经过验证，PROPER 的自由空间衍射传播精度极高：**
 
-- 这证明 PROPER 传播本身不是误差来源
-- **调试时不要怀疑 PROPER 传播的准确性**
+### 验证结果
 
-**误差来源在几何光线追迹流程中**（入射面 → 出射面），不在 PROPER 传播中。
+| 测试项目 | 误差 | 结论 |
+|----------|------|------|
+| StateConverter 写入/读取（无传播） | 0.000000 waves | **完美可逆** |
+| PROPER 传播后入射面相位（Surface 2, 3） | 0.0001-0.0002 milli-waves | **极其精确** |
+| PROPER 传播后入射面相位（Surface 4, 5） | 22-33 milli-waves | 误差来自表面处理 |
 
-验证脚本：`scripts/verify_proper_pilot_beam_consistency.py`
+### 关键结论
+
+1. **PROPER 自由空间传播本身不是误差来源**
+2. **StateConverter 的写入/读取是完美可逆的**
+3. **误差发生在表面处理（几何光线追迹）过程中**
+4. **调试时不要怀疑 PROPER 传播或 StateConverter 的准确性**
+
+### 误差定位
+
+误差来源在**几何光线追迹流程中**（入射面 → 出射面），具体包括：
+- 入射面波前采样
+- 光线追迹 OPD 计算
+- 出射面波前重建
+
+验证脚本：
+- `scripts/verify_proper_pilot_beam_consistency.py`
+- `scripts/debug_far_field_error_source.py`
 
 ---
 

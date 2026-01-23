@@ -1,0 +1,5 @@
+{
+  "grid_size": 256,
+  "physical_size_mm": 40.0,
+  "sampling_mm": 0.15625
+}
