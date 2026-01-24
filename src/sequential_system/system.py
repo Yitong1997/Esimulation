@@ -340,11 +340,11 @@ class SequentialOpticalSystem:
         
         beam = self._source.to_gaussian_beam()
         wavelength_m = self._source.wavelength * 1e-6
-        w_init = self._source.w(0.0)
-        beam_diameter_m = 4 * w_init * 1e-3
+        w0 = self._source.w0  # 束腰半径
+        beam_diameter_m = 2 * w0 * 1e-3  # beam_diameter = 2 × w0（PROPER 固定用法）
         
         wfo = proper.prop_begin(
-            beam_diameter_m, wavelength_m, self._grid_size, self._beam_ratio
+            beam_diameter_m, wavelength_m, self._grid_size, 0.5  # beam_diam_fraction = 0.5（PROPER 固定用法）
         )
         
         self._apply_initial_gaussian(wfo, beam)
@@ -1571,10 +1571,6 @@ class SequentialOpticalSystem:
             # 偏心信息
             if elem.decenter_x != 0 or elem.decenter_y != 0:
                 line += f", decenter=({elem.decenter_x}, {elem.decenter_y})mm"
-            
-            # 离轴距离（仅抛物面镜）
-            if hasattr(elem, 'off_axis_distance') and elem.off_axis_distance != 0:
-                line += f", off_axis={elem.off_axis_distance}mm"
             
             lines.append(line)
         

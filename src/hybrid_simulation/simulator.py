@@ -211,8 +211,9 @@ class HybridSimulator:
         """
         from hybrid_optical_propagation import SourceDefinition
         
+        # 网格物理尺寸固定为 4 × w0（PROPER 固定用法）
         if physical_size_mm is None:
-            physical_size_mm = 8 * w0_mm
+            physical_size_mm = 4 * w0_mm
         
         self._wavelength_um = wavelength_um
         self._grid_size = grid_size

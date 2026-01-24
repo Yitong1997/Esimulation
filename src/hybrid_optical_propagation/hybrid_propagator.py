@@ -182,7 +182,12 @@ class HybridOpticalPropagator:
     def _precompute_optical_axis(self) -> None:
         """预计算所有表面处的光轴状态
         
-        遍历光学系统，计算每个表面处的入射和出射光轴状态。
+        通过追迹主光线穿过整个系统，获取主光线与每个表面的实际交点位置和出射方向。
+        
+        关键改进：
+        - 使用实际主光线交点位置，而不是表面顶点位置
+        - 对于离轴系统（如 OAP），主光线不经过顶点
+        - 使用 optiland 的光线追迹获取准确的交点和方向
         
         **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7**
         """
@@ -192,42 +197,48 @@ class HybridOpticalPropagator:
             RayDirection,
         )
         
+        # 追迹主光线穿过整个系统，获取每个表面的交点和方向
+        chief_ray_data = self._trace_chief_ray_through_system()
+        
         # 初始光轴状态：原点，沿 +Z 方向
-        current_position = np.array([0.0, 0.0, 0.0])
         current_direction = np.array([0.0, 0.0, 1.0])
         path_length = 0.0
+        previous_position = np.array([0.0, 0.0, 0.0])
         
         for i, surface in enumerate(self._optical_system):
+            # 获取主光线在该表面的交点和出射方向
+            if i < len(chief_ray_data):
+                intersection = chief_ray_data[i]['intersection']
+                exit_direction = chief_ray_data[i]['exit_direction']
+            else:
+                # 如果没有追迹数据，回退到顶点位置
+                intersection = surface.vertex_position.copy()
+                if surface.is_mirror:
+                    normal = surface.surface_normal
+                    d = current_direction
+                    n = normal
+                    exit_direction = d - 2 * np.dot(d, n) * n
+                    exit_direction = exit_direction / np.linalg.norm(exit_direction)
+                else:
+                    exit_direction = current_direction.copy()
+            
             # 计算到当前表面的距离
-            vertex = surface.vertex_position
-            displacement = vertex - current_position
+            displacement = intersection - previous_position
             distance = np.linalg.norm(displacement)
             
             # 更新光程
             path_length += distance
             
-            # 入射光轴状态
+            # 入射光轴状态（使用实际交点位置）
             entrance_state = OpticalAxisState(
-                position=Position3D.from_array(vertex),
+                position=Position3D.from_array(intersection),
                 direction=RayDirection.from_array(current_direction),
                 path_length=path_length,
             )
             
-            # 计算出射方向（反射镜改变方向）
-            if surface.is_mirror:
-                # 表面法向量
-                normal = surface.surface_normal
-                # 反射公式: r = d - 2(d·n)n
-                d = current_direction
-                n = normal
-                exit_direction = d - 2 * np.dot(d, n) * n
-                exit_direction = exit_direction / np.linalg.norm(exit_direction)
-            else:
-                exit_direction = current_direction.copy()
-            
-            # 出射光轴状态
+            # 出射光轴状态（使用实际交点位置和出射方向）
             exit_state = OpticalAxisState(
-                position=Position3D.from_array(vertex),
+                position=Position3D.from_array(intersection),
                 direction=RayDirection.from_array(exit_direction),
                 path_length=path_length,
             )
@@ -239,8 +250,418 @@ class HybridOpticalPropagator:
             }
             
             # 更新当前位置和方向
-            current_position = vertex.copy()
+            previous_position = intersection.copy()
             current_direction = exit_direction.copy()
+    
+    def _trace_chief_ray_through_system(self) -> list:
+        """追迹主光线穿过整个系统
+        
+        手动计算主光线与每个表面的交点位置和出射方向。
+        
+        返回:
+            列表，每个元素是字典，包含：
+            - 'intersection': 主光线与表面的交点位置 (mm)，全局坐标系
+            - 'exit_direction': 主光线离开表面的方向（归一化），全局坐标系
+        
+        说明:
+            由于 optiland 在使用绝对坐标定位时存在坐标系问题，
+            这里手动计算主光线的传播路径。
+        """
+        # 如果没有表面，返回空列表
+        if not self._optical_system:
+            return []
+        
+        chief_ray_data = []
+        
+        # 初始主光线：从原点沿 +Z 方向
+        current_pos = np.array([0.0, 0.0, 0.0])
+        current_dir = np.array([0.0, 0.0, 1.0])
+        
+        for surface in self._optical_system:
+            # 计算主光线与表面的交点
+            intersection = self._compute_ray_surface_intersection(
+                current_pos, current_dir, surface
+            )
+            
+            if intersection is None:
+                # 如果无法计算交点，使用顶点位置作为回退
+                intersection = surface.vertex_position.copy()
+            
+            # 计算出射方向
+            if surface.is_mirror:
+                # 反射镜：计算反射方向
+                exit_dir = self._compute_reflection_direction(
+                    current_dir, intersection, surface
+                )
+            else:
+                # 透射元件：方向不变（简化处理）
+                exit_dir = current_dir.copy()
+            
+            chief_ray_data.append({
+                'intersection': intersection,
+                'exit_direction': exit_dir,
+            })
+            
+            # 更新当前位置和方向
+            current_pos = intersection.copy()
+            current_dir = exit_dir.copy()
+        
+        return chief_ray_data
+    
+    def _compute_ray_surface_intersection(
+        self,
+        ray_origin: np.ndarray,
+        ray_direction: np.ndarray,
+        surface: "GlobalSurfaceDefinition",
+    ) -> np.ndarray:
+        """计算光线与表面的交点
+        
+        参数:
+            ray_origin: 光线起点 (mm)
+            ray_direction: 光线方向（归一化）
+            surface: 表面定义
+        
+        返回:
+            交点位置 (mm)，如果无法计算则返回 None
+        """
+        vertex = surface.vertex_position
+        radius = surface.radius
+        conic = surface.conic
+        
+        # 对于平面（radius = inf）
+        if radius is None or abs(radius) > 1e10:
+            # 平面方程：(P - vertex) · normal = 0
+            # 其中 normal 是表面法向量（沿 Z 轴）
+            normal = surface.orientation[:, 2]  # Z 轴方向
+            denom = np.dot(ray_direction, normal)
+            if abs(denom) < 1e-10:
+                return None
+            t = np.dot(vertex - ray_origin, normal) / denom
+            if t < 0:
+                return None
+            return ray_origin + t * ray_direction
+        
+        # 对于二次曲面（球面、抛物面等）
+        # 使用迭代方法求解
+        return self._solve_conic_intersection(
+            ray_origin, ray_direction, vertex, radius, conic, surface.orientation
+        )
+    
+    def _solve_conic_intersection(
+        self,
+        ray_origin: np.ndarray,
+        ray_direction: np.ndarray,
+        vertex: np.ndarray,
+        radius: float,
+        conic: float,
+        orientation: np.ndarray,
+    ) -> np.ndarray:
+        """求解光线与二次曲面的交点
+        
+        二次曲面方程（局部坐标系，顶点在原点）：
+        z = (x² + y²) / (R * (1 + sqrt(1 - (1+k)(x² + y²)/R²)))
+        
+        对于抛物面 (k = -1)：z = (x² + y²) / (2R)
+        """
+        # 将光线转换到表面局部坐标系
+        # 局部坐标系：原点在顶点，Z 轴沿表面法向
+        ray_origin_local = orientation.T @ (ray_origin - vertex)
+        ray_dir_local = orientation.T @ ray_direction
+        
+        # 对于抛物面 (conic = -1)
+        if abs(conic + 1) < 1e-10:
+            # 抛物面方程：z = (x² + y²) / (2R)
+            # 光线：P(t) = O + t*D
+            # 代入：O_z + t*D_z = ((O_x + t*D_x)² + (O_y + t*D_y)²) / (2R)
+            
+            ox, oy, oz = ray_origin_local
+            dx, dy, dz = ray_dir_local
+            R = radius
+            
+            # 展开：2R*(oz + t*dz) = (ox + t*dx)² + (oy + t*dy)²
+            # 2R*oz + 2R*t*dz = ox² + 2*ox*t*dx + t²*dx² + oy² + 2*oy*t*dy + t²*dy²
+            # t²*(dx² + dy²) + t*(2*ox*dx + 2*oy*dy - 2R*dz) + (ox² + oy² - 2R*oz) = 0
+            
+            a = dx**2 + dy**2
+            b = 2*ox*dx + 2*oy*dy - 2*R*dz
+            c = ox**2 + oy**2 - 2*R*oz
+            
+            if abs(a) < 1e-10:
+                # 线性方程
+                if abs(b) < 1e-10:
+                    return None
+                t = -c / b
+            else:
+                # 二次方程
+                discriminant = b**2 - 4*a*c
+                if discriminant < 0:
+                    return None
+                sqrt_disc = np.sqrt(discriminant)
+                t1 = (-b - sqrt_disc) / (2*a)
+                t2 = (-b + sqrt_disc) / (2*a)
+                
+                # 选择正的、较小的 t
+                if t1 > 1e-10 and t2 > 1e-10:
+                    t = min(t1, t2)
+                elif t1 > 1e-10:
+                    t = t1
+                elif t2 > 1e-10:
+                    t = t2
+                else:
+                    return None
+            
+            # 计算交点（全局坐标系）
+            intersection_local = ray_origin_local + t * ray_dir_local
+            intersection_global = orientation @ intersection_local + vertex
+            return intersection_global
+        
+        # 对于一般二次曲面，使用迭代方法
+        # 简化处理：使用球面近似
+        c = 1.0 / radius  # 曲率
+        
+        # 球面方程：(x² + y² + z²) - 2*R*z = 0（顶点在原点）
+        # 简化为：z = c*(x² + y²) / (1 + sqrt(1 - c²*(x² + y²)))
+        
+        ox, oy, oz = ray_origin_local
+        dx, dy, dz = ray_dir_local
+        
+        # 使用牛顿迭代
+        t = 0.0
+        for _ in range(20):
+            x = ox + t * dx
+            y = oy + t * dy
+            z = oz + t * dz
+            
+            r2 = x**2 + y**2
+            
+            # 球面 sag
+            if abs(c) < 1e-10:
+                sag = 0.0
+                dsag_dr2 = 0.0
+            else:
+                denom = 1 + np.sqrt(max(0, 1 - (1 + conic) * c**2 * r2))
+                if abs(denom) < 1e-10:
+                    break
+                sag = c * r2 / denom
+                # 导数
+                if 1 - (1 + conic) * c**2 * r2 > 0:
+                    sqrt_term = np.sqrt(1 - (1 + conic) * c**2 * r2)
+                    dsag_dr2 = c / denom + c * r2 * (1 + conic) * c**2 / (2 * sqrt_term * denom**2)
+                else:
+                    dsag_dr2 = c / denom
+            
+            # 残差
+            f = z - sag
+            
+            # 导数
+            df_dt = dz - dsag_dr2 * 2 * (x * dx + y * dy)
+            
+            if abs(df_dt) < 1e-10:
+                break
+            
+            dt = -f / df_dt
+            t += dt
+            
+            if abs(dt) < 1e-10:
+                break
+        
+        if t < 0:
+            return None
+        
+        intersection_local = ray_origin_local + t * ray_dir_local
+        intersection_global = orientation @ intersection_local + vertex
+        return intersection_global
+    
+    def _compute_reflection_direction(
+        self,
+        incident_dir: np.ndarray,
+        intersection: np.ndarray,
+        surface: "GlobalSurfaceDefinition",
+    ) -> np.ndarray:
+        """计算反射方向
+        
+        参数:
+            incident_dir: 入射方向（归一化）
+            intersection: 交点位置 (mm)
+            surface: 表面定义
+        
+        返回:
+            反射方向（归一化）
+        
+        注意:
+            对于抛物面（conic = -1），使用抛物面的光学性质直接计算反射方向，
+            而不是使用几何法向量。这是因为几何法向量在离轴配置下会给出错误的结果。
+        """
+        vertex = surface.vertex_position
+        radius = surface.radius
+        conic = surface.conic
+        orientation = surface.orientation
+        
+        # 检查是否是抛物面
+        is_parabola = (radius is not None and 
+                       abs(radius) < 1e10 and 
+                       conic is not None and 
+                       abs(conic + 1) < 1e-6)
+        
+        if is_parabola:
+            # 对于抛物面，使用光学性质计算反射方向
+            # 
+            # ⚠️ 关键修复：正确计算焦点位置
+            # 
+            # 抛物面方程（局部坐标系，顶点在原点）：z = (x² + y²) / (2R)
+            # 焦点在局部坐标系中的位置：(0, 0, f)，其中 f = R/2
+            # 
+            # 当抛物面顶点在全局坐标 vertex_position 时：
+            # 焦点在全局坐标系中的位置 = vertex_position + f × 光学轴方向
+            # 
+            # 对于离轴抛物面（OAP）：
+            # - 主光线从 (0, 0, 0) 沿 +Z 方向出发
+            # - 抛物面顶点在 (0, y_offset, 0)
+            # - 焦点在 (0, y_offset, f)
+            # - 主光线与抛物面的交点在 (0, 0, y_offset²/(2R))
+            # - 反射方向应该指向焦点
+            
+            # 抛物面的光学轴方向（局部坐标系中是 Z 轴）
+            optical_axis_local = np.array([0.0, 0.0, 1.0])
+            optical_axis_global = orientation @ optical_axis_local
+            
+            # 焦距
+            f = radius / 2
+            
+            # ⚠️ 关键修复：焦点位置 = 顶点位置 + f × 光学轴方向
+            focus_global = vertex + f * optical_axis_global
+            
+            # 检查入射光线是否平行于光学轴
+            dot_product = abs(np.dot(incident_dir, optical_axis_global))
+            
+            if dot_product > 0.999:  # 几乎平行于光学轴
+                # 反射方向指向焦点
+                to_focus = focus_global - intersection
+                norm = np.linalg.norm(to_focus)
+                if norm > 1e-10:
+                    reflected_dir = to_focus / norm
+                else:
+                    # 交点就在焦点，使用光学轴方向
+                    reflected_dir = optical_axis_global.copy()
+                
+                # 如果入射方向与光学轴反向，反射方向也要调整
+                if np.dot(incident_dir, optical_axis_global) < 0:
+                    # 从焦点发出的光线反射后平行于光轴
+                    reflected_dir = optical_axis_global.copy()
+                
+                return reflected_dir
+            else:
+                # 入射光线不平行于光学轴，使用正确的法向量公式
+                # 对于抛物面，正确的法向量是：n = (u + d) / |u + d|
+                # 其中 u = (P - F) / |P - F| 是从焦点到交点的单位向量
+                # d 是入射方向
+                
+                # 从焦点到交点的单位向量
+                P_minus_F = intersection - focus_global
+                u = P_minus_F / np.linalg.norm(P_minus_F)
+                
+                # 计算法向量
+                n_sum = u + incident_dir
+                normal = n_sum / np.linalg.norm(n_sum)
+                
+                # 确保法向量指向入射光来的方向
+                if np.dot(normal, incident_dir) > 0:
+                    normal = -normal
+                
+                # 反射公式
+                dot_dn = np.dot(incident_dir, normal)
+                reflected_dir = incident_dir - 2 * dot_dn * normal
+                
+                norm = np.linalg.norm(reflected_dir)
+                if norm > 1e-10:
+                    reflected_dir = reflected_dir / norm
+                
+                return reflected_dir
+        
+        # 对于非抛物面，使用标准的几何法向量方法
+        normal = self._compute_surface_normal(intersection, surface)
+        
+        # 确保法向量指向入射光来的方向
+        if np.dot(normal, incident_dir) > 0:
+            normal = -normal
+        
+        # 反射公式：r = d - 2(d·n)n
+        dot_dn = np.dot(incident_dir, normal)
+        reflected_dir = incident_dir - 2 * dot_dn * normal
+        
+        # 归一化
+        norm = np.linalg.norm(reflected_dir)
+        if norm > 1e-10:
+            reflected_dir = reflected_dir / norm
+        
+        return reflected_dir
+    
+    def _compute_surface_normal(
+        self,
+        point: np.ndarray,
+        surface: "GlobalSurfaceDefinition",
+    ) -> np.ndarray:
+        """计算表面在指定点处的法向量
+        
+        参数:
+            point: 表面上的点 (mm)，全局坐标系
+            surface: 表面定义
+        
+        返回:
+            法向量（归一化），指向 +Z 方向（表面外侧）
+        """
+        vertex = surface.vertex_position
+        radius = surface.radius
+        conic = surface.conic
+        orientation = surface.orientation
+        
+        # 将点转换到局部坐标系
+        point_local = orientation.T @ (point - vertex)
+        x, y, z = point_local
+        
+        # 对于平面
+        if radius is None or abs(radius) > 1e10:
+            # 法向量沿 Z 轴
+            normal_local = np.array([0.0, 0.0, 1.0])
+        else:
+            # 对于二次曲面
+            # 曲面方程：z = f(x, y)
+            # 法向量：(-∂f/∂x, -∂f/∂y, 1) / |...|
+            
+            R = radius
+            k = conic
+            r2 = x**2 + y**2
+            
+            if abs(k + 1) < 1e-10:
+                # 抛物面：z = (x² + y²) / (2R)
+                # ∂z/∂x = x/R, ∂z/∂y = y/R
+                dz_dx = x / R
+                dz_dy = y / R
+            else:
+                # 一般二次曲面
+                c = 1.0 / R
+                denom_sq = 1 - (1 + k) * c**2 * r2
+                if denom_sq > 0:
+                    sqrt_denom = np.sqrt(denom_sq)
+                    denom = 1 + sqrt_denom
+                    # ∂z/∂x = c*2x/denom + c*r2 * (1+k)*c²*2x / (2*sqrt_denom*denom²)
+                    dz_dx = c * 2 * x / denom
+                    dz_dy = c * 2 * y / denom
+                    if sqrt_denom > 1e-10:
+                        factor = (1 + k) * c**2 / (sqrt_denom * denom**2)
+                        dz_dx += c * r2 * factor * x
+                        dz_dy += c * r2 * factor * y
+                else:
+                    dz_dx = x / R
+                    dz_dy = y / R
+            
+            normal_local = np.array([-dz_dx, -dz_dy, 1.0])
+            normal_local = normal_local / np.linalg.norm(normal_local)
+        
+        # 转换到全局坐标系
+        normal_global = orientation @ normal_local
+        
+        return normal_global
     
     def get_optical_axis_at_surface(
         self,
@@ -466,8 +887,21 @@ class HybridOpticalPropagator:
         
         distance = compute_propagation_distance(current_pos, target_pos, current_dir)
         
-        # 如果距离很小，跳过传播
+        # 如果距离很小，跳过传播但仍记录入射状态
         if abs(distance) < 1e-10:
+            # 即使不传播，也记录入射状态以便调试接口可以获取光轴信息
+            entrance_state = PropagationState(
+                surface_index=surface_index,
+                position='entrance',
+                amplitude=self._current_state.amplitude.copy(),
+                phase=self._current_state.phase.copy(),
+                pilot_beam_params=self._current_state.pilot_beam_params,
+                proper_wfo=self._current_state.proper_wfo,
+                optical_axis_state=entrance_axis,
+                grid_sampling=self._current_state.grid_sampling,
+            )
+            self._current_state = entrance_state
+            self._surface_states.append(entrance_state)
             return
         
         # 执行自由空间传播

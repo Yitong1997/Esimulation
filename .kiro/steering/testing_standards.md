@@ -5,6 +5,23 @@ inclusion: fileMatch
 fileMatchPattern: '**/tests/**,**/*test*,**/*spec*'
 ------------------------------------------------------------------------------------>
 
+## ⚠️ 强制规定：所有测试必须通过主函数 API 进行
+
+**本项目的所有测试（包括调试、验证、精度测试）都必须通过 BTS 主函数 API 进行。**
+
+禁止：
+- 直接使用底层模块（如 `ElementRaytracer`、`WavefrontSampler`）进行测试
+- 绕过 `bts.simulate()` 函数直接调用内部实现
+- 创建不使用 `bts.OpticalSystem` 的测试代码
+
+正确做法：
+- 使用 `bts.OpticalSystem` 定义光学系统
+- 使用 `bts.GaussianSource` 定义光源
+- 使用 `bts.simulate()` 执行仿真
+- 通过 `SimulationResult` 获取和分析结果
+
+---
+
 ## 主程序编写风格
 
 **采用 MATLAB 风格的"代码块"结构，而非 Python 类封装风格。**
@@ -21,6 +38,45 @@ fileMatchPattern: '**/tests/**,**/*test*,**/*spec*'
 - 代码块分明，一目了然
 - API 简洁，复杂逻辑封装在模块内部
 - 传参稳定，不频繁变动
+
+---
+
+## ⚠️⚠️⚠️ 绝对坐标定义规范（极其重要）
+
+**逐行定义光学元件时，使用绝对坐标 (x, y, z) 定义表面位置。**
+
+### 🚫 绝对禁止
+
+- **绝对禁止使用 `off_axis_distance` 参数！**
+- **绝对禁止使用 `add_oap` 方法！**
+- **绝对禁止将离轴距离设置为单独的变量！**
+
+### ✅ 正确做法
+
+离轴量必须直接通过修改元件的位置坐标来实现：
+
+```python
+import bts
+
+system = bts.OpticalSystem("OAP Test")
+
+# ✅ 正确：离轴抛物面镜，Y 方向离轴 100mm
+system.add_parabolic_mirror(
+    x=0,             # X 位置
+    y=100,           # Y 位置 = 离轴量 100mm
+    z=0,             # Z 位置（抛物面顶点）
+    radius=200,      # 曲率半径 R = 2f
+    semi_aperture=20,
+)
+
+# 🚫 错误：绝对禁止！
+# system.add_parabolic_mirror(
+#     y=0,
+#     z=0,
+#     radius=200,
+#     off_axis_distance=100,  # 🚫 禁止！
+# )
+```
 
 ---
 
@@ -77,3 +133,46 @@ tests/
 - 整体覆盖率 > 80%
 - 核心模块覆盖率 > 90%
 - 所有公共 API 100% 覆盖
+
+---
+
+## ⚠️ 核心回归测试
+
+**任何对以下模块的修改，必须运行对应的回归测试：**
+
+### 1. 倾斜平面镜传输测试
+
+**触发条件**：修改以下文件时必须运行
+- `src/wavefront_to_rays/element_raytracer.py`
+- `src/hybrid_optical_propagation/hybrid_element_propagator.py`
+- `src/wavefront_to_rays/wavefront_sampler.py`
+- `src/wavefront_to_rays/reconstructor.py`
+
+**测试文件**：`tests/integration/不同倾斜角度平面镜传输误差标准测试文件.py`
+
+**通过标准**：
+- 所有角度（0°-60°）RMS < 1 milli-wave
+- 所有角度结果应一致（平面镜无像差）
+
+**运行命令**：
+```bash
+python tests/integration/不同倾斜角度平面镜传输误差标准测试文件.py
+```
+
+### 2. 离轴抛物面镜测试
+
+**触发条件**：修改以下文件时必须运行
+- `src/wavefront_to_rays/element_raytracer.py`
+- `src/hybrid_optical_propagation/hybrid_element_propagator.py`
+- 任何涉及 OPD 计算的模块
+
+**测试文件**：`tests/integration/离轴抛物面镜传输误差标准测试文件.py`
+
+**通过标准**：
+- 相位 RMS < 10 milli-waves
+- 振幅 RMS < 1%
+
+**运行命令**：
+```bash
+python tests/integration/离轴抛物面镜传输误差标准测试文件.py
+```

@@ -39,12 +39,6 @@ radius_strategy = st.one_of(
     st.just(float('inf')),
 )
 
-# 半口径策略（单位 mm）
-semi_aperture_strategy = st.floats(
-    min_value=1.0, max_value=100.0,
-    allow_nan=False, allow_infinity=False
-)
-
 # 倾斜角度策略（单位：度）
 tilt_angle_strategy = st.floats(
     min_value=-89.0, max_value=89.0,
@@ -63,18 +57,17 @@ focal_length_strategy = st.floats(
 # ============================================================================
 
 @st.composite
-def flat_mirror_strategy(draw) -> Tuple[float, float, float, float]:
-    """生成平面镜参数：(z, tilt_x, tilt_y, semi_aperture)"""
+def flat_mirror_strategy(draw) -> Tuple[float, float, float]:
+    """生成平面镜参数：(z, tilt_x, tilt_y)"""
     z = draw(z_position_strategy)
     tilt_x = draw(tilt_angle_strategy)
     tilt_y = draw(tilt_angle_strategy)
-    semi_aperture = draw(semi_aperture_strategy)
-    return (z, tilt_x, tilt_y, semi_aperture)
+    return (z, tilt_x, tilt_y)
 
 
 @st.composite
-def spherical_mirror_strategy(draw) -> Tuple[float, float, float, float, float]:
-    """生成球面镜参数：(z, radius, tilt_x, tilt_y, semi_aperture)"""
+def spherical_mirror_strategy(draw) -> Tuple[float, float, float, float]:
+    """生成球面镜参数：(z, radius, tilt_x, tilt_y)"""
     z = draw(z_position_strategy)
     radius = draw(st.floats(
         min_value=10.0, max_value=10000.0,
@@ -82,17 +75,15 @@ def spherical_mirror_strategy(draw) -> Tuple[float, float, float, float, float]:
     ))
     tilt_x = draw(tilt_angle_strategy)
     tilt_y = draw(tilt_angle_strategy)
-    semi_aperture = draw(semi_aperture_strategy)
-    return (z, radius, tilt_x, tilt_y, semi_aperture)
+    return (z, radius, tilt_x, tilt_y)
 
 
 @st.composite
-def paraxial_lens_strategy(draw) -> Tuple[float, float, float]:
-    """生成薄透镜参数：(z, focal_length, semi_aperture)"""
+def paraxial_lens_strategy(draw) -> Tuple[float, float]:
+    """生成薄透镜参数：(z, focal_length)"""
     z = draw(z_position_strategy)
     focal_length = draw(focal_length_strategy)
-    semi_aperture = draw(semi_aperture_strategy)
-    return (z, focal_length, semi_aperture)
+    return (z, focal_length)
 
 
 @st.composite
@@ -111,14 +102,14 @@ def optical_system_with_surfaces_strategy(draw, min_surfaces: int = 1, max_surfa
         surface_type = draw(surface_type_strategy())
         
         if surface_type == 'flat_mirror':
-            z, tilt_x, tilt_y, semi_aperture = draw(flat_mirror_strategy())
-            system.add_flat_mirror(z=z, tilt_x=tilt_x, tilt_y=tilt_y, semi_aperture=semi_aperture)
+            z, tilt_x, tilt_y = draw(flat_mirror_strategy())
+            system.add_flat_mirror(z=z, tilt_x=tilt_x, tilt_y=tilt_y)
         elif surface_type == 'spherical_mirror':
-            z, radius, tilt_x, tilt_y, semi_aperture = draw(spherical_mirror_strategy())
-            system.add_spherical_mirror(z=z, radius=radius, tilt_x=tilt_x, tilt_y=tilt_y, semi_aperture=semi_aperture)
+            z, radius, tilt_x, tilt_y = draw(spherical_mirror_strategy())
+            system.add_spherical_mirror(z=z, radius=radius, tilt_x=tilt_x, tilt_y=tilt_y)
         else:  # paraxial_lens
-            z, focal_length, semi_aperture = draw(paraxial_lens_strategy())
-            system.add_paraxial_lens(z=z, focal_length=focal_length, semi_aperture=semi_aperture)
+            z, focal_length = draw(paraxial_lens_strategy())
+            system.add_paraxial_lens(z=z, focal_length=focal_length)
     
     return system
 
@@ -219,13 +210,11 @@ def test_property_5_print_info_contains_surface_count(system: OpticalSystem):
     z=z_position_strategy,
     tilt_x=tilt_angle_strategy,
     tilt_y=tilt_angle_strategy,
-    semi_aperture=semi_aperture_strategy,
 )
 def test_property_5_flat_mirror_info(
     z: float,
     tilt_x: float,
     tilt_y: float,
-    semi_aperture: float,
 ):
     """
     **Feature: matlab-style-api, Property 5: print_info 输出包含必要信息**
@@ -238,7 +227,7 @@ def test_property_5_flat_mirror_info(
     - 反射镜标识
     """
     system = OpticalSystem("Flat Mirror Test")
-    system.add_flat_mirror(z=z, tilt_x=tilt_x, tilt_y=tilt_y, semi_aperture=semi_aperture)
+    system.add_flat_mirror(z=z, tilt_x=tilt_x, tilt_y=tilt_y)
     
     # 捕获 print_info 输出
     output = io.StringIO()
@@ -279,14 +268,12 @@ def test_property_5_flat_mirror_info(
     radius=st.floats(min_value=10.0, max_value=10000.0, allow_nan=False, allow_infinity=False),
     tilt_x=tilt_angle_strategy,
     tilt_y=tilt_angle_strategy,
-    semi_aperture=semi_aperture_strategy,
 )
 def test_property_5_spherical_mirror_info(
     z: float,
     radius: float,
     tilt_x: float,
     tilt_y: float,
-    semi_aperture: float,
 ):
     """
     **Feature: matlab-style-api, Property 5: print_info 输出包含必要信息**
@@ -299,7 +286,7 @@ def test_property_5_spherical_mirror_info(
     - 反射镜标识
     """
     system = OpticalSystem("Spherical Mirror Test")
-    system.add_spherical_mirror(z=z, radius=radius, tilt_x=tilt_x, tilt_y=tilt_y, semi_aperture=semi_aperture)
+    system.add_spherical_mirror(z=z, radius=radius, tilt_x=tilt_x, tilt_y=tilt_y)
     
     # 捕获 print_info 输出
     output = io.StringIO()
@@ -339,12 +326,10 @@ def test_property_5_spherical_mirror_info(
 @given(
     z=z_position_strategy,
     focal_length=focal_length_strategy,
-    semi_aperture=semi_aperture_strategy,
 )
 def test_property_5_paraxial_lens_info(
     z: float,
     focal_length: float,
-    semi_aperture: float,
 ):
     """
     **Feature: matlab-style-api, Property 5: print_info 输出包含必要信息**
@@ -356,7 +341,7 @@ def test_property_5_paraxial_lens_info(
     - 焦距值
     """
     system = OpticalSystem("Paraxial Lens Test")
-    system.add_paraxial_lens(z=z, focal_length=focal_length, semi_aperture=semi_aperture)
+    system.add_paraxial_lens(z=z, focal_length=focal_length)
     
     # 捕获 print_info 输出
     output = io.StringIO()
@@ -549,42 +534,6 @@ def test_print_info_contains_system_name(name: str):
     # 验证系统名称出现在输出中
     assert name in output_text, (
         f"输出缺少系统名称 '{name}'：\n{output_text}"
-    )
-
-
-# ============================================================================
-# 半口径信息测试
-# ============================================================================
-
-@settings(max_examples=100)
-@given(
-    z=z_position_strategy,
-    semi_aperture=semi_aperture_strategy,
-)
-def test_property_5_semi_aperture_displayed(
-    z: float,
-    semi_aperture: float,
-):
-    """
-    **Feature: matlab-style-api, Property 5: print_info 输出包含必要信息**
-    **Validates: Requirements 4.3**
-    
-    验证 print_info 输出包含半口径信息。
-    """
-    system = OpticalSystem("Semi Aperture Test")
-    system.add_flat_mirror(z=z, semi_aperture=semi_aperture)
-    
-    # 捕获 print_info 输出
-    output = io.StringIO()
-    with redirect_stdout(output):
-        system.print_info()
-    
-    output_text = output.getvalue()
-    
-    # 验证半口径值
-    semi_aperture_formatted = f"{semi_aperture:.3f}"
-    assert semi_aperture_formatted in output_text, (
-        f"输出缺少半口径 {semi_aperture_formatted}：\n{output_text}"
     )
 
 

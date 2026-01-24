@@ -5,7 +5,7 @@ OpticalSystem 类模块
 复用 HybridSimulator 中的表面创建逻辑。
 """
 
-from typing import Optional, Tuple, List, Any, TYPE_CHECKING
+from typing import Optional, Tuple, List, Any, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -20,27 +20,46 @@ class SurfaceDefinition:
     属性:
         index: 表面索引
         surface_type: 表面类型 ('standard', 'paraxial', 'coordbrk')
-        z: Z 位置 (mm)
+        position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
         radius: 曲率半径 (mm)，inf 表示平面
         conic: 圆锥常数
-        semi_aperture: 半口径 (mm)
         is_mirror: 是否为反射镜
         tilt_x: 绕 X 轴旋转角度（度）
         tilt_y: 绕 Y 轴旋转角度（度）
         material: 材料名称
         focal_length: 焦距（仅用于 paraxial）
+    
+    注意：
+        离轴量由绝对坐标的 (x, y) 值决定，通过位置坐标自然实现。
+        例如，离轴抛物面镜的离轴量 = sqrt(x² + y²)。
+        
+        🚫 禁止设置口径/半口径参数！光束范围由 w0 自然决定。
     """
     index: int
     surface_type: str
-    z: float
+    position: Tuple[float, float, float]  # (x, y, z) 绝对坐标
     radius: float = float('inf')
     conic: float = 0.0
-    semi_aperture: float = 25.0
     is_mirror: bool = False
     tilt_x: float = 0.0
     tilt_y: float = 0.0
     material: str = ""
     focal_length: Optional[float] = None
+    
+    @property
+    def z(self) -> float:
+        """Z 位置"""
+        return self.position[2]
+    
+    @property
+    def x(self) -> float:
+        """X 位置"""
+        return self.position[0]
+    
+    @property
+    def y(self) -> float:
+        """Y 位置"""
+        return self.position[1]
 
 
 class OpticalSystem:
@@ -127,10 +146,9 @@ class OpticalSystem:
     
     def _create_global_surface(
         self,
-        z: float,
+        position: Tuple[float, float, float],
         radius: float,
         conic: float,
-        semi_aperture: float,
         is_mirror: bool,
         tilt_x: float,
         tilt_y: float,
@@ -143,10 +161,9 @@ class OpticalSystem:
         复用 HybridSimulator 中的逻辑。
         
         参数:
-            z: Z 位置 (mm)
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
             radius: 曲率半径 (mm)
             conic: 圆锥常数
-            semi_aperture: 半口径 (mm)
             is_mirror: 是否为反射镜
             tilt_x: 绕 X 轴旋转角度（度）
             tilt_y: 绕 Y 轴旋转角度（度）
@@ -156,6 +173,9 @@ class OpticalSystem:
         
         返回:
             GlobalSurfaceDefinition 对象
+        
+        注意:
+            🚫 禁止设置口径/半口径参数！使用默认值 1000mm（足够大）。
         """
         from sequential_system.coordinate_system import GlobalSurfaceDefinition
         
@@ -163,14 +183,15 @@ class OpticalSystem:
         orientation = self._create_rotation_matrix(tilt_x, tilt_y)
         
         # 创建全局表面定义
+        # 🚫 semi_aperture 使用默认大值，不允许用户设置
         return GlobalSurfaceDefinition(
             index=len(self._global_surfaces),
             surface_type=surface_type,
-            vertex_position=np.array([0.0, 0.0, z]),
+            vertex_position=np.array([position[0], position[1], position[2]]),
             orientation=orientation,
             radius=radius,
             conic=conic,
-            semi_aperture=semi_aperture,
+            semi_aperture=1000.0,  # 固定大值，不允许用户设置
             is_mirror=is_mirror,
             material=material,
             focal_length=focal_length if focal_length is not None else np.inf,
@@ -178,10 +199,12 @@ class OpticalSystem:
     
     def add_surface(
         self,
-        z: float,
+        position: Optional[Tuple[float, float, float]] = None,
+        z: Optional[float] = None,
+        x: float = 0.0,
+        y: float = 0.0,
         radius: float = float('inf'),
         conic: float = 0.0,
-        semi_aperture: float = 25.0,
         is_mirror: bool = False,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
@@ -189,11 +212,16 @@ class OpticalSystem:
     ) -> "OpticalSystem":
         """添加通用光学表面（支持链式调用）
         
+        使用绝对坐标定义表面位置，与 ZMX 文件加载后的处理方式一致。
+        
         参数:
-            z: Z 位置 (mm)
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标。
+                      如果指定此参数，则忽略 x, y, z 参数。
+            z: Z 位置 (mm)，与 x, y 配合使用
+            x: X 位置 (mm)，默认 0.0
+            y: Y 位置 (mm)，默认 0.0
             radius: 曲率半径 (mm)，默认 inf（平面）
-            conic: 圆锥常数，默认 0（球面）
-            semi_aperture: 半口径 (mm)，默认 25.0
+            conic: 圆锥常数，默认 0（球面），-1 为抛物面
             is_mirror: 是否为反射镜，默认 False
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
@@ -202,20 +230,34 @@ class OpticalSystem:
         返回:
             self（支持链式调用）
         
+        注意:
+            🚫 禁止设置口径/半口径参数！光束范围由 w0 自然决定。
+        
         示例:
             >>> system = bts.OpticalSystem()
+            >>> # 方式 1：使用 position 元组
+            >>> system.add_surface(position=(0, 0, 100), radius=200, is_mirror=True)
+            >>> 
+            >>> # 方式 2：使用 x, y, z 参数
             >>> system.add_surface(z=100, radius=200, is_mirror=True, tilt_x=45)
         
         **Validates: Requirements 2.4**
         """
+        # 确定位置
+        if position is not None:
+            pos = position
+        elif z is not None:
+            pos = (x, y, z)
+        else:
+            raise ValueError("必须指定 position 或 z 参数")
+        
         # 创建 SurfaceDefinition
         surface_def = SurfaceDefinition(
             index=len(self._surfaces),
             surface_type='standard',
-            z=z,
+            position=pos,
             radius=radius,
             conic=conic,
-            semi_aperture=semi_aperture,
             is_mirror=is_mirror,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
@@ -225,10 +267,9 @@ class OpticalSystem:
         
         # 创建 GlobalSurfaceDefinition
         global_surface = self._create_global_surface(
-            z=z,
+            position=pos,
             radius=radius,
             conic=conic,
-            semi_aperture=semi_aperture,
             is_mirror=is_mirror,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
@@ -240,21 +281,28 @@ class OpticalSystem:
     
     def add_flat_mirror(
         self,
-        z: float,
+        position: Optional[Tuple[float, float, float]] = None,
+        z: Optional[float] = None,
+        x: float = 0.0,
+        y: float = 0.0,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
-        semi_aperture: float = 25.0,
     ) -> "OpticalSystem":
         """添加平面反射镜（支持链式调用）
         
         参数:
-            z: Z 位置 (mm)
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
+            z: Z 位置 (mm)，与 x, y 配合使用
+            x: X 位置 (mm)，默认 0.0
+            y: Y 位置 (mm)，默认 0.0
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
-            semi_aperture: 半口径 (mm)，默认 25.0
         
         返回:
             self（支持链式调用）
+        
+        注意:
+            🚫 禁止设置口径/半口径参数！
         
         示例:
             >>> system = bts.OpticalSystem()
@@ -263,10 +311,12 @@ class OpticalSystem:
         **Validates: Requirements 2.5**
         """
         return self.add_surface(
+            position=position,
             z=z,
+            x=x,
+            y=y,
             radius=float('inf'),
             conic=0.0,
-            semi_aperture=semi_aperture,
             is_mirror=True,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
@@ -275,23 +325,30 @@ class OpticalSystem:
     
     def add_spherical_mirror(
         self,
-        z: float,
         radius: float,
+        position: Optional[Tuple[float, float, float]] = None,
+        z: Optional[float] = None,
+        x: float = 0.0,
+        y: float = 0.0,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
-        semi_aperture: float = 25.0,
     ) -> "OpticalSystem":
         """添加球面反射镜（支持链式调用）
         
         参数:
-            z: Z 位置 (mm)
             radius: 曲率半径 (mm)，正值为凹面镜
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
+            z: Z 位置 (mm)，与 x, y 配合使用
+            x: X 位置 (mm)，默认 0.0
+            y: Y 位置 (mm)，默认 0.0
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
-            semi_aperture: 半口径 (mm)，默认 25.0
         
         返回:
             self（支持链式调用）
+        
+        注意:
+            🚫 禁止设置口径/半口径参数！
         
         示例:
             >>> system = bts.OpticalSystem()
@@ -300,10 +357,65 @@ class OpticalSystem:
         **Validates: Requirements 2.6**
         """
         return self.add_surface(
+            position=position,
             z=z,
+            x=x,
+            y=y,
             radius=radius,
             conic=0.0,
-            semi_aperture=semi_aperture,
+            is_mirror=True,
+            tilt_x=tilt_x,
+            tilt_y=tilt_y,
+            material='MIRROR',
+        )
+    
+    def add_parabolic_mirror(
+        self,
+        radius: float,
+        position: Optional[Tuple[float, float, float]] = None,
+        z: Optional[float] = None,
+        x: float = 0.0,
+        y: float = 0.0,
+        tilt_x: float = 0.0,
+        tilt_y: float = 0.0,
+    ) -> "OpticalSystem":
+        """添加抛物面反射镜（支持链式调用）
+        
+        离轴抛物面镜（OAP）通过 (x, y) 坐标指定离轴量。
+        
+        参数:
+            radius: 曲率半径 (mm)，R = 2f（f 为焦距）
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
+            z: Z 位置 (mm)，与 x, y 配合使用
+            x: X 位置 (mm)，默认 0.0
+            y: Y 位置 (mm)，默认 0.0，离轴量由此坐标决定
+            tilt_x: 绕 X 轴旋转角度（度），默认 0
+            tilt_y: 绕 Y 轴旋转角度（度），默认 0
+        
+        返回:
+            self（支持链式调用）
+        
+        注意:
+            🚫 禁止设置口径/半口径参数！
+            离轴量由 (x, y) 坐标自然决定，无需额外参数。
+        
+        示例:
+            >>> system = bts.OpticalSystem()
+            >>> # 同轴抛物面镜
+            >>> system.add_parabolic_mirror(z=100, radius=200)
+            >>> 
+            >>> # 离轴抛物面镜（OAP），Y 方向离轴 100mm
+            >>> system.add_parabolic_mirror(z=0, y=100, radius=200)
+        
+        **Validates: Requirements 2.6**
+        """
+        return self.add_surface(
+            position=position,
+            z=z,
+            x=x,
+            y=y,
+            radius=radius,
+            conic=-1.0,  # 抛物面
             is_mirror=True,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
@@ -312,19 +424,26 @@ class OpticalSystem:
     
     def add_paraxial_lens(
         self,
-        z: float,
         focal_length: float,
-        semi_aperture: float = 25.0,
+        position: Optional[Tuple[float, float, float]] = None,
+        z: Optional[float] = None,
+        x: float = 0.0,
+        y: float = 0.0,
     ) -> "OpticalSystem":
         """添加薄透镜（支持链式调用）
         
         参数:
-            z: Z 位置 (mm)
             focal_length: 焦距 (mm)
-            semi_aperture: 半口径 (mm)，默认 25.0
+            position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
+            z: Z 位置 (mm)，与 x, y 配合使用
+            x: X 位置 (mm)，默认 0.0
+            y: Y 位置 (mm)，默认 0.0
         
         返回:
             self（支持链式调用）
+        
+        注意:
+            🚫 禁止设置口径/半口径参数！
         
         示例:
             >>> system = bts.OpticalSystem()
@@ -332,14 +451,21 @@ class OpticalSystem:
         
         **Validates: Requirements 2.7**
         """
+        # 确定位置
+        if position is not None:
+            pos = position
+        elif z is not None:
+            pos = (x, y, z)
+        else:
+            raise ValueError("必须指定 position 或 z 参数")
+        
         # 创建 SurfaceDefinition
         surface_def = SurfaceDefinition(
             index=len(self._surfaces),
             surface_type='paraxial',
-            z=z,
+            position=pos,
             radius=float('inf'),
             conic=0.0,
-            semi_aperture=semi_aperture,
             is_mirror=False,
             tilt_x=0.0,
             tilt_y=0.0,
@@ -350,10 +476,9 @@ class OpticalSystem:
         
         # 创建 GlobalSurfaceDefinition
         global_surface = self._create_global_surface(
-            z=z,
+            position=pos,
             radius=float('inf'),
             conic=0.0,
-            semi_aperture=semi_aperture,
             is_mirror=False,
             tilt_x=0.0,
             tilt_y=0.0,
@@ -388,7 +513,7 @@ class OpticalSystem:
             ============================================================
             
             表面 0: standard
-              位置: z = 50.000 mm
+              位置: (0.000, 0.000, 50.000) mm
               曲率半径: 无穷大 (平面)
               反射镜: 是
               倾斜: tilt_x = 45.00°, tilt_y = 0.00°
@@ -408,7 +533,8 @@ class OpticalSystem:
         
         for surface in self._surfaces:
             print(f"\n表面 {surface.index}: {surface.surface_type}")
-            print(f"  位置: z = {surface.z:.3f} mm")
+            # 显示完整的 (x, y, z) 位置
+            print(f"  位置: ({surface.x:.3f}, {surface.y:.3f}, {surface.z:.3f}) mm")
             
             # 曲率半径
             if np.isinf(surface.radius):
@@ -420,9 +546,6 @@ class OpticalSystem:
             if surface.conic != 0:
                 conic_type = self._get_conic_type(surface.conic)
                 print(f"  圆锥常数: {surface.conic:.6f} ({conic_type})")
-            
-            # 半口径
-            print(f"  半口径: {surface.semi_aperture:.3f} mm")
             
             # 反射镜标识
             if surface.is_mirror:
@@ -561,14 +684,15 @@ class OpticalSystem:
             # 计算姿态矩阵
             orientation = self._create_rotation_matrix(surface.tilt_x, surface.tilt_y)
             
+            # 使用完整的 (x, y, z) 位置
             global_surface = GlobalSurfaceDefinition(
                 index=surface.index,
                 surface_type=surface.surface_type,
-                vertex_position=np.array([0.0, 0.0, surface.z]),
+                vertex_position=np.array([surface.x, surface.y, surface.z]),
                 orientation=orientation,
                 radius=surface.radius,
                 conic=surface.conic,
-                semi_aperture=surface.semi_aperture,
+                semi_aperture=1000.0,  # 固定大值，不允许用户设置
                 is_mirror=surface.is_mirror,
                 material=surface.material if surface.material else ('MIRROR' if surface.is_mirror else ''),
                 focal_length=surface.focal_length if surface.focal_length is not None else np.inf,

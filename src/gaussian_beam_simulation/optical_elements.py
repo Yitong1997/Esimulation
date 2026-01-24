@@ -261,7 +261,6 @@ class ParabolicMirror(OpticalElement):
         parent_focal_length: 母抛物面焦距（mm）
             - 正值表示凹面镜（聚焦）
             - 负值表示凸面镜（发散）
-        off_axis_distance: 离轴距离（mm），默认 0（轴上）
         tilt_x, tilt_y: 旋转角度（rad）
         decenter_x, decenter_y: 偏心（mm）
         name: 元件名称
@@ -276,7 +275,6 @@ class ParabolicMirror(OpticalElement):
     """
     
     parent_focal_length: float = 100.0  # mm
-    off_axis_distance: float = 0.0  # mm
     
     def __post_init__(self) -> None:
         """初始化后验证参数"""
@@ -294,17 +292,6 @@ class ParabolicMirror(OpticalElement):
             )
         if self.parent_focal_length == 0:
             raise ValueError("母抛物面焦距 (parent_focal_length) 不能为零")
-        
-        if not isinstance(self.off_axis_distance, (int, float)):
-            raise ValueError(
-                f"离轴距离 (off_axis_distance) 必须为数值类型，"
-                f"实际类型为 {type(self.off_axis_distance).__name__}"
-            )
-        if not np.isfinite(self.off_axis_distance):
-            raise ValueError(
-                f"离轴距离 (off_axis_distance) 必须为有限实数，"
-                f"实际值为 {self.off_axis_distance}"
-            )
     
     @property
     def focal_length(self) -> float:
@@ -341,7 +328,6 @@ class ParabolicMirror(OpticalElement):
             conic=self.conic_constant,
             tilt_x=self.tilt_x,
             tilt_y=self.tilt_y,
-            off_axis_distance=self.off_axis_distance,
         )
 
 

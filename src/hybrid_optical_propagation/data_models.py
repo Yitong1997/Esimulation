@@ -667,26 +667,15 @@ class SourceDefinition:
         z_m = z_mm * 1e-3  # (m)
         
         # 创建 PROPER 波前
-        # beam_diameter = 2 * w0
+        # beam_diameter = 2 * w0（PROPER 固定用法）
         beam_diameter_m = 2 * self.w0_mm * 1e-3
-        grid_width_m = self.physical_size_mm * 1e-3
         
-        # 计算 beam_diam_fraction
-        if self.beam_diam_fraction is not None:
-            # 使用用户指定的值
-            beam_diam_fraction = self.beam_diam_fraction
-        else:
-            # 自动计算：beam_diameter / grid_width
-            beam_diam_fraction = beam_diameter_m / grid_width_m
-        
-        # 限制在有效范围内
-        beam_diam_fraction = max(0.1, min(0.9, beam_diam_fraction))
-        
+        # beam_diam_fraction = 0.5（PROPER 固定用法）
         wfo = proper.prop_begin(
             beam_diameter_m,
             wavelength_m,
             self.grid_size,
-            beam_diam_fraction,
+            0.5,
         )
         
         # 同步 PROPER 高斯光束参数（关键！）
@@ -782,17 +771,14 @@ class SourceDefinition:
         返回:
             GridSampling 对象
         """
-        # 计算实际使用的 beam_ratio
-        if self.beam_diam_fraction is not None:
-            beam_ratio = self.beam_diam_fraction
-        else:
-            beam_diameter_m = 2 * self.w0_mm * 1e-3
-            grid_width_m = self.physical_size_mm * 1e-3
-            beam_ratio = beam_diameter_m / grid_width_m
-        beam_ratio = max(0.1, min(0.9, beam_ratio))
+        # 网格物理尺寸固定为 4 × w0（PROPER 固定用法）
+        # 当 beam_diameter = 2*w0 且 beam_diam_fraction = 0.5 时：
+        # dx = beam_diameter / (grid_n * 0.5) = 4*w0 / grid_n
+        # physical_size = dx * grid_n = 4 * w0
+        actual_physical_size_mm = 4 * self.w0_mm
         
         return GridSampling.create(
             grid_size=self.grid_size,
-            physical_size_mm=self.physical_size_mm,
-            beam_ratio=beam_ratio,
+            physical_size_mm=actual_physical_size_mm,
+            beam_ratio=0.5,  # 固定为 0.5
         )

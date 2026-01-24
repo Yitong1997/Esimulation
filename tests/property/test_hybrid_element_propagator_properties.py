@@ -176,7 +176,6 @@ def test_property_10_pilot_beam_update_mirror(
         radius: float = 200.0
         conic: float = 0.0
         thickness: float = 0.0
-        semi_aperture: float = 25.0
         material: str = "mirror"
     
     propagator = HybridElementPropagator(

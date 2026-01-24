@@ -967,7 +967,6 @@ class ElementConverter:
                 thickness=thickness,
                 semi_aperture=semi_aperture,
                 parent_focal_length=parent_focal_length,
-                off_axis_distance=0.0,  # 默认轴上
                 tilt_x=tilt_x,
                 tilt_y=tilt_y,
                 decenter_x=decenter_x,
@@ -1459,8 +1458,6 @@ class CodeGenerator:
         # 类型特定参数
         if element_type == "ParabolicMirror":
             params.append(("parent_focal_length", element.parent_focal_length))
-            if hasattr(element, 'off_axis_distance') and element.off_axis_distance != 0.0:
-                params.append(("off_axis_distance", element.off_axis_distance))
         elif element_type == "SphericalMirror":
             params.append(("radius_of_curvature", element.radius_of_curvature))
         

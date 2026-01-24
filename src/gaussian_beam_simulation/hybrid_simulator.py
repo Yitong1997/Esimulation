@@ -134,11 +134,9 @@ class HybridGaussianBeamSimulator:
         self._compute_element_positions()
         
         # 计算初始光束直径
-        # 在 z_init 位置的光束半径
-        w_init = beam.w(beam.z_init)
-        # PROPER 的 beam_diameter 参数是光束直径（2 * w）
-        # 我们使用 2 * w_init 作为光束直径
-        self.beam_diameter = 2 * w_init
+        # beam_diameter = 2 × w0（PROPER 固定用法）
+        # 必须使用束腰半径 w0，而不是某位置的光斑半径 w_init
+        self.beam_diameter = 2 * beam.w0
         
         # 波长（转换为米）
         self.wavelength_m = beam.wavelength * 1e-6
@@ -200,11 +198,12 @@ class HybridGaussianBeamSimulator:
             raise RuntimeError(f"网格大小必须为正整数，实际为 {self.grid_size}")
         
         try:
+            # beam_diam_fraction = 0.5（PROPER 固定用法）
             self.wfo = proper.prop_begin(
                 beam_diameter_m,
                 self.wavelength_m,
                 self.grid_size,
-                self.beam_ratio,
+                0.5,
             )
         except Exception as e:
             raise RuntimeError(f"PROPER 波前初始化失败: {e}") from e

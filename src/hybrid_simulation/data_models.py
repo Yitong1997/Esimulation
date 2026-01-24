@@ -121,3 +121,131 @@ class OpticalAxisInfo:
     exit_position: NDArray[np.floating]
     exit_direction: NDArray[np.floating]
     path_length: float
+
+
+# ============================================================================
+# 调试数据类（用于 OAP 混合光线追迹调试）
+# ============================================================================
+
+@dataclass
+class RayData:
+    """光线数据
+    
+    存储一组光线的位置、方向和 OPD 信息。
+    用于调试和验证光线追迹结果。
+    
+    属性:
+        x: X 坐标数组 (mm)
+        y: Y 坐标数组 (mm)
+        z: Z 坐标数组 (mm)
+        L: X 方向余弦数组
+        M: Y 方向余弦数组
+        N: Z 方向余弦数组
+        opd: 光程差数组 (mm)
+        intensity: 强度数组
+    
+    **Validates: Requirements 12.1**
+    """
+    x: NDArray[np.floating]
+    y: NDArray[np.floating]
+    z: NDArray[np.floating]
+    L: NDArray[np.floating]
+    M: NDArray[np.floating]
+    N: NDArray[np.floating]
+    opd: NDArray[np.floating]
+    intensity: NDArray[np.floating]
+    
+    @property
+    def num_rays(self) -> int:
+        """光线数量"""
+        return len(self.x)
+    
+    def get_positions(self) -> NDArray[np.floating]:
+        """获取位置数组 (N, 3)"""
+        return np.column_stack([self.x, self.y, self.z])
+    
+    def get_directions(self) -> NDArray[np.floating]:
+        """获取方向数组 (N, 3)"""
+        return np.column_stack([self.L, self.M, self.N])
+
+
+@dataclass
+class ChiefRayData:
+    """主光线数据
+    
+    存储主光线的几何信息，用于验证光线追迹的正确性。
+    
+    属性:
+        entrance_position: 入射面位置 (x, y, z) (mm)
+        entrance_direction: 入射方向 (L, M, N)
+        intersection_point: 与表面交点 (x, y, z) (mm)
+        exit_position: 出射面位置 (x, y, z) (mm)
+        exit_direction: 出射方向 (L, M, N)
+        surface_normal: 交点处表面法向量 (nx, ny, nz)
+    
+    **Validates: Requirements 12.1**
+    """
+    entrance_position: tuple
+    entrance_direction: tuple
+    intersection_point: tuple
+    exit_position: tuple
+    exit_direction: tuple
+    surface_normal: tuple
+
+
+@dataclass
+class CoordinateSystemData:
+    """坐标系数据
+    
+    存储入射面或出射面的坐标系信息。
+    
+    属性:
+        origin: 原点位置（全局坐标）(x, y, z) (mm)
+        rotation_matrix: 3x3 旋转矩阵（从局部到全局）
+        z_axis: Z 轴方向（光轴方向）(L, M, N)
+    
+    **Validates: Requirements 12.1**
+    """
+    origin: tuple
+    rotation_matrix: NDArray[np.floating]
+    z_axis: tuple
+
+
+@dataclass
+class PilotBeamParamsData:
+    """Pilot Beam 参数数据
+    
+    存储 Pilot Beam 的参数，用于调试验证。
+    
+    属性:
+        wavelength_um: 波长 (μm)
+        waist_radius_mm: 束腰半径 (mm)
+        waist_position_mm: 束腰位置 (mm)
+        curvature_radius_mm: 曲率半径 (mm)
+        spot_size_mm: 光斑大小 (mm)
+    
+    **Validates: Requirements 12.1**
+    """
+    wavelength_um: float
+    waist_radius_mm: float
+    waist_position_mm: float
+    curvature_radius_mm: float
+    spot_size_mm: float
+    
+    @classmethod
+    def from_pilot_beam_params(cls, params) -> "PilotBeamParamsData":
+        """从 PilotBeamParams 创建
+        
+        参数:
+            params: PilotBeamParams 对象
+        
+        返回:
+            PilotBeamParamsData 对象
+        """
+        return cls(
+            wavelength_um=params.wavelength_um,
+            waist_radius_mm=params.waist_radius_mm,
+            waist_position_mm=params.waist_position_mm,
+            curvature_radius_mm=params.curvature_radius_mm,
+            spot_size_mm=params.spot_size_mm,
+        )

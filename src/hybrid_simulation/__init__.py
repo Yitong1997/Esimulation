@@ -41,6 +41,11 @@ from .data_models import (
     SourceParams,
     SurfaceGeometry,
     OpticalAxisInfo,
+    # 调试数据类
+    RayData,
+    ChiefRayData,
+    CoordinateSystemData,
+    PilotBeamParamsData,
 )
 from .exceptions import ConfigurationError, SimulationError
 from .plotting import (
@@ -62,6 +67,11 @@ __all__ = [
     "SourceParams",
     "SurfaceGeometry",
     "OpticalAxisInfo",
+    # 调试数据类
+    "RayData",
+    "ChiefRayData",
+    "CoordinateSystemData",
+    "PilotBeamParamsData",
     # 异常
     "ConfigurationError",
     "SimulationError",

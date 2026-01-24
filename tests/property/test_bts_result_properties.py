@@ -67,40 +67,42 @@ radius_strategy = st.floats(
 def create_simple_flat_mirror_system(
     z: float = 50.0,
     tilt_x: float = 0.0,
-    semi_aperture: float = 25.0,
 ) -> OpticalSystem:
     """创建简单的平面镜系统
     
     参数:
         z: 镜面位置 (mm)
         tilt_x: 绕 X 轴倾斜角度（度）
-        semi_aperture: 半口径 (mm)
     
     返回:
         OpticalSystem 对象
+    
+    注意:
+        🚫 禁止设置 semi_aperture 参数！
     """
     system = OpticalSystem("Test Flat Mirror")
-    system.add_flat_mirror(z=z, tilt_x=tilt_x, semi_aperture=semi_aperture)
+    system.add_flat_mirror(z=z, tilt_x=tilt_x)
     return system
 
 
 def create_simple_spherical_mirror_system(
     z: float = 100.0,
     radius: float = 200.0,
-    semi_aperture: float = 25.0,
 ) -> OpticalSystem:
     """创建简单的球面镜系统
     
     参数:
         z: 镜面位置 (mm)
         radius: 曲率半径 (mm)
-        semi_aperture: 半口径 (mm)
     
     返回:
         OpticalSystem 对象
+    
+    注意:
+        🚫 禁止设置 semi_aperture 参数！
     """
     system = OpticalSystem("Test Spherical Mirror")
-    system.add_spherical_mirror(z=z, radius=radius, semi_aperture=semi_aperture)
+    system.add_spherical_mirror(z=z, radius=radius)
     return system
 
 
@@ -307,7 +309,7 @@ def test_property_8_save_load_roundtrip_multiple_surfaces(
     
     for i in range(num_surfaces):
         z = 50.0 + i * 100.0  # 每个表面间隔 100mm
-        system.add_flat_mirror(z=z, tilt_x=0.0, semi_aperture=30.0)
+        system.add_flat_mirror(z=z, tilt_x=0.0)
     
     # 创建光源
     source = create_valid_source(
@@ -719,7 +721,7 @@ def test_save_load_with_special_characters_in_surface_name():
     """
     # 创建光学系统
     system = OpticalSystem("Test System with Special Name")
-    system.add_flat_mirror(z=50.0, semi_aperture=25.0)
+    system.add_flat_mirror(z=50.0)
     
     source = create_valid_source()
     

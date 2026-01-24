@@ -1,0 +1,55 @@
+{
+  "spec_name": "oap-hybrid-raytracing-debug",
+  "last_updated": "2026-01-24T00:15:20.435078",
+  "steps": [
+    {
+      "name": "主光线追迹验证",
+      "description": "验证主光线与 OAP 的交点坐标和反射方向",
+      "status": "已验证",
+      "timestamp": "2026-01-23T23:44:22.643268",
+      "notes": "所有 4 组参数测试通过"
+    },
+    {
+      "name": "入射面坐标系验证",
+      "description": "验证入射面垂直于入射主光线，坐标变换正确",
+      "status": "已验证",
+      "timestamp": "2026-01-23T23:55:34.110576",
+      "notes": "所有 4 组参数测试通过"
+    },
+    {
+      "name": "出射面坐标系验证",
+      "description": "验证出射面垂直于出射主光线，坐标变换正确",
+      "status": "已验证",
+      "timestamp": "2026-01-23T23:55:34.111611",
+      "notes": "所有 4 组参数测试通过"
+    },
+    {
+      "name": "Pilot Beam 参数验证",
+      "description": "验证等效焦距和 ABCD 变换计算正确",
+      "status": "已验证",
+      "timestamp": "2026-01-23T23:57:07.061568",
+      "notes": "所有 4 组参数测试通过"
+    },
+    {
+      "name": "optiland 离轴追迹验证",
+      "description": "验证 optiland 在绝对坐标模式下正确追迹 OAP",
+      "status": "已验证",
+      "timestamp": "2026-01-23T21:00:07.556800",
+      "notes": "所有 4 组参数测试通过，与 ChiefRayTracer 结果一致"
+    },
+    {
+      "name": "残差 OPD 计算验证",
+      "description": "验证残差 OPD 计算正确，RMS < 1 milli-wave",
+      "status": "失败",
+      "timestamp": "2026-01-24T00:15:20.434046",
+      "notes": "验证失败: 长焦距_离轴, 超长焦距_离轴"
+    },
+    {
+      "name": "网格重采样验证",
+      "description": "验证残差 OPD 重采样到网格的精度",
+      "status": "失败",
+      "timestamp": "2026-01-24T00:15:20.434847",
+      "notes": "验证失败: 长焦距_离轴, 超长焦距_离轴"
+    }
+  ]
+}

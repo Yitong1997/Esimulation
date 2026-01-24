@@ -39,7 +39,6 @@ class MockSurfaceDefinition:
     radius: float = np.inf
     conic: float = 0.0
     is_mirror: bool = False
-    semi_aperture: float = 25.0
     material: str = "air"
     asphere_coeffs: List[float] = field(default_factory=list)
     comment: str = ""

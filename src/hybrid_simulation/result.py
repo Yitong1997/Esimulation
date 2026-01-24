@@ -12,7 +12,10 @@ from typing import List, Optional, Union, TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 
-from .data_models import SimulationConfig, SourceParams, SurfaceGeometry, OpticalAxisInfo
+from .data_models import (
+    SimulationConfig, SourceParams, SurfaceGeometry, OpticalAxisInfo,
+    RayData, ChiefRayData, CoordinateSystemData, PilotBeamParamsData,
+)
 
 if TYPE_CHECKING:
     from hybrid_optical_propagation import PilotBeamParams, GridSampling
@@ -182,6 +185,11 @@ class SurfaceRecord:
         entrance: 入射面波前数据
         exit: 出射面波前数据
         optical_axis: 光轴状态信息
+        entrance_rays: 入射面光线数据（可选，用于调试）
+        exit_rays: 出射面光线数据（可选，用于调试）
+        chief_ray: 主光线数据（可选，用于调试）
+        entrance_coord_system: 入射面坐标系（可选，用于调试）
+        exit_coord_system: 出射面坐标系（可选，用于调试）
     """
     index: int
     name: str
@@ -190,6 +198,12 @@ class SurfaceRecord:
     entrance: Optional[WavefrontData]
     exit: Optional[WavefrontData]
     optical_axis: Optional[OpticalAxisInfo]
+    # 调试数据字段（可选）
+    entrance_rays: Optional["RayData"] = None
+    exit_rays: Optional["RayData"] = None
+    chief_ray: Optional["ChiefRayData"] = None
+    entrance_coord_system: Optional["CoordinateSystemData"] = None
+    exit_coord_system: Optional["CoordinateSystemData"] = None
 
 
 @dataclass
@@ -428,3 +442,149 @@ class SimulationResult:
             raise ValueError(f"表面 [{surface.index}] {surface.name} 没有出射波前数据")
         
         return surface.exit
+
+    # ========================================================================
+    # 调试数据读取接口（用于 OAP 混合光线追迹调试）
+    # ========================================================================
+    
+    def get_surface_rays(
+        self,
+        surface_index: int,
+        location: str = "exit",
+    ) -> RayData:
+        """获取指定表面的光线数据
+        
+        参数:
+            surface_index: 表面索引
+            location: "entrance"（入射面）或 "exit"（出射面）
+        
+        返回:
+            RayData 对象，包含光线位置、方向、OPD 等
+        
+        异常:
+            KeyError: 未找到指定表面
+            ValueError: 指定位置没有光线数据
+        
+        **Validates: Requirements 12.1, 12.2**
+        """
+        surface = self.get_surface(surface_index)
+        
+        if location == "entrance":
+            if surface.entrance_rays is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有入射面光线数据。"
+                    "请确保仿真时启用了光线数据记录。"
+                )
+            return surface.entrance_rays
+        elif location == "exit":
+            if surface.exit_rays is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有出射面光线数据。"
+                    "请确保仿真时启用了光线数据记录。"
+                )
+            return surface.exit_rays
+        else:
+            raise ValueError(f"无效的 location 参数: {location}，必须是 'entrance' 或 'exit'")
+    
+    def get_chief_ray(self, surface_index: int) -> ChiefRayData:
+        """获取指定表面的主光线数据
+        
+        参数:
+            surface_index: 表面索引
+        
+        返回:
+            ChiefRayData 对象，包含入射/出射方向、交点位置等
+        
+        异常:
+            KeyError: 未找到指定表面
+            ValueError: 没有主光线数据
+        
+        **Validates: Requirements 12.1, 12.2**
+        """
+        surface = self.get_surface(surface_index)
+        
+        if surface.chief_ray is None:
+            raise ValueError(
+                f"表面 [{surface.index}] {surface.name} 没有主光线数据。"
+                "请确保仿真时启用了光线数据记录。"
+            )
+        
+        return surface.chief_ray
+    
+    def get_pilot_beam_params(
+        self,
+        surface_index: int,
+        location: str = "exit",
+    ) -> PilotBeamParamsData:
+        """获取指定表面的 Pilot Beam 参数
+        
+        参数:
+            surface_index: 表面索引
+            location: "entrance" 或 "exit"
+        
+        返回:
+            PilotBeamParamsData 对象
+        
+        异常:
+            KeyError: 未找到指定表面
+            ValueError: 指定位置没有波前数据
+        
+        **Validates: Requirements 12.1, 12.2**
+        """
+        surface = self.get_surface(surface_index)
+        
+        if location == "entrance":
+            if surface.entrance is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有入射面波前数据"
+                )
+            pilot_beam = surface.entrance.pilot_beam
+        elif location == "exit":
+            if surface.exit is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有出射面波前数据"
+                )
+            pilot_beam = surface.exit.pilot_beam
+        else:
+            raise ValueError(f"无效的 location 参数: {location}，必须是 'entrance' 或 'exit'")
+        
+        return PilotBeamParamsData.from_pilot_beam_params(pilot_beam)
+    
+    def get_coordinate_system(
+        self,
+        surface_index: int,
+        location: str = "exit",
+    ) -> CoordinateSystemData:
+        """获取指定表面的坐标系信息
+        
+        参数:
+            surface_index: 表面索引
+            location: "entrance" 或 "exit"
+        
+        返回:
+            CoordinateSystemData 对象，包含原点位置、旋转矩阵等
+        
+        异常:
+            KeyError: 未找到指定表面
+            ValueError: 指定位置没有坐标系数据
+        
+        **Validates: Requirements 12.1, 12.2**
+        """
+        surface = self.get_surface(surface_index)
+        
+        if location == "entrance":
+            if surface.entrance_coord_system is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有入射面坐标系数据。"
+                    "请确保仿真时启用了光线数据记录。"
+                )
+            return surface.entrance_coord_system
+        elif location == "exit":
+            if surface.exit_coord_system is None:
+                raise ValueError(
+                    f"表面 [{surface.index}] {surface.name} 没有出射面坐标系数据。"
+                    "请确保仿真时启用了光线数据记录。"
+                )
+            return surface.exit_coord_system
+        else:
+            raise ValueError(f"无效的 location 参数: {location}，必须是 'entrance' 或 'exit'")

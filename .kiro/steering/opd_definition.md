@@ -24,8 +24,8 @@ inclusion: always
 |----------|------|------|----------|
 | **绝对光程** | 从物面到当前位置的总光程 Σ(n×d) | mm | optiland 内部 |
 | **相对光程差** | 相对于主光线的光程差 | mm/waves | 光线追迹输出 |
-| **Pilot Beam OPD** | r²/(2R)，主光线处为 0 | mm | 相位解包裹参考 |
-| **残差 OPD** | 实际 OPD - Pilot Beam OPD | mm/waves | 网格重采样 |
+| **Pilot Beam OPD** | r²/(2R)，R 带符号，主光线处为 0 | mm | 相位解包裹参考 |
+| **残差 OPD** | 实际 OPD + Pilot Beam OPD（注意是加法！） | mm/waves | 网格重采样 |
 
 ---
 
@@ -65,8 +65,9 @@ inclusion: always
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 1. 获取出射光线 OPD（相对于入射面 Pilot Beam 的总 OPD）          │
-│ 2. 计算出射面 Pilot Beam OPD                                     │
-│ 3. 残差 OPD = output_opd - exit_pilot_opd（应很小）              │
+│ 2. 计算出射面 Pilot Beam OPD（带符号：r²/(2R)，R 可正可负）      │
+│ 3. 残差 OPD = output_opd + exit_pilot_opd（注意是加法！）        │
+│    说明：absolute_opd > 0，pilot_opd < 0（会聚波），两者相加≈0   │
 │ 4. 重采样残差 OPD 到网格                                         │
 │ 5. 重建：total_opd = pilot_opd + residual → 仿真复振幅           │
 └─────────────────────────────────────────────────────────────────┘

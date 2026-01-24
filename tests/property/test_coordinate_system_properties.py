@@ -794,7 +794,6 @@ class TestOptilandConverterProperties:
             radius=radius,
             conic=conic,
             is_mirror=True,
-            semi_aperture=25.0
         )
         
         # Act
@@ -823,7 +822,6 @@ class TestOptilandConverterProperties:
             orientation=np.eye(3),
             radius=100.0,
             is_mirror=True,
-            semi_aperture=25.0,
             thickness=50.0
         )
         

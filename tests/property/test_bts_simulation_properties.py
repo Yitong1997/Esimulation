@@ -56,11 +56,7 @@ radius_strategy = st.floats(
     allow_nan=False, allow_infinity=False
 )
 
-# 半口径策略（单位 mm）
-semi_aperture_strategy = st.floats(
-    min_value=10.0, max_value=50.0,
-    allow_nan=False, allow_infinity=False
-)
+# 半口径策略已废弃 - 🚫 禁止设置口径/半口径参数
 
 
 # ============================================================================
@@ -70,40 +66,42 @@ semi_aperture_strategy = st.floats(
 def create_simple_flat_mirror_system(
     z: float = 50.0,
     tilt_x: float = 0.0,
-    semi_aperture: float = 25.0,
 ) -> OpticalSystem:
     """创建简单的平面镜系统
     
     参数:
         z: 镜面位置 (mm)
         tilt_x: 绕 X 轴倾斜角度（度）
-        semi_aperture: 半口径 (mm)
     
     返回:
         OpticalSystem 对象
+    
+    注意:
+        🚫 禁止设置 semi_aperture 参数！
     """
     system = OpticalSystem("Test Flat Mirror")
-    system.add_flat_mirror(z=z, tilt_x=tilt_x, semi_aperture=semi_aperture)
+    system.add_flat_mirror(z=z, tilt_x=tilt_x)
     return system
 
 
 def create_simple_spherical_mirror_system(
     z: float = 100.0,
     radius: float = 200.0,
-    semi_aperture: float = 25.0,
 ) -> OpticalSystem:
     """创建简单的球面镜系统
     
     参数:
         z: 镜面位置 (mm)
         radius: 曲率半径 (mm)
-        semi_aperture: 半口径 (mm)
     
     返回:
         OpticalSystem 对象
+    
+    注意:
+        🚫 禁止设置 semi_aperture 参数！
     """
     system = OpticalSystem("Test Spherical Mirror")
-    system.add_spherical_mirror(z=z, radius=radius, semi_aperture=semi_aperture)
+    system.add_spherical_mirror(z=z, radius=radius)
     return system
 
 
@@ -278,7 +276,7 @@ def test_property_6_simulate_returns_complete_result_multiple_surfaces(
     
     for i in range(num_surfaces):
         z = 50.0 + i * 100.0  # 每个表面间隔 100mm
-        system.add_flat_mirror(z=z, tilt_x=0.0, semi_aperture=30.0)
+        system.add_flat_mirror(z=z, tilt_x=0.0)
     
     # 创建光源
     source = create_valid_source(
@@ -716,7 +714,7 @@ def test_simulate_with_minimum_valid_parameters():
     """
     # 创建最简单的光学系统
     system = OpticalSystem("Minimal System")
-    system.add_flat_mirror(z=10.0, semi_aperture=10.0)
+    system.add_flat_mirror(z=10.0)
     
     # 创建最小参数的光源
     source = GaussianSource(

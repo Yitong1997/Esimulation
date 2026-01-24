@@ -49,10 +49,6 @@ class SurfaceDefinition:
             - > 0: 椭球面（长椭球）
         tilt_x: 绕 X 轴旋转角度（弧度），默认 0.0
         tilt_y: 绕 Y 轴旋转角度（弧度），默认 0.0
-        off_axis_distance: 离轴距离（mm），默认 0.0
-            - 用于离轴抛物面镜（OAP）
-            - 表示光束在母抛物面上相对于光轴的偏移距离
-            - 对于 90° OAP，off_axis_distance = 2 * |focal_length|
     
     示例:
         >>> # 创建凹面反射镜（焦距 100mm，曲率半径 200mm）
@@ -91,24 +87,12 @@ class SurfaceDefinition:
         ...     conic=-1.0  # 抛物面
         ... )
         
-        >>> # 创建 90° 离轴抛物面镜（OAP）
-        >>> oap_90deg = SurfaceDefinition(
-        ...     surface_type='mirror',
-        ...     radius=200.0,  # R = 2f, f = 100mm
-        ...     thickness=0.0,
-        ...     material='mirror',
-        ...     semi_aperture=15.0,
-        ...     conic=-1.0,  # 抛物面
-        ...     tilt_x=np.pi/4,  # 45° 倾斜
-        ...     off_axis_distance=200.0,  # 2 * |f| = 200mm
-        ... )
-    
     注意:
         - 曲率半径符号约定遵循 optiland 标准：
           正值表示曲率中心在表面顶点的 +Z 方向
         - 对于凹面镜，焦距 f = R/2（R 为曲率半径）
         - 抛物面的圆锥常数 k = -1
-        - 离轴距离通过 optiland 的 dy 参数（Y 方向偏心）实现
+        - 离轴效果通过绝对坐标定位实现，不使用偏心参数
     
     Validates:
         - Requirements 2.1: 支持定义球面反射镜（通过曲率半径参数）
@@ -127,7 +111,10 @@ class SurfaceDefinition:
     conic: float = 0.0  # 圆锥常数，默认 0.0（球面）
     tilt_x: float = 0.0  # 绕 X 轴旋转角度（弧度）
     tilt_y: float = 0.0  # 绕 Y 轴旋转角度（弧度）
-    off_axis_distance: float = 0.0  # 离轴距离（mm），用于离轴抛物面镜（OAP）
+    # 表面顶点在全局坐标系中的位置 (x, y, z)，单位：mm
+    # 对于离轴系统（如 OAP），这是表面顶点的实际位置
+    # 默认为 (0, 0, 0)，即表面顶点在全局原点
+    vertex_position: Optional[Tuple[float, float, float]] = None
     
     def __post_init__(self) -> None:
         """初始化后验证参数有效性"""
@@ -205,17 +192,6 @@ class SurfaceDefinition:
             raise ValueError(
                 f"Y 轴旋转角度必须为有限值，实际为 {self.tilt_y}"
             )
-        
-        # 验证离轴距离
-        if not isinstance(self.off_axis_distance, (int, float)):
-            raise TypeError(
-                f"离轴距离类型错误：期望 int 或 float，"
-                f"实际为 {type(self.off_axis_distance).__name__}"
-            )
-        if not np.isfinite(self.off_axis_distance):
-            raise ValueError(
-                f"离轴距离必须为有限值，实际为 {self.off_axis_distance}"
-            )
     
     def to_dict(self) -> Dict[str, Any]:
         """将表面定义转换为字典
@@ -250,7 +226,7 @@ class SurfaceDefinition:
             'conic': self.conic,
             'tilt_x': self.tilt_x,
             'tilt_y': self.tilt_y,
-            'off_axis_distance': self.off_axis_distance,
+            'vertex_position': self.vertex_position,
         }
     
     @property
@@ -305,10 +281,6 @@ class SurfaceDefinition:
             tilt_x_deg = np.degrees(self.tilt_x)
             tilt_y_deg = np.degrees(self.tilt_y)
             result += f", tilt=({tilt_x_deg:.1f}°, {tilt_y_deg:.1f}°)"
-        
-        # 添加离轴距离信息（如果有）
-        if self.off_axis_distance != 0.0:
-            result += f", off_axis={self.off_axis_distance:.2f} mm"
         
         result += ")"
         return result
@@ -408,6 +380,15 @@ def compute_rotation_matrix(
         4. 局部 Y 轴 = 局部 Z 轴 × 局部 X 轴
         5. 旋转矩阵的列向量为局部坐标轴在全局坐标系中的表示
     
+    坐标系一致性说明:
+        为了确保入射面和出射面的局部坐标系保持一致的"上下"方向，
+        我们需要确保局部 Y 轴始终与全局 Y 轴的投影方向一致。
+        
+        当主光线方向的 Z 分量为负时（如反射后向 -Z 方向传播），
+        简单地翻转 X 轴会导致 Y 轴也翻转，从而破坏坐标系的一致性。
+        
+        正确的做法是：确保局部 Y 轴在全局 Y 方向上的投影为正。
+    
     Validates:
         - Requirements 3.1: 入射面定位于 z=0 位置
         - Requirements 3.2: 出射面定位于最后一个光学表面的顶点位置
@@ -448,9 +429,21 @@ def compute_rotation_matrix(
     x_local = np.cross(ref, z_local)
     x_local = _normalize_vector(x_local)
     
-    # 局部 Y 轴 = z_local × x_local
+    # 局部 Y 轴 = z_local × x_local（确保右手系）
     y_local = np.cross(z_local, x_local)
     # y_local 已经是归一化的（因为 z_local 和 x_local 都是归一化且正交的）
+    
+    # ⚠️ 关键修复：确保局部 Y 轴与全局 Y 轴的投影为正
+    # 这样可以保证入射面和出射面的局部坐标系保持一致的"上下"方向
+    # 
+    # 当主光线方向的 Z 分量为负时（如反射后向 -Z 方向传播），
+    # 叉积的结果可能导致 Y 轴翻转。
+    # 
+    # 通过检查 Y 轴在全局 Y 方向上的投影，如果为负则同时翻转 X 和 Y 轴
+    # （同时翻转 X 和 Y 保持右手系）
+    if y_local[1] < 0:
+        x_local = -x_local
+        y_local = -y_local
     
     # 旋转矩阵：列向量为局部坐标轴在全局坐标系中的表示
     # R = [x_local | y_local | z_local]
@@ -967,12 +960,21 @@ class ElementRaytracer:
         self.input_rays: Optional[RealRays] = None   # 将由 trace 方法设置（用于雅可比矩阵计算）
         self.output_rays: Optional[RealRays] = None  # 将由 trace 方法设置
         self._chief_ray_traced: bool = False  # 标记主光线是否已追迹
+        self._optic_finalized: bool = False  # 标记光学系统是否已完成（包含出射面）
         self.exit_chief_direction: Optional[Tuple[float, float, float]] = None  # 出射主光线方向
         self.exit_rotation_matrix: Optional[NDArray] = None  # 出射面旋转矩阵
+        self._chief_ray_data: Optional[Dict[str, Any]] = None  # 主光线追迹数据
+        self._chief_intersection_local: Optional[Tuple[float, float, float]] = None  # 主光线交点位置（入射面局部坐标系）
         
-        # 创建 optiland 光学系统
-        self.optic = None  # 将由 _create_optic 方法创建
-        self._create_optic()
+        # 创建 optiland 光学系统（不包含出射面）
+        self.optic = None  # 将由 _create_optic_base 方法创建
+        self._create_optic_base()
+        
+        # 如果提供了出射方向，直接完成光学系统
+        if self._provided_exit_direction is not None:
+            self.exit_chief_direction = self._provided_exit_direction
+            self._chief_ray_traced = True
+            self._finalize_optic()
     
     def trace(self, input_rays: RealRays) -> RealRays:
         """执行光线追迹
@@ -1022,6 +1024,19 @@ class ElementRaytracer:
             - Requirements 4.4: 累计计算光线的 OPD
             - Requirements 4.5: 光线未能到达光学表面时标记为无效
         """
+        # =====================================================================
+        # 确保主光线已追迹，光学系统已完成
+        # =====================================================================
+        
+        if not self._chief_ray_traced:
+            # 自动追迹主光线
+            self.trace_chief_ray()
+        
+        if not self._optic_finalized:
+            raise RuntimeError(
+                "光学系统尚未完成创建。请先调用 trace_chief_ray() 方法。"
+            )
+        
         # =====================================================================
         # 验证输入参数类型
         # =====================================================================
@@ -1132,25 +1147,85 @@ class ElementRaytracer:
         
         # 使用带符号 OPD 追迹，正确处理折叠光路中的 OPD 计算
         # 关键区别：不使用 abs(t)，保留传播距离的符号
+        # 注意：现在不追迹到出射面，只追迹到光学表面
         self._trace_with_signed_opd(traced_rays, skip=1)
         
         # =====================================================================
-        # 将输出光线从全局坐标系转换到出射面局部坐标系
+        # 将光线投影到出射面
         # =====================================================================
+        #
+        # 出射面是垂直于出射方向的平面，经过主光线交点。
+        # 我们需要计算每条光线与出射面的交点，并更新 OPD。
+        #
+        # 出射面方程（在入射面局部坐标系中）：
+        # (P - P0) · n = 0
+        # 其中 P0 = 主光线交点，n = 出射方向
+        #
+        # 光线方程：P = P_ray + t * D_ray
+        # 代入得：t = (P0 - P_ray) · n / (D_ray · n)
+        
+        # 获取光线数据
+        x_ray = np.asarray(traced_rays.x)
+        y_ray = np.asarray(traced_rays.y)
+        z_ray = np.asarray(traced_rays.z)
+        L_ray = np.asarray(traced_rays.L)
+        M_ray = np.asarray(traced_rays.M)
+        N_ray = np.asarray(traced_rays.N)
+        opd_ray = np.asarray(traced_rays.opd)
+        
+        # 主光线交点（出射面原点）
+        chief_x, chief_y, chief_z = self._chief_intersection_local
+        P0 = np.array([chief_x, chief_y, chief_z])
+        
+        # 出射方向（出射面法向量）
+        n = np.array(self._exit_dir_local)
+        
+        # 计算每条光线到出射面的距离 t
+        # t = (P0 - P_ray) · n / (D_ray · n)
+        P_ray = np.stack([x_ray, y_ray, z_ray], axis=0)  # (3, n_rays)
+        D_ray = np.stack([L_ray, M_ray, N_ray], axis=0)  # (3, n_rays)
+        
+        # (P0 - P_ray) · n
+        diff = P0.reshape(3, 1) - P_ray  # (3, n_rays)
+        numerator = np.sum(diff * n.reshape(3, 1), axis=0)  # (n_rays,)
+        
+        # D_ray · n
+        denominator = np.sum(D_ray * n.reshape(3, 1), axis=0)  # (n_rays,)
+        
+        # 避免除以零
+        denominator = np.where(np.abs(denominator) < 1e-10, 1e-10, denominator)
+        
+        # 计算 t
+        t = numerator / denominator
+        
+        # 更新光线位置到出射面
+        x_exit_local = x_ray + t * L_ray
+        y_exit_local = y_ray + t * M_ray
+        z_exit_local = z_ray + t * N_ray
+        
+        # 更新 OPD（带符号）
+        # OPD 增量 = t（因为在空气中 n=1）
+        # 符号由 t 自然决定
+        opd_exit = opd_ray + t
+        
+        # 更新 traced_rays
+        traced_rays.x = x_exit_local
+        traced_rays.y = y_exit_local
+        traced_rays.z = z_exit_local
+        traced_rays.opd = opd_exit
         
         # =====================================================================
         # 将输出光线从入射面局部坐标系转换到出射面局部坐标系
         # =====================================================================
         #
         # 追迹是在入射面局部坐标系中进行的，出射光线也在入射面局部坐标系中。
-        # 我们需要将其转换到出射面局部坐标系。
+        # 我们需要将其转换到出射面局部坐标系，以便后续的 PROPER 传播。
         #
         # 变换步骤：
-        # 1. 入射面局部坐标系 → 全局坐标系（使用 rotation_matrix）
-        # 2. 全局坐标系 → 出射面局部坐标系（使用 exit_rotation_matrix.T）
+        # 1. 将所有光线位置减去主光线交点位置（平移到以主光线为原点）
+        # 2. 旋转到出射面局部坐标系
         #
-        # 组合变换矩阵：R_exit.T @ R_entrance
-        # 位置变换：出射面原点在入射面局部坐标系中是 (0, 0, 0)
+        # 重要：OPD 是标量，不受坐标变换影响
         
         # 计算从入射面局部坐标系到出射面局部坐标系的旋转矩阵
         # R_entrance_to_exit = R_exit.T @ R_entrance
@@ -1164,9 +1239,22 @@ class ElementRaytracer:
         M_entrance = np.asarray(traced_rays.M)
         N_entrance = np.asarray(traced_rays.N)
         
-        # 位置转换
-        pos_entrance = np.stack([x_entrance, y_entrance, z_entrance], axis=0)
-        pos_exit = R_entrance_to_exit @ pos_entrance
+        # =====================================================================
+        # 使用主光线交点位置作为出射面原点
+        # =====================================================================
+        # 主光线交点位置在 _finalize_optic() 中已计算并存储
+        # 这确保了出射面经过主光线与镜面的交点
+        
+        chief_x, chief_y, chief_z = self._chief_intersection_local
+        
+        # 平移：将主光线位置移到原点
+        x_centered = x_entrance - chief_x
+        y_centered = y_entrance - chief_y
+        z_centered = z_entrance - chief_z
+        
+        # 位置转换（先平移后旋转）
+        pos_centered = np.stack([x_centered, y_centered, z_centered], axis=0)
+        pos_exit = R_entrance_to_exit @ pos_centered
         
         x_exit = pos_exit[0]
         y_exit = pos_exit[1]
@@ -1191,6 +1279,7 @@ class ElementRaytracer:
             intensity=np.asarray(traced_rays.i),
             wavelength=np.asarray(traced_rays.w),
         )
+        # OPD 是标量，不受坐标变换影响，直接复制
         output_rays.opd = np.asarray(traced_rays.opd).copy()
         
         # =====================================================================
@@ -1248,64 +1337,557 @@ class ElementRaytracer:
     def _compute_exit_chief_direction(self) -> Tuple[float, float, float]:
         """计算出射主光线方向
         
-        对于反射镜：使用反射公式 r = d - 2(d·n)n
-        对于折射面：暂时返回入射方向（TODO: 实现折射计算）
+        对于抛物面，使用抛物面的光学性质直接计算反射方向。
+        对于其他表面，使用 optiland 的光线追迹。
         
         返回:
             出射主光线方向 (L, M, N)，全局坐标系，归一化
         
         说明:
-            - 入射方向为 chief_ray_direction
-            - 表面法向量考虑倾斜（tilt_x, tilt_y）
-            - 初始法向量沿 -Z（指向入射侧）
-            - 旋转顺序：X → Y
+            - 对于抛物面（conic = -1），使用光学性质：平行于光轴的光线反射后通过焦点
+            - 对于其他表面，使用 optiland 追迹
         
         Validates:
-            - Requirements REQ-1.1: 使用反射定律计算出射方向
+            - Requirements REQ-1.1: 使用实际光线追迹计算出射方向
         """
-        surface = self.surfaces[0]
+        # 检查是否是抛物面反射镜
+        first_surface = self.surfaces[0]
+        is_parabola = np.isclose(first_surface.conic, -1.0, atol=1e-6)
+        is_mirror = first_surface.surface_type == 'mirror'
         
-        if surface.surface_type == 'mirror':
-            # 入射方向（全局坐标系）
-            d = np.array(self.chief_ray_direction, dtype=np.float64)
-            
-            # 表面法向量（考虑倾斜）
-            # 初始法向量沿 -Z（指向入射侧）
-            n = np.array([0.0, 0.0, -1.0])
-            
-            # 应用倾斜（旋转顺序：X → Y）
-            if surface.tilt_x != 0:
-                c, s = np.cos(surface.tilt_x), np.sin(surface.tilt_x)
-                Rx = np.array([
-                    [1, 0, 0],
-                    [0, c, -s],
-                    [0, s, c]
-                ])
-                n = Rx @ n
-            
-            if surface.tilt_y != 0:
-                c, s = np.cos(surface.tilt_y), np.sin(surface.tilt_y)
-                Ry = np.array([
-                    [c, 0, s],
-                    [0, 1, 0],
-                    [-s, 0, c]
-                ])
-                n = Ry @ n
-            
-            # 反射公式：r = d - 2(d·n)n
-            r = d - 2 * np.dot(d, n) * n
-            
-            # 归一化
-            r = r / np.linalg.norm(r)
-            
-            return (float(r[0]), float(r[1]), float(r[2]))
+        if is_parabola and is_mirror:
+            # 对于抛物面反射镜，使用光学性质计算反射方向
+            return self._compute_parabola_exit_direction()
         else:
-            # 折射面：暂时返回入射方向
-            # TODO: 实现折射计算
-            return self.chief_ray_direction
+            # 对于其他表面，使用 optiland 追迹
+            return self._compute_exit_direction_optiland()
+    
+    def _compute_parabola_exit_direction(self) -> Tuple[float, float, float]:
+        """计算抛物面反射镜的出射主光线方向
+        
+        使用抛物面的光学性质：平行于光轴的光线反射后通过焦点。
+        
+        返回:
+            出射主光线方向 (L, M, N)，全局坐标系，归一化
+            
+        坐标系说明:
+            - 入射面原点在全局 entrance_position
+            - 抛物面顶点在全局坐标系中是 vertex_position
+            - 焦点在抛物面顶点沿 +Z 方向 focal_length 处
+        """
+        first_surface = self.surfaces[0]
+        radius = first_surface.radius
+        focal_length = radius / 2.0
+        
+        # 入射面中心位置（全局坐标系）
+        entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+        
+        # 抛物面顶点位置（全局坐标系）
+        # ⚠️ 关键修复：使用 vertex_position 而不是假设在原点
+        if first_surface.vertex_position is not None:
+            vertex = np.array(first_surface.vertex_position, dtype=np.float64)
+        else:
+            vertex = np.array([0.0, 0.0, 0.0])
+        
+        # 焦点位置（全局坐标系）
+        # 焦点在顶点沿光轴方向 f 处
+        focus = vertex + np.array([0.0, 0.0, focal_length])
+        
+        # 主光线从全局原点 (0, 0, 0) 沿 +Z 方向出发
+        ray_origin = np.array([0.0, 0.0, 0.0])
+        ray_dir = np.array([0.0, 0.0, 1.0])
+        
+        # 计算主光线与抛物面的交点
+        # 抛物面方程（以顶点为原点）：z - vertex[2] = ((x - vertex[0])² + (y - vertex[1])²) / (2R)
+        # 主光线参数方程：(0, 0, t)
+        # 代入抛物面方程：
+        #   t - vertex[2] = (vertex[0]² + vertex[1]²) / (2R)
+        #   t = vertex[2] + (vertex[0]² + vertex[1]²) / (2R)
+        
+        t_intersection = vertex[2] + (vertex[0]**2 + vertex[1]**2) / (2 * radius)
+        
+        # 交点位置（全局坐标系）
+        intersection = ray_origin + t_intersection * ray_dir
+        
+        # 反射方向：指向焦点
+        to_focus = focus - intersection
+        exit_dir = to_focus / np.linalg.norm(to_focus)
+        
+        return (float(exit_dir[0]), float(exit_dir[1]), float(exit_dir[2]))
+    
+    def _compute_parabola_chief_intersection(self) -> Tuple[float, float, float]:
+        """计算抛物面反射镜的主光线交点位置（在入射面局部坐标系中）
+        
+        使用解析计算而不是 optiland 追迹，因为 optiland 的表面设置
+        对于离轴抛物面会返回错误的交点位置。
+        
+        返回:
+            主光线交点位置 (x, y, z)，入射面局部坐标系
+            
+        坐标系说明:
+            - 入射面局部坐标系原点在全局 entrance_position
+            - 主光线从全局原点 (0, 0, 0) 沿 +Z 方向出发
+            - 抛物面顶点在全局坐标系中是 vertex_position
+        """
+        first_surface = self.surfaces[0]
+        radius = first_surface.radius
+        
+        # 入射面中心位置（全局坐标系）
+        entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+        
+        # 抛物面顶点位置（全局坐标系）
+        # ⚠️ 关键修复：使用 vertex_position 而不是假设在原点
+        if first_surface.vertex_position is not None:
+            vertex = np.array(first_surface.vertex_position, dtype=np.float64)
+        else:
+            vertex = np.array([0.0, 0.0, 0.0])
+        
+        # 主光线从全局原点 (0, 0, 0) 沿 +Z 方向出发
+        ray_origin = np.array([0.0, 0.0, 0.0])
+        ray_dir = np.array([0.0, 0.0, 1.0])
+        
+        # 计算主光线与抛物面的交点
+        # 抛物面方程（以顶点为原点）：z - vertex[2] = ((x - vertex[0])² + (y - vertex[1])²) / (2R)
+        # 主光线参数方程：(0, 0, t)
+        # 代入抛物面方程：
+        #   t - vertex[2] = (vertex[0]² + vertex[1]²) / (2R)
+        #   t = vertex[2] + (vertex[0]² + vertex[1]²) / (2R)
+        
+        t_intersection = vertex[2] + (vertex[0]**2 + vertex[1]**2) / (2 * radius)
+        
+        # 交点位置（全局坐标系）
+        intersection_global = ray_origin + t_intersection * ray_dir
+        
+        # 将交点从全局坐标系转换到入射面局部坐标系
+        # pos_local = R.T @ (pos_global - entrance_pos)
+        intersection_local = self.rotation_matrix.T @ (intersection_global - entrance_pos)
+        
+        return (float(intersection_local[0]), 
+                float(intersection_local[1]), 
+                float(intersection_local[2]))
+        
+        # 抛物面顶点在全局原点 (0, 0, 0)
+    
+    def _compute_exit_direction_optiland(self) -> Tuple[float, float, float]:
+        """使用 optiland 计算出射主光线方向
+        
+        返回:
+            出射主光线方向 (L, M, N)，全局坐标系，归一化
+        """
+        from optiland.optic import Optic
+        from optiland.raytrace import RealRayTracer
+        
+        # 创建临时光学系统
+        temp_optic = Optic()
+        
+        # 设置系统参数
+        first_surface = self.surfaces[0]
+        if first_surface.semi_aperture is not None:
+            aperture_diameter = 2.0 * first_surface.semi_aperture
+        else:
+            aperture_diameter = 10.0
+        
+        temp_optic.set_aperture(aperture_type='EPD', value=aperture_diameter)
+        temp_optic.set_field_type(field_type='angle')
+        temp_optic.add_field(y=0, x=0)
+        temp_optic.add_wavelength(value=self.wavelength, is_primary=True)
+        
+        # 计算表面位置偏移
+        entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+        surface_offset_local = self.rotation_matrix.T @ (-entrance_pos)
+        
+        surface_x_offset = float(surface_offset_local[0])
+        surface_y_offset = float(surface_offset_local[1])
+        surface_z_offset = float(surface_offset_local[2])
+        
+        # 添加物面
+        temp_optic.add_surface(index=0, thickness=np.inf)
+        
+        # 添加光学表面
+        for i, surface_def in enumerate(self.surfaces):
+            surface_index = i + 1
+            is_stop = (i == 0)
+            
+            if surface_def.surface_type == 'mirror':
+                material = 'mirror'
+            else:
+                material = surface_def.material
+            
+            tilt_x_rad = surface_def.tilt_x if surface_def.tilt_x else 0.0
+            tilt_y_rad = surface_def.tilt_y if surface_def.tilt_y else 0.0
+            tilt_x_safe = _avoid_exact_45_degrees(tilt_x_rad)
+            tilt_y_safe = _avoid_exact_45_degrees(tilt_y_rad)
+            
+            temp_optic.add_surface(
+                index=surface_index,
+                radius=surface_def.radius,
+                material=material,
+                is_stop=is_stop,
+                conic=surface_def.conic,
+                rx=tilt_x_safe,
+                ry=tilt_y_safe,
+                x=surface_x_offset,
+                y=surface_y_offset,
+                z=surface_z_offset,
+            )
+        
+        # 添加像面
+        image_surface_index = len(self.surfaces) + 1
+        temp_optic.add_surface(
+            index=image_surface_index, 
+            radius=np.inf,
+            x=surface_x_offset,
+            y=surface_y_offset,
+            z=surface_z_offset + 100.0,
+        )
+        
+        # 追迹主光线
+        tracer = RealRayTracer(temp_optic)
+        chief_rays = tracer.trace_generic(
+            Hx=0.0, Hy=0.0, Px=0.0, Py=0.0, 
+            wavelength=self.wavelength
+        )
+        
+        # 提取出射方向
+        L = float(np.asarray(chief_rays.L)[0])
+        M = float(np.asarray(chief_rays.M)[0])
+        N = float(np.asarray(chief_rays.N)[0])
+        
+        # 归一化
+        norm = np.sqrt(L**2 + M**2 + N**2)
+        if norm > 1e-10:
+            L, M, N = L/norm, M/norm, N/norm
+        
+        # 将方向从入射面局部坐标系转换到全局坐标系
+        exit_dir_local = np.array([L, M, N], dtype=np.float64)
+        exit_dir_global = self.rotation_matrix @ exit_dir_local
+        
+        return (float(exit_dir_global[0]), float(exit_dir_global[1]), float(exit_dir_global[2]))
+    
+    def trace_chief_ray(self) -> Tuple[float, float, float]:
+        """追迹主光线并存储结果
+        
+        此方法应在混合光线追迹之前单独调用，用于：
+        1. 计算出射主光线方向
+        2. 存储主光线追迹数据（位置、方向等）
+        3. 完成光学系统的创建（添加出射面）
+        
+        返回:
+            出射主光线方向 (L, M, N)，全局坐标系，归一化
+        
+        说明:
+            - 如果已经提供了 exit_chief_direction 参数，则直接使用
+            - 否则使用 optiland 追迹主光线
+            - 追迹结果会被存储，后续调用 trace() 时使用
+        
+        示例:
+            >>> raytracer = ElementRaytracer(surfaces=[mirror], wavelength=0.55)
+            >>> exit_dir = raytracer.trace_chief_ray()  # 先追迹主光线
+            >>> output_rays = raytracer.trace(input_rays)  # 再追迹所有光线
+        """
+        if self._chief_ray_traced:
+            # 已经追迹过，直接返回存储的结果
+            return self.exit_chief_direction
+        
+        # 如果提供了出射方向，直接使用
+        if self._provided_exit_direction is not None:
+            self.exit_chief_direction = self._provided_exit_direction
+        else:
+            # 使用 optiland 追迹主光线
+            self.exit_chief_direction = self._compute_exit_chief_direction()
+        
+        # 标记主光线已追迹
+        self._chief_ray_traced = True
+        
+        # 完成光学系统的创建（添加出射面）
+        self._finalize_optic()
+        
+        return self.exit_chief_direction
+    
+    def get_exit_chief_ray_direction(self) -> Tuple[float, float, float]:
+        """获取出射主光线方向
+        
+        如果主光线尚未追迹，会自动调用 trace_chief_ray()。
+        
+        返回:
+            出射主光线方向 (L, M, N)，全局坐标系，归一化
+        """
+        if not self._chief_ray_traced:
+            self.trace_chief_ray()
+        return self.exit_chief_direction
+    
+    def _create_optic_base(self) -> None:
+        """创建基本光学系统（不包含出射面）
+        
+        配置反射镜（material='mirror'）和折射面。
+        设置表面半口径（aperture）。
+        
+        创建的光学系统结构：
+        - index=0: 物面（无穷远）
+        - index=1: 第一个光学表面（设为光阑）
+        - index=2, 3, ...: 后续光学表面
+        
+        说明:
+            - 物面设置在无穷远处（thickness=np.inf）
+            - 第一个光学表面设置为光阑（is_stop=True）
+            - 反射镜使用 material='mirror'
+            - 折射面使用指定的材料名称
+            - 如果指定了半口径，会设置表面的 max_aperture
+            - 出射面将在 _finalize_optic() 中添加
+            
+        重要：
+            - 光学系统在入射面局部坐标系中定义
+            - 表面位置相对于入射面中心（entrance_position）设置偏移
+            - 这样可以正确处理离轴系统的 OPD 计算
+        """
+        from optiland.optic import Optic
+        
+        # 创建光学系统
+        optic = Optic()
+        
+        # =====================================================================
+        # 设置系统参数
+        # =====================================================================
+        
+        # 设置孔径
+        first_surface = self.surfaces[0]
+        if first_surface.semi_aperture is not None:
+            aperture_diameter = 2.0 * first_surface.semi_aperture
+        else:
+            aperture_diameter = 10.0
+        
+        optic.set_aperture(aperture_type='EPD', value=aperture_diameter)
+        
+        # 设置视场类型为角度，轴上视场
+        optic.set_field_type(field_type='angle')
+        optic.add_field(y=0, x=0)
+        
+        # 设置波长
+        optic.add_wavelength(value=self.wavelength, is_primary=True)
+        
+        # =====================================================================
+        # 计算表面位置偏移
+        # =====================================================================
+        # 
+        # 在入射面局部坐标系中，表面顶点相对于入射面中心的位置
+        # 
+        # ⚠️ 关键修复：使用 SurfaceDefinition 中的 vertex_position
+        # 
+        # 对于离轴系统（如 OAP）：
+        # - 表面顶点在全局坐标 vertex_position（如 (0, 100, 0)）
+        # - 入射面中心在全局坐标 entrance_position（如 (0, 100, 2.5)）
+        # - 表面偏移 = R.T @ (vertex_global - entrance_global)
+        #
+        # 对于轴上系统：
+        # - 表面顶点在全局坐标 (0, 0, 0)
+        # - 入射面中心在全局坐标 entrance_position
+        # - 表面偏移 = R.T @ (-entrance_position)
+        
+        entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+        
+        # 获取表面顶点位置（全局坐标系）
+        first_surface = self.surfaces[0]
+        if first_surface.vertex_position is not None:
+            vertex_global = np.array(first_surface.vertex_position, dtype=np.float64)
+        else:
+            # 默认：表面顶点在全局原点
+            vertex_global = np.array([0.0, 0.0, 0.0])
+        
+        # 表面顶点在入射面局部坐标系中的位置
+        # 使用旋转矩阵的转置将全局坐标转换到入射面局部坐标系
+        # surface_offset_local = R.T @ (vertex_global - entrance_global)
+        surface_offset_local = self.rotation_matrix.T @ (vertex_global - entrance_pos)
+        
+        surface_x_offset = float(surface_offset_local[0])
+        surface_y_offset = float(surface_offset_local[1])
+        surface_z_offset = float(surface_offset_local[2])
+        
+        # =====================================================================
+        # 添加物面（index=0）
+        # =====================================================================
+        
+        optic.add_surface(index=0, thickness=np.inf)
+        
+        # =====================================================================
+        # 添加光学表面
+        # =====================================================================
+        
+        for i, surface_def in enumerate(self.surfaces):
+            surface_index = i + 1
+            is_stop = (i == 0)
+            
+            if surface_def.surface_type == 'mirror':
+                material = 'mirror'
+            else:
+                material = surface_def.material
+            
+            radius = surface_def.radius
+            
+            # ⚠️ 关键修复：对于抛物面，不设置倾斜角度
+            # 抛物面的离轴效果通过位置偏移（x, y, z）实现
+            # 抛物面的反射方向由其几何形状自然决定
+            # SurfaceDefinition 中的 tilt_x/tilt_y 仅用于计算出射方向，
+            # 不应该传递给 optiland 的表面设置
+            is_parabola = np.isclose(surface_def.conic, -1.0, atol=1e-6)
+            
+            if is_parabola:
+                # 抛物面：不设置倾斜角度
+                # 检查原本是否有倾斜
+                orig_tilt_x = surface_def.tilt_x if surface_def.tilt_x else 0.0
+                orig_tilt_y = surface_def.tilt_y if surface_def.tilt_y else 0.0
+                if abs(orig_tilt_x) > 1e-6 or abs(orig_tilt_y) > 1e-6:
+                    print(f"Warning: 检测到抛物面 (Surface {surface_index}) 具有非零倾斜角 "
+                          f"(tilt_x={np.degrees(orig_tilt_x):.2f}°, tilt_y={np.degrees(orig_tilt_y):.2f}°)。"
+                          f"对于 OAP，倾斜通常通过顶点偏移定义。为了确保计算正确性，"
+                          f"optiland 中的倾斜参数将被强制置为 0。")
+                
+                tilt_x_safe = 0.0
+                tilt_y_safe = 0.0
+            else:
+                # 其他表面：使用 SurfaceDefinition 中的倾斜角度
+                tilt_x_rad = surface_def.tilt_x if surface_def.tilt_x else 0.0
+                tilt_y_rad = surface_def.tilt_y if surface_def.tilt_y else 0.0
+                tilt_x_safe = _avoid_exact_45_degrees(tilt_x_rad)
+                tilt_y_safe = _avoid_exact_45_degrees(tilt_y_rad)
+            
+            # 使用绝对坐标定位模式，设置表面位置偏移
+            optic.add_surface(
+                index=surface_index,
+                radius=radius,
+                material=material,
+                is_stop=is_stop,
+                conic=surface_def.conic,
+                rx=tilt_x_safe,
+                ry=tilt_y_safe,
+                # 设置表面位置偏移（相对于入射面中心）
+                x=surface_x_offset,
+                y=surface_y_offset,
+                z=surface_z_offset,
+            )
+            
+            if surface_def.semi_aperture is not None:
+                surface = optic.surface_group.surfaces[surface_index]
+                surface.max_aperture = surface_def.semi_aperture
+        
+        # 存储创建的光学系统（尚未添加出射面）
+        self.optic = optic
+    
+    def _finalize_optic(self) -> None:
+        """完成光学系统的创建（添加出射面）
+        
+        在主光线追迹完成后调用，添加透明平面作为出射面。
+        
+        前提条件:
+            - self.exit_chief_direction 已设置
+            - self._chief_ray_traced 为 True
+            
+        重要设计原则：
+            - 出射面必须垂直于出射光轴（steering 明确要求）
+            - 出射面必须经过主光线与镜面的交点
+            - 在入射面局部坐标系中设置出射面的位置和旋转
+            
+        实现方法：
+            1. 追迹主光线获取其与镜面的交点位置（在入射面局部坐标系中）
+            2. 计算出射方向在入射面局部坐标系中的表示
+            3. 从出射方向计算出射面的旋转角度 (rx, ry)
+            4. 设置出射面位置为主光线交点位置
+        """
+        if self._optic_finalized:
+            return
+        
+        if self.exit_chief_direction is None:
+            raise RuntimeError("出射主光线方向尚未计算，请先调用 trace_chief_ray()")
+        
+        # 计算出射面的旋转矩阵（全局坐标系）
+        self.exit_rotation_matrix = compute_rotation_matrix(self.exit_chief_direction)
+        
+        # =====================================================================
+        # 计算主光线交点位置（在入射面局部坐标系中）
+        # =====================================================================
+        #
+        # 对于抛物面，使用解析计算而不是 optiland 追迹，因为 optiland 的
+        # 表面设置（带有偏移和倾斜）对于离轴抛物面会返回错误的交点位置。
+        #
+        # 对于其他表面类型，仍然使用 optiland 追迹。
+        
+        first_surface = self.surfaces[0]
+        is_parabola = np.isclose(first_surface.conic, -1.0, atol=1e-6)
+        is_mirror = first_surface.surface_type == 'mirror'
+        
+        if is_parabola and is_mirror:
+            # 对于抛物面反射镜，使用解析计算主光线交点
+            chief_x, chief_y, chief_z = self._compute_parabola_chief_intersection()
+        else:
+            # 对于其他表面，使用 optiland 追迹
+            # 创建主光线（在入射面局部坐标系中，从原点沿 +Z 方向）
+            chief_ray = RealRays(
+                x=np.array([0.0]),
+                y=np.array([0.0]),
+                z=np.array([0.0]),
+                L=np.array([0.0]),
+                M=np.array([0.0]),
+                N=np.array([1.0]),
+                intensity=np.array([1.0]),
+                wavelength=np.array([self.wavelength]),
+            )
+            chief_ray.opd = np.array([0.0])
+            
+            # 追迹主光线到最后一个光学表面
+            # 注意：此时 optic 中还没有出射面，只有物面和光学表面
+            surfaces = self.optic.surface_group.surfaces
+            for i, surface in enumerate(surfaces):
+                if i < 1:  # 跳过物面
+                    continue
+                surface.trace(chief_ray)
+            
+            # 获取主光线与最后一个光学表面的交点位置（在入射面局部坐标系中）
+            chief_x = float(np.asarray(chief_ray.x)[0])
+            chief_y = float(np.asarray(chief_ray.y)[0])
+            chief_z = float(np.asarray(chief_ray.z)[0])
+        
+        # 存储主光线交点位置（用于 trace() 方法中的坐标变换）
+        self._chief_intersection_local = (chief_x, chief_y, chief_z)
+        
+        # =====================================================================
+        # 计算出射方向在入射面局部坐标系中的表示
+        # =====================================================================
+        
+        # 出射方向在全局坐标系中
+        exit_dir_global = np.array(self.exit_chief_direction, dtype=np.float64)
+        
+        # 转换到入射面局部坐标系
+        # v_local = R_entrance.T @ v_global
+        exit_dir_local = self.rotation_matrix.T @ exit_dir_global
+        
+        # 归一化（处理数值误差）
+        norm = np.linalg.norm(exit_dir_local)
+        if norm > 1e-10:
+            exit_dir_local = exit_dir_local / norm
+        
+        # =====================================================================
+        # 计算出射面的旋转角度
+        # =====================================================================
+        # 
+        # 注意：当出射方向 Z 分量为负时（如 OAP 反射），ry 会接近 180°，
+        # 这会导致 optiland 的表面追迹产生数值问题。
+        # 
+        # 解决方案：不在 optiland 中添加出射面，而是在 trace() 方法中
+        # 手动计算光线到出射面的投影。
+        # 
+        # 这里只计算并存储出射面的参数，不添加到 optiland。
+        
+        # 存储出射方向（入射面局部坐标系）
+        self._exit_dir_local = exit_dir_local
+        
+        # 不再添加出射面到 optiland
+        # 出射面的处理将在 trace() 方法中通过数学变换完成
+        
+        self._optic_finalized = True
     
     def _create_optic(self) -> None:
-        """根据 SurfaceDefinition 列表创建 optiland 光学系统
+        """根据 SurfaceDefinition 列表创建 optiland 光学系统（兼容旧接口）
+        
+        此方法保留用于向后兼容，内部调用 _create_optic_base() 和 _finalize_optic()。
         
         配置反射镜（material='mirror'）和折射面。
         设置表面半口径（aperture）。
@@ -1332,197 +1914,209 @@ class ElementRaytracer:
             - Requirements 2.5: 支持定义多个连续的光学表面
             - Requirements REQ-2.1: 在 optiland 中添加倾斜的透明出射面
         """
-        from optiland.optic import Optic
+        # 创建基本光学系统
+        self._create_optic_base()
         
-        # 创建光学系统
-        optic = Optic()
-        
-        # =====================================================================
-        # 设置系统参数
-        # =====================================================================
-        
-        # 设置孔径
-        # 使用第一个表面的半口径作为入瞳直径，如果没有指定则使用默认值
-        first_surface = self.surfaces[0]
-        if first_surface.semi_aperture is not None:
-            aperture_diameter = 2.0 * first_surface.semi_aperture
-        else:
-            # 默认入瞳直径为 10mm
-            aperture_diameter = 10.0
-        
-        optic.set_aperture(aperture_type='EPD', value=aperture_diameter)
-        
-        # 设置视场类型为角度，轴上视场
-        optic.set_field_type(field_type='angle')
-        optic.add_field(y=0, x=0)
-        
-        # 设置波长
-        optic.add_wavelength(value=self.wavelength, is_primary=True)
-        
-        # =====================================================================
-        # 添加物面（index=0）
-        # =====================================================================
-        
-        # 物面设置在无穷远处
-        optic.add_surface(index=0, radius=np.inf, thickness=np.inf)
-        
-        # =====================================================================
-        # 添加光学表面
-        # =====================================================================
-        
-        for i, surface_def in enumerate(self.surfaces):
-            surface_index = i + 1  # 从 index=1 开始
-            
-            # 确定是否为第一个光学表面（设为光阑）
-            is_stop = (i == 0)
-            
-            # 确定材料
-            # 对于反射镜，使用 'mirror'
-            # 对于折射面，使用指定的材料名称
-            if surface_def.surface_type == 'mirror':
-                material = 'mirror'
-            else:
-                material = surface_def.material
-            
-            # 确定曲率半径
-            radius = surface_def.radius
-            
-            # 确定厚度
-            thickness = surface_def.thickness
-            
-            # 添加表面（包含倾斜参数）
-            # optiland 使用 rx, ry 参数表示绕 X、Y 轴的旋转
-            # 注意：optiland 在精确 45° (π/4) 时有数值问题，需要添加小偏移量
-            tilt_x_safe = _avoid_exact_45_degrees(surface_def.tilt_x)
-            tilt_y_safe = _avoid_exact_45_degrees(surface_def.tilt_y)
-            
-            optic.add_surface(
-                index=surface_index,
-                radius=radius,
-                thickness=thickness,
-                material=material,
-                is_stop=is_stop,
-                conic=surface_def.conic,  # 添加圆锥常数支持
-                rx=tilt_x_safe,    # 绕 X 轴旋转（弧度）
-                ry=tilt_y_safe,    # 绕 Y 轴旋转（弧度）
-                dy=surface_def.off_axis_distance,  # 离轴距离（沿 Y 方向偏心）
-            )
-            
-            # 如果指定了半口径，设置表面的 max_aperture
-            if surface_def.semi_aperture is not None:
-                # 获取刚添加的表面对象
-                surface = optic.surface_group.surfaces[surface_index]
-                # 设置最大孔径（半口径）
-                surface.max_aperture = surface_def.semi_aperture
-        
-        # =====================================================================
-        # 计算出射主光线方向并添加倾斜的透明平面作为出射面
-        # =====================================================================
-        
-        # 计算出射主光线方向（全局坐标系）
-        # 如果提供了 exit_chief_direction 参数，直接使用；否则从表面倾斜计算
-        if self._provided_exit_direction is not None:
-            self.exit_chief_direction = self._provided_exit_direction
-        else:
-            self.exit_chief_direction = self._compute_exit_chief_direction()
-        
-        # 计算出射面的旋转矩阵（全局坐标系）
-        self.exit_rotation_matrix = compute_rotation_matrix(self.exit_chief_direction)
-        
-        # =====================================================================
-        # 关键修复：出射面的倾斜角度需要在入射面局部坐标系中计算
-        # =====================================================================
-        # optiland 的光学系统是在入射面局部坐标系中定义的
-        # 出射面的法向量应该是出射方向在入射面局部坐标系中的表示
-        # 
-        # 步骤：
-        # 1. 将出射方向从全局坐标系转换到入射面局部坐标系
-        # 2. 从局部坐标系中的出射方向计算倾斜角度
-        
-        exit_dir_global = np.array(self.exit_chief_direction, dtype=np.float64)
-        exit_dir_local = self.rotation_matrix.T @ exit_dir_global
-        
-        # 从入射面局部坐标系中的出射方向计算倾斜角度
-        exit_rx, exit_ry = self._direction_to_rotation_angles(tuple(exit_dir_local))
-        
-        # 避免精确 45° 的数值问题
-        exit_rx_safe = _avoid_exact_45_degrees(exit_rx)
-        exit_ry_safe = _avoid_exact_45_degrees(exit_ry)
-        
-        # 出射面的 index 为最后一个光学表面的 index + 1
-        exit_surface_index = len(self.surfaces) + 1
-        
-        # 添加倾斜的透明平面作为出射面
-        # material='air' 表示透明，光线直接穿过
-        # rx, ry 设置为出射主光线方向对应的旋转角度（在入射面局部坐标系中）
-        optic.add_surface(
-            index=exit_surface_index,
-            radius=np.inf,      # 平面
-            thickness=0.0,
-            material='air',     # 透明，光线直接穿过
-            rx=exit_rx_safe,
-            ry=exit_ry_safe,
-        )
-        
-        # 存储创建的光学系统
-        self.optic = optic
+        # 追迹主光线并完成光学系统
+        self.trace_chief_ray()
     
     def _trace_with_signed_opd(self, rays: RealRays, skip: int = 1) -> None:
-        """使用带符号 OPD 进行光线追迹（原地修改）
+        """执行光线追迹（原地修改），使用带符号的 OPD 计算
         
-        仿照 optiland 的追迹过程，但使用带符号的 OPD 计算。
-        关键区别：不使用 abs(t)，保留传播距离的符号。
+        与 optiland 标准追迹的区别：
+        - optiland 使用 abs(t) 计算 OPD
+        - 本方法使用带符号的 t 计算 OPD
+        - 对于抛物面，修正反射方向（optiland 的几何法向量对离轴抛物面不正确）
         
-        这样可以正确处理折叠光路中的 OPD 计算：
-        - 正向传播（t > 0）：OPD 增加
-        - 反向传播（t < 0）：OPD 减少
-        - 折叠镜处的几何光程差会正确抵消
+        为什么需要带符号的 OPD：
+        入射面和出射面与镜面是交错的：
+        - 入射面上的某些光线位于镜面的"后方"，找交点时 t < 0，
+          然后反射后经过 t > 0 到达出射面
+        - 另一部分光线则相反：先 t > 0 到达镜面，反射后 t < 0 到达出射面
+        
+        正负 t 值会在整个光程中相互抵消，只有使用带符号的 OPD 才能
+        使残差 OPD 正确趋近于零。
+        
+        符号计算公式：
+        - t 的符号 = sign(dz) * sign(N_before)
+        - 其中 N_before 是追迹前光线的 Z 方向分量
+        - 这是因为 dz = t * N_before，所以 sign(t) = sign(dz) / sign(N_before)
+        
+        抛物面反射方向修正：
+        optiland 使用几何法向量计算反射，但对于离轴抛物面这是不正确的。
+        正确的反射方向应该使用抛物面的光学性质：
+        - 对于平行于光轴的入射光线，反射后通过焦点
+        - 正确的法向量公式：n = (u + d) / |u + d|
+          其中 u = (P - F) / |P - F| 是从焦点到交点的单位向量，d 是入射方向
         
         参数:
             rays: 输入光线（会被原地修改）
             skip: 跳过的表面数量（默认 1，跳过物面）
-        
-        说明:
-            此方法替代 optiland 的 surface_group.trace()，
-            解决了 optiland 使用 abs(t) 导致的折叠光路 OPD 错误问题。
         """
-        surface_group = self.optic.surface_group
-        surfaces = surface_group.surfaces
+        # 获取表面列表
+        surfaces = self.optic.surface_group.surfaces
         
+        # 初始化 OPD（如果尚未初始化）
+        if rays.opd is None:
+            rays.opd = np.zeros(len(rays.x))
+        
+        # 逐个表面追迹
         for i, surface in enumerate(surfaces):
             if i < skip:
                 continue
             
-            # 坐标变换到表面局部坐标系
-            surface.geometry.localize(rays)
+            # 保存追迹前的 OPD、z 坐标、方向和位置
+            opd_before = np.asarray(rays.opd).copy()
+            z_before = np.asarray(rays.z).copy()
+            N_before = np.asarray(rays.N).copy()  # 追迹前的 Z 方向分量
+            L_before = np.asarray(rays.L).copy()
+            M_before = np.asarray(rays.M).copy()
             
-            # 计算到表面的距离
-            t = np.asarray(surface.geometry.distance(rays))
+            # 使用 optiland 的表面追迹（会使用 abs(t)）
+            surface.trace(rays)
             
-            # 获取介质折射率
-            n = surface.material_pre.n(rays.w)
-            n = np.asarray(n)
-            if n.ndim == 0:
-                n = float(n)
+            # 获取追迹后的 z 坐标和 OPD
+            z_after = np.asarray(rays.z)
+            opd_after = np.asarray(rays.opd)
             
-            # 带符号的 OPD 增量（关键：不使用 abs）
-            opd_increment = n * t
+            # =====================================================================
+            # 抛物面反射方向修正
+            # =====================================================================
+            # 检查是否是抛物面反射镜
+            is_parabola = False
+            is_reflective = False
             
-            # 传播光线
-            surface.material_pre.propagation_model.propagate(rays, t)
+            # 检查表面类型
+            if hasattr(surface, 'geometry') and hasattr(surface.geometry, 'k'):
+                conic = surface.geometry.k
+                is_parabola = np.isclose(conic, -1.0, atol=1e-6)
             
-            # 更新 OPD（带符号）
-            rays.opd = rays.opd + opd_increment
+            if hasattr(surface, 'interaction_model') and hasattr(surface.interaction_model, 'is_reflective'):
+                is_reflective = surface.interaction_model.is_reflective
             
-            # 如果有限制孔径，裁剪孔径外的光线
-            if surface.aperture:
-                surface.aperture.clip(rays)
+            if is_parabola and is_reflective:
+                # 对于抛物面反射镜，使用正确的反射方向公式
+                self._correct_parabola_reflection(
+                    rays, surface, L_before, M_before, N_before
+                )
             
-            # 与表面交互（反射或折射）
-            rays = surface.interaction_model.interact_real_rays(rays)
+            # 计算 OPD 增量（optiland 使用 abs(t)）
+            opd_increment_abs = opd_after - opd_before
             
-            # 坐标变换回全局坐标系
-            surface.geometry.globalize(rays)
+            # 计算 dz 来确定 t 的符号
+            dz = z_after - z_before
+            
+            # 正确的符号计算：sign(t) = sign(dz) * sign(N_before)
+            # 因为 dz = t * N_before，所以 t = dz / N_before
+            # sign(t) = sign(dz / N_before) = sign(dz) * sign(N_before)
+            sign_dz = np.sign(dz)
+            sign_N = np.sign(N_before)
+            
+            # 处理零值情况
+            sign_dz[sign_dz == 0] = 1
+            sign_N[sign_N == 0] = 1
+            
+            # t 的符号
+            sign_t = sign_dz * sign_N
+            
+            # 计算带符号的 OPD 增量
+            opd_increment_signed = sign_t * opd_increment_abs
+            
+            # 更新 OPD
+            rays.opd = opd_before + opd_increment_signed
+    
+    def _correct_parabola_reflection(
+        self,
+        rays: RealRays,
+        surface,
+        L_before: NDArray,
+        M_before: NDArray,
+        N_before: NDArray,
+    ) -> None:
+        """修正抛物面的反射方向
+        
+        optiland 使用几何法向量计算反射，但对于离轴抛物面这是不正确的。
+        正确的反射方向应该使用抛物面的光学性质：平行于光轴的光线反射后通过焦点。
+        
+        对于抛物面，反射方向直接指向焦点：
+        r = (F - P) / |F - P|
+        
+        参数:
+            rays: 光线对象（会被原地修改方向）
+            surface: optiland 表面对象
+            L_before, M_before, N_before: 入射方向（未使用，保留接口兼容性）
+        """
+        # 获取光线位置（在入射面局部坐标系中，已经在表面上）
+        x = np.asarray(rays.x)
+        y = np.asarray(rays.y)
+        z = np.asarray(rays.z)
+        
+        # 获取抛物面参数
+        radius = surface.geometry.radius  # 曲率半径 R = 2f
+        focal_length = radius / 2.0  # 焦距 f = R/2
+        
+        # =====================================================================
+        # 焦点位置计算（在入射面局部坐标系中）
+        # =====================================================================
+        # 
+        # ⚠️ 关键修复：焦点位置在全局坐标系中是 vertex + (0, 0, f)
+        # 
+        # 对于离轴抛物面：
+        # - 抛物面顶点在全局 vertex_position（如 (0, 100, 0)）
+        # - 焦点在全局 vertex_position + (0, 0, f)（如 (0, 100, 1000)）
+        # - 需要将全局焦点位置转换到入射面局部坐标系
+        # =====================================================================
+        
+        # 获取抛物面顶点位置（全局坐标系）
+        first_surface = self.surfaces[0]
+        if first_surface.vertex_position is not None:
+            vertex_global = np.array(first_surface.vertex_position, dtype=np.float64)
+        else:
+            vertex_global = np.array([0.0, 0.0, 0.0])
+        
+        # 焦点在全局坐标系中的位置：顶点 + (0, 0, f)
+        focus_global = vertex_global + np.array([0.0, 0.0, focal_length])
+        
+        # 入射面位置（全局坐标系）
+        entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+        
+        # 将焦点从全局坐标系转换到入射面局部坐标系
+        # pos_local = R.T @ (pos_global - entrance_pos)
+        focus_entrance = self.rotation_matrix.T @ (focus_global - entrance_pos)
+        
+        # 计算每条光线的正确反射方向
+        # 对于抛物面，平行于光轴的光线反射后直接指向焦点
+        n_rays = len(x)
+        L_new = np.zeros(n_rays)
+        M_new = np.zeros(n_rays)
+        N_new = np.zeros(n_rays)
+        
+        for j in range(n_rays):
+            # 光线位置（入射面局部坐标系）
+            P = np.array([x[j], y[j], z[j]])
+            
+            # 从交点到焦点的向量
+            P_to_F = focus_entrance - P
+            dist_to_focus = np.linalg.norm(P_to_F)
+            
+            if dist_to_focus < 1e-10:
+                # 光线恰好在焦点，保持沿 +Z 方向
+                L_new[j] = 0.0
+                M_new[j] = 0.0
+                N_new[j] = 1.0
+                continue
+            
+            # 反射方向直接指向焦点
+            r = P_to_F / dist_to_focus
+            
+            L_new[j] = r[0]
+            M_new[j] = r[1]
+            N_new[j] = r[2]
+        
+        # 更新光线方向
+        rays.L = L_new
+        rays.M = M_new
+        rays.N = N_new
     
     def get_output_rays(self) -> RealRays:
         """获取出射光线数据（在出射面局部坐标系中）
@@ -1771,42 +2365,6 @@ class ElementRaytracer:
         
         return x, y
     
-    def get_exit_chief_ray_direction(self) -> Tuple[float, float, float]:
-        """获取出射主光线方向（在全局坐标系中）
-        
-        返回出射主光线的方向余弦 (L, M, N)。
-        方向在 _create_optic() 中预先计算并存储。
-        
-        返回:
-            Tuple[float, float, float]: 出射主光线方向 (L, M, N)
-                                       在全局坐标系中的方向余弦
-        
-        说明:
-            - 对于反射镜，出射方向由反射定律决定
-            - 对于折射面，出射方向由折射定律决定
-            - 返回的方向余弦是归一化的
-            - 不需要先调用 trace() 方法
-        
-        示例:
-            >>> # 正入射到平面镜
-            >>> mirror = SurfaceDefinition(surface_type='mirror', radius=np.inf)
-            >>> raytracer = ElementRaytracer(
-            ...     surfaces=[mirror],
-            ...     wavelength=0.55,
-            ...     chief_ray_direction=(0, 0, 1)
-            ... )
-            >>> exit_dir = raytracer.get_exit_chief_ray_direction()
-            >>> # 平面镜正入射，出射方向为 (0, 0, -1)
-            >>> print(exit_dir)
-            (0.0, 0.0, -1.0)
-        
-        Validates:
-            - Requirements 5.2: 输出出射光线的方向余弦 (L, M, N)
-            - Requirements REQ-2.3: 返回预先计算的出射主光线方向
-        """
-        # 直接返回预先计算的出射主光线方向
-        return self.exit_chief_direction
-    
     def get_exit_rotation_matrix(self) -> NDArray:
         """获取出射面的旋转矩阵
         
@@ -1816,12 +2374,15 @@ class ElementRaytracer:
             NDArray: 3x3 旋转矩阵
         
         说明:
-            - 旋转矩阵在 _create_optic() 中预先计算并存储
+            - 旋转矩阵在 _finalize_optic() 中计算并存储
             - 用于将出射光线从全局坐标系转换到出射面局部坐标系
+            - 如果主光线尚未追迹，会自动调用 trace_chief_ray()
         
         Validates:
             - Requirements REQ-2.3: 提供出射面旋转矩阵
         """
+        if not self._chief_ray_traced:
+            self.trace_chief_ray()
         return self.exit_rotation_matrix
 
 

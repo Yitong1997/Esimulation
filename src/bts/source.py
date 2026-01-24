@@ -42,26 +42,23 @@ class GaussianSource:
             wavelength_um: 波长 (μm)，必须为正数
             w0_mm: 束腰半径 (mm)，必须为正数
             grid_size: 网格大小，默认 256，必须为正整数
-            physical_size_mm: 物理尺寸 (mm)，默认 8 倍束腰
+            physical_size_mm: 物理尺寸 (mm)，默认 4 倍束腰（PROPER 固定用法，不建议修改）
             z0_mm: 束腰位置 (mm)，默认 0
-            beam_diam_fraction: PROPER beam_diam_fraction 参数（可选）
+            beam_diam_fraction: PROPER beam_diam_fraction 参数（已废弃，固定为 0.5）
         
         异常:
             ValueError: 参数值无效
         
+        注意:
+            physical_size_mm 默认为 4 × w0，这是 PROPER 库的固定用法。
+            当 beam_diameter = 2×w0 且 beam_diam_fraction = 0.5 时，
+            PROPER 的网格物理尺寸自动计算为 4×w0。
+            不建议修改此参数，否则可能导致网格不一致。
+        
         示例:
-            >>> # 基本用法
+            >>> # 基本用法（推荐）
             >>> source = GaussianSource(wavelength_um=0.633, w0_mm=5.0)
-            
-            >>> # 指定所有参数
-            >>> source = GaussianSource(
-            ...     wavelength_um=1.064,
-            ...     w0_mm=10.0,
-            ...     grid_size=512,
-            ...     physical_size_mm=100.0,
-            ...     z0_mm=0.0,
-            ...     beam_diam_fraction=0.5,
-            ... )
+            >>> # physical_size_mm 自动设置为 4 × 5 = 20 mm
         """
         # 参数验证
         if wavelength_um <= 0:
@@ -84,10 +81,23 @@ class GaussianSource:
         self._z0_mm = z0_mm
         self._beam_diam_fraction = beam_diam_fraction
         
-        # 计算默认物理尺寸（8 倍束腰）
+        # 网格物理尺寸固定为 4 × w0（PROPER 固定用法）
+        # 当 beam_diameter = 2*w0 且 beam_diam_fraction = 0.5 时：
+        # dx = beam_diameter / (grid_n * 0.5) = 4*w0 / grid_n
+        # physical_size = dx * grid_n = 4 * w0
         if physical_size_mm is None:
-            self._physical_size_mm = 8.0 * w0_mm
+            self._physical_size_mm = 4.0 * w0_mm
         else:
+            # 如果用户指定了 physical_size_mm，发出警告
+            expected_size = 4.0 * w0_mm
+            if abs(physical_size_mm - expected_size) > 1e-10:
+                import warnings
+                warnings.warn(
+                    f"physical_size_mm 应该等于 4 × w0 = {expected_size:.3f} mm，"
+                    f"但用户指定了 {physical_size_mm:.3f} mm。"
+                    f"这可能导致网格不一致。建议不指定此参数。",
+                    UserWarning,
+                )
             self._physical_size_mm = physical_size_mm
     
     @property

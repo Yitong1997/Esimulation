@@ -108,11 +108,15 @@ def load_zmx(path: str) -> "OpticalSystem":
         # 计算倾斜角度（从姿态矩阵反推）
         tilt_x, tilt_y = _extract_tilt_angles(gs.orientation)
         
-        # 创建 SurfaceDefinition
+        # 创建 SurfaceDefinition，使用完整的 (x, y, z) 位置
         surface_def = SurfaceDefinition(
             index=gs.index,
             surface_type=gs.surface_type,
-            z=gs.vertex_position[2],  # Z 坐标
+            position=(
+                float(gs.vertex_position[0]),
+                float(gs.vertex_position[1]),
+                float(gs.vertex_position[2]),
+            ),
             radius=gs.radius,
             conic=gs.conic,
             semi_aperture=gs.semi_aperture,

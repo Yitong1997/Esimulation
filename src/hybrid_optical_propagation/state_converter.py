@@ -252,21 +252,22 @@ class StateConverter:
         """
         import proper
         
-        beam_diameter_m = grid_sampling.physical_size_mm * 1e-3
         wavelength_m = self._wavelength_um * 1e-6
         
+        # beam_diameter = 2 × w0（PROPER 固定用法）
         if pilot_beam_params is not None:
             w0_m = pilot_beam_params.waist_radius_mm * 1e-3
-            beam_diam_fraction = (2 * w0_m) / beam_diameter_m
-            beam_diam_fraction = max(0.1, min(0.9, beam_diam_fraction))
+            beam_diameter_m = 2 * w0_m
         else:
-            beam_diam_fraction = grid_sampling.beam_ratio
+            # 如果没有 pilot_beam_params，使用网格物理尺寸的一半作为 w0 估计
+            beam_diameter_m = grid_sampling.physical_size_mm * 1e-3 * 0.5
         
+        # beam_diam_fraction = 0.5（PROPER 固定用法）
         wfo = proper.prop_begin(
             beam_diameter_m,
             wavelength_m,
             grid_sampling.grid_size,
-            beam_diam_fraction,
+            0.5,
         )
         
         if pilot_beam_params is not None:
