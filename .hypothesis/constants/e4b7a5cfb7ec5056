@@ -1,0 +1,4 @@
+# file: D:\BTS\src\wavefront_to_rays\global_element_raytracer.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.0, 1e-10, 1e-06, 1.0, 2.0, 10.0, 1000.0, ')', '0', 'EPD', 'angle', 'conic', 'entrance_direction', 'entrance_position', 'exit_direction', 'exit_position', 'image_position', 'inf', 'material', 'mirror', 'radius', 'refract', 'surface_intersection', 'surface_normal', 'surface_type', 'tilt_x', 'tilt_y', 'tilt_z', 'vertex_position', '主光线与平面镜平行，无交点', '主光线与抛物面无交点', '主光线与抛物面无正向交点', '主光线与球面镜无交点', '主光线与球面镜无正向交点', '材料名称不能为空字符串', '法向量']

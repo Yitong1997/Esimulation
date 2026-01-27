@@ -76,6 +76,22 @@ from .source import GaussianSource
 from .simulation import simulate
 
 # ============================================================
+# 光束测量与光阑 API
+# ============================================================
+from .beam_measurement import (
+    measure_beam_diameter,
+    measure_m2,
+    apply_aperture,
+    analyze_aperture_effects,
+    # 数据模型
+    D4sigmaResult,
+    ISOD4sigmaResult,
+    M2Result,
+    ApertureType,
+    ApertureEffectAnalysisResult,
+)
+
+# ============================================================
 # 公共 API 列表
 # ============================================================
 __all__ = [
@@ -93,4 +109,15 @@ __all__ = [
     "ParseError",
     "ConfigurationError",
     "SimulationError",
+    # 光束测量与光阑 API
+    "measure_beam_diameter",
+    "measure_m2",
+    "apply_aperture",
+    "analyze_aperture_effects",
+    # 光束测量数据模型
+    "D4sigmaResult",
+    "ISOD4sigmaResult",
+    "M2Result",
+    "ApertureType",
+    "ApertureEffectAnalysisResult",
 ]

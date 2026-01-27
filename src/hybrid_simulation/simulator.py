@@ -51,11 +51,15 @@ class HybridSimulator:
         ...     .run())
     """
     
-    def __init__(self, verbose: bool = True) -> None:
+    def __init__(self, verbose: bool = True, use_global_raytracer: bool = False, propagation_method: str = "local_raytracing") -> None:
         """初始化仿真器
         
         参数:
             verbose: 是否输出详细信息
+            use_global_raytracer: 是否使用全局坐标系光线追迹器
+            propagation_method: 元件传播方法
+                - 'local_raytracing': 局部光线追迹方法（默认）
+                - 'pure_diffraction': 纯衍射方法（使用 tilted_asm 投影传输）
         """
         self._surfaces: List["GlobalSurfaceDefinition"] = []
         self._source: Optional["SourceDefinition"] = None
@@ -65,6 +69,18 @@ class HybridSimulator:
         self._num_rays: int = 200
         self._beam_diam_fraction: Optional[float] = None
         self._verbose = verbose
+        self._use_global_raytracer = use_global_raytracer
+        self._propagation_method = propagation_method
+        self._debug = False  # Default to False
+    
+    def set_debug_mode(self, debug: bool = True) -> "HybridSimulator":
+        """设置调试模式
+        
+        参数:
+            debug: 是否开启调试模式（开启后会显示详细绘图）
+        """
+        self._debug = debug
+        return self
 
     def load_zmx(self, path: str) -> "HybridSimulator":
         """从 ZMX 文件加载光学系统
@@ -255,12 +271,17 @@ class HybridSimulator:
             # 创建传播器（复用 HybridOpticalPropagator）
             from hybrid_optical_propagation import HybridOpticalPropagator
             
+            print(f"[HybridSimulator.run] self._debug = {self._debug}")
+            
             propagator = HybridOpticalPropagator(
                 optical_system=self._surfaces,
                 source=self._source,
                 wavelength_um=self._wavelength_um,
                 grid_size=self._grid_size,
                 num_rays=self._num_rays,
+                use_global_raytracer=self._use_global_raytracer,
+                propagation_method=self._propagation_method,
+                debug=self._debug,
             )
             
             # 执行传播

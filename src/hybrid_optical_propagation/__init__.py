@@ -79,6 +79,8 @@ from .material_detection import (
 
 from .hybrid_element_propagator import HybridElementPropagator
 
+from .hybrid_element_propagator_global import HybridElementPropagatorGlobal
+
 from .paraxial_propagator import (
     ParaxialPhasePropagator,
     compute_paraxial_phase_correction,
@@ -132,6 +134,7 @@ __all__ = [
     "FreeSpacePropagator",
     "compute_propagation_distance",
     "HybridElementPropagator",
+    "HybridElementPropagatorGlobal",
     "ParaxialPhasePropagator",
     "compute_paraxial_phase_correction",
     "HybridOpticalPropagator",

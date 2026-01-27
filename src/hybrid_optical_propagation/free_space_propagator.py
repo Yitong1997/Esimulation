@@ -104,13 +104,27 @@ class FreeSpacePropagator:
         distance_m = distance_mm * 1e-3
         proper.prop_propagate(state.proper_wfo, distance_m)
         
+        # --------------------------------------------------------
+        # 关键修正：从 PROPER 获取新的网格参数
+        # PROPER 可能在传播过程中调整网格大小 (dx)，需要同步更新
+        # --------------------------------------------------------
+        wfo = state.proper_wfo
+        new_dx_mm = wfo.dx * 1e3
+        new_physical_size_mm = new_dx_mm * wfo.ngrid
+        
+        new_grid_sampling = GridSampling(
+            grid_size=wfo.ngrid,
+            physical_size_mm=new_physical_size_mm,
+            sampling_mm=new_physical_size_mm / wfo.ngrid
+        )
+        
         # 更新 Pilot Beam 参数
         new_pilot_params = state.pilot_beam_params.propagate(distance_mm)
         
-        # 从 PROPER 提取新的振幅和相位
+        # 从 PROPER 提取新的振幅和相位（使用新的网格采样）
         new_amplitude, new_phase = self._state_converter.proper_to_amplitude_phase(
             state.proper_wfo,
-            state.grid_sampling,
+            new_grid_sampling,
             pilot_beam_params=new_pilot_params,
         )
         
@@ -122,7 +136,7 @@ class FreeSpacePropagator:
             pilot_beam_params=new_pilot_params,
             proper_wfo=state.proper_wfo,
             optical_axis_state=target_axis_state,
-            grid_sampling=state.grid_sampling,
+            grid_sampling=new_grid_sampling,
         )
     
     def propagate_distance(

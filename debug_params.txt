@@ -1,0 +1,4 @@
+dx=0.0013395752513301515
+Size=0.6858625286810376
+Pilot=PilotBeamParams(wavelength_um=0.633, waist_radius_mm=np.float64(0.00428166446590411), waist_position_mm=np.float64(106.24992666939762), curvature_radius_mm=np.float64(-106.25000458316583), spot_size_mm=np.float64(5.000000006343482), q_parameter=np.complex128(-106.24992666939762+0.09098534034967783j))
+MaxAmp=1.2866038151276642

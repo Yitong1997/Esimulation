@@ -23,6 +23,11 @@ from .element_raytracer import (
     transform_rays_to_global,
     transform_rays_to_local,
 )
+from .global_element_raytracer import (
+    GlobalElementRaytracer,
+    GlobalSurfaceDefinition,
+    PlaneDef,
+)
 from .reconstructor import RayToWavefrontReconstructor
 from .exceptions import (
     ReconstructionError,
@@ -38,6 +43,10 @@ __all__ = [
     "SurfaceDefinition",
     "create_mirror_surface",
     "create_concave_mirror_for_spherical_wave",
+    # 全局坐标系光线追迹器
+    "GlobalElementRaytracer",
+    "GlobalSurfaceDefinition",
+    "PlaneDef",
     # 坐标转换辅助函数
     "compute_rotation_matrix",
     "transform_rays_to_global",

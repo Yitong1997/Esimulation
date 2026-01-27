@@ -19,6 +19,9 @@ def simulate(
     source: "GaussianSource",
     verbose: bool = True,
     num_rays: int = 200,
+    use_global_raytracer: bool = False,
+    propagation_method: str = "local_raytracing",
+    debug: bool = False,
 ) -> "SimulationResult":
     """执行混合光学仿真
     
@@ -29,6 +32,13 @@ def simulate(
         source: 高斯光源定义
         verbose: 是否输出详细信息，默认 True
         num_rays: 光线追迹使用的光线数量，默认 200
+        use_global_raytracer: 是否使用全局坐标系光线追迹器，默认 False
+            - False: 使用 HybridElementPropagator（局部坐标系）
+            - True: 使用 HybridElementPropagatorGlobal（全局坐标系）
+        propagation_method: 元件传播方法，默认 'local_raytracing'
+            - 'local_raytracing': 局部光线追迹方法（默认）
+            - 'pure_diffraction': 纯衍射方法（使用 tilted_asm 投影传输）
+        debug: 是否开启调试模式，默认 False
     
     返回:
         SimulationResult 对象，包含所有表面的波前数据
@@ -44,10 +54,17 @@ def simulate(
         >>> source = bts.GaussianSource(wavelength_um=0.633, w0_mm=5.0)
         >>> result = bts.simulate(system, source)
         >>> result.summary()
+        
+        # 使用全局坐标系光线追迹
+        >>> result = bts.simulate(system, source, use_global_raytracer=True)
+        
+        # 使用纯衍射方法
+        >>> result = bts.simulate(system, source, propagation_method='pure_diffraction')
     
     **Validates: Requirements 1.4, 5.1, 5.2, 5.3, 5.4, 5.5**
     """
     # 1. 验证系统配置
+    print(f"[bts.simulate] Called with debug={debug}")
     if len(system) == 0:
         raise ConfigurationError("光学系统为空，请先添加表面或加载 ZMX 文件")
     
@@ -66,7 +83,14 @@ def simulate(
         from hybrid_simulation import HybridSimulator
         
         # 创建 HybridSimulator 实例
-        sim = HybridSimulator(verbose=verbose)
+        sim = HybridSimulator(
+            verbose=verbose,
+            use_global_raytracer=use_global_raytracer,
+            propagation_method=propagation_method,
+        )
+        
+        # 设置调试模式
+        sim.set_debug_mode(debug)
         
         # 复用现有的表面定义
         # 优先使用 _global_surfaces（从 ZMX 加载或手动创建的全局坐标表面）

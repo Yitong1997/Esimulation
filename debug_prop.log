@@ -1,0 +1,16 @@
+DEBUG: Propagate Surface 0
+  Axis Pos: [0.   0.   6.25]
+  Ray Global X Range: [-10.00, 10.00]
+  Ray Local X Range: [-10.00, 10.00]
+  Grid Size: 20.00
+  Input Amp at Rays Max: 1.0000
+  Input Amp Grid Max: 1.0000
+----------------------------------------
+DEBUG: Propagate Surface 1
+  Axis Pos: [    0.         -2052.32307132 -3841.85575873]
+  Ray Global X Range: [-0.34, 0.34]
+  Ray Local X Range: [-0.34, 0.34]
+  Grid Size: 0.69
+  Input Amp at Rays Max: 0.6753
+  Input Amp Grid Max: 1.2866
+----------------------------------------

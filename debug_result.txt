@@ -1,0 +1,78 @@
+=== STDOUT ===
+======================================================================
+٤����ʽ������������������������׼����
+======================================================================
+
+����Ʋ�����
+  OAP1 ����: -100.0 mm (Radius=200.0 mm)
+  OAP2 ����: 300.0 mm (Radius=-600.0 mm)
+  OAP1 ����: 50.0 mm, OAP2 ����: 150.0 mm
+  ��� L: 200.0 mm
+  �Ŵ���: 3.00x
+  Ԥ���������: 15.000 mm
+  ���伫�޷�ɢ��: 13.432677 mrad
+
+��ִ�з��桿...
+Propagating
+DEBUG: x_in defined, shape=(217,)
+
+[DEBUG] Huge Residual Phase Detected!
+  Reference Surface: SPHERI
+  PROPER z: 0.0, z_w0: 0.10624992666939763
+  Grid Size: 512
+  Physical Size: 20.0 mm
+  Beam Diam Fraction: 0.0004281664465904109
+  PROPER Sampling: 0.0390625 mm
+  Pilot Waist: 0.00428166446590411 mm
+  Pilot Z0: 106.24992666939762 mm
+  Pilot R: -106.25000458316583 mm
+  Max Total Phase: 9342.157845776619
+  Max Ref Phase: 9342.164696442249
+  Max Residual: 5740.655129485232
+Propagating
+DEBUG: x_in defined, shape=(135,)
+
+[DEBUG] Huge Residual Phase Detected!
+  Reference Surface: SPHERI
+  PROPER z: 0.0, z_w0: -0.13563833348991822
+  Grid Size: 512
+  Physical Size: 40.000041410251114 mm
+  Beam Diam Fraction: 0.00013664870577172368
+  PROPER Sampling: 0.07812508087939671 mm
+  Pilot Waist: 0.002732976944763084 mm
+  Pilot Z0: -135.6383334899182 mm
+  Pilot R: 135.63834362095173 mm
+  Max Total Phase: 29272.14658135526
+  Max Ref Phase: 29272.14876773643
+  Max Residual: 228.239818323309
+DEBUG: Amplitude Max: 0.0
+
+����������
+  �����������: 15.000 mm (��� 0.00%)
+  ������ɢ��: 1.000000 mrad (���� 13.432677 mrad)
+  �в� RMS: nan milli-waves
+
+�������ж���
+  ����һ����: PASS (< 5%)
+  ׼ֱ��(��ɢ): PASS (< 13.483 mrad)
+  ��ǰ����(RMS): FAIL (< 500.0 mwaves)
+
+  ������: [FAIL]
+
+======================================================================
+�������
+======================================================================
+
+=== STDERR ===
+d:\BTS\src\wavefront_to_rays\reconstructor.py:666: UserWarning: ��⵽��λͻ�䣺�ز������������������������λ��Ϊ 44.083 ���� (7.016 ����)��������ֵ 3.142 ���ȣ��У�������ܵ�����λ������������Ӳ����ܶȡ�
+  warnings.warn(
+d:\BTS\src\hybrid_optical_propagation\state_converter.py:422: UserWarning: �в���λ����: 5740.66 rad > 1.57 rad������ܵ��� FFT ����ʱ�Ĳ������⡣
+  warnings.warn(
+d:\BTS\src\hybrid_optical_propagation\state_converter.py:422: UserWarning: �в���λ����: 3.14 rad > 1.57 rad������ܵ��� FFT ����ʱ�Ĳ������⡣
+  warnings.warn(
+d:\BTS\tests\integration\٤����ʽ������������������������׼�����ļ�.py:151: OptimizeWarning: Covariance of the parameters could not be estimated
+  popt_x, _ = curve_fit(gaussian_1d, coords, x_cut, p0=[np.max(x_cut), coords[x_idx], 5.0 * MAGNIFICATION, 0])
+d:\BTS\tests\integration\٤����ʽ������������������������׼�����ļ�.py:154: OptimizeWarning: Covariance of the parameters could not be estimated
+  popt_y, _ = curve_fit(gaussian_1d, coords, y_cut, p0=[np.max(y_cut), coords[y_idx], 5.0 * MAGNIFICATION, 0])
+d:\BTS\tests\integration\٤����ʽ������������������������׼�����ļ�.py:184: OptimizeWarning: Covariance of the parameters could not be estimated
+  popt_div, _ = curve_fit(gaussian_1d, theta_coords, x_cut_fft,

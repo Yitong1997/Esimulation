@@ -1,0 +1,16 @@
+
+[DEBUG] Trace Chief Ray Intersection (Local to Entrance):
+  x=0.000000e+00, y=0.000000e+00, z=0.000000e+00
+
+[DEBUG] Chief Ray Output Position (Exit Surface Local):
+  Input r=0.000000e+00
+  Output x=2.049861e-17, y=3.803622e-50, z=2.497835e-33
+  Should be close to (0, 0, 0)
+
+[DEBUG] Absolute OPD Statistics (Waves):
+  Mean: 3.037502e+01
+  Peak-to-Valley: 5.824670e+03
+  RMS: 1.527814e+03
+  Linear Fit: 6.947550e-14*x + 1.314786e+02*y + 2.915959e+01
+  Tilt X (waves/mm): 6.947550e-14
+  Tilt Y (waves/mm): 1.314786e+02

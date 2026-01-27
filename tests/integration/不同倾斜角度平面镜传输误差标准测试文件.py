@@ -30,8 +30,13 @@ sys.path.insert(0, str(project_root / 'proper_v3.3.4_python'))
 import bts
 
 
-def test_single_angle(tilt_deg: float, verbose: bool = False) -> dict:
+def test_single_angle(tilt_deg: float, verbose: bool = False, use_global_raytracer: bool = False) -> dict:
     """测试单个倾斜角度
+    
+    参数:
+        tilt_deg: 倾斜角度（度）
+        verbose: 是否输出详细信息
+        use_global_raytracer: 是否使用全局坐标系光线追迹器
     
     返回:
         包含测试结果的字典，如果失败则返回 None
@@ -56,7 +61,7 @@ def test_single_angle(tilt_deg: float, verbose: bool = False) -> dict:
         )
         
         # 运行仿真
-        result = bts.simulate(system, source, verbose=verbose)
+        result = bts.simulate(system, source, verbose=verbose, use_global_raytracer=use_global_raytracer)
         
         if not result.success:
             return {
@@ -135,6 +140,21 @@ def main():
     print("=" * 70)
     print()
     
+    # 解析命令行参数
+    import argparse
+    parser = argparse.ArgumentParser(description='倾斜平面镜传输误差测试')
+    parser.add_argument('--global-raytracer', action='store_true',
+                        help='使用全局坐标系光线追迹器')
+    args = parser.parse_args()
+    
+    use_global_raytracer = args.global_raytracer
+    
+    if use_global_raytracer:
+        print("使用全局坐标系光线追迹器")
+    else:
+        print("使用局部坐标系光线追迹器（默认）")
+    print()
+    
     # 测试角度列表
     # 包含常见角度和一些特殊角度
     test_angles = [
@@ -161,7 +181,7 @@ def main():
     
     for angle in test_angles:
         print(f"测试角度: {angle:5.1f}° ... ", end="", flush=True)
-        result = test_single_angle(angle)
+        result = test_single_angle(angle, use_global_raytracer=use_global_raytracer)
         results.append(result)
         
         if result['success']:
@@ -177,7 +197,7 @@ def main():
     print()
 
     # 打印表格
-    print(f"{'角度 (°)':>10} | {'状态':>6} | {'RMS (milli-waves)':>18} | "
+    print(f"{'角度 (°)':>10} | {'状态':>6} | {'RMS (Residual)':>18} | "
           f"{'PV (waves)':>12} | {'振幅最大值':>12}")
     print("-" * 70)
     

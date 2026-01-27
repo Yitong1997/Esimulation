@@ -195,9 +195,12 @@ class Surface:
         """
         # reset recorded information
         self.reset()
+        #光线与元件均位于入射面局部坐标系
 
         # transform coordinate system
-        self.geometry.localize(rays)
+        self.geometry.localize(rays)  
+        #光线被切换至元件顶点为原点，旋转轴为坐标轴的局部坐标系
+        #元件还位于全局坐标系
 
         if isinstance(rays, ParaxialRays):
             # propagate to this surface
@@ -213,7 +216,7 @@ class Surface:
 
             # propagate the rays a distance t through material
             self.material_pre.propagation_model.propagate(rays, t)
-
+            #这里没有更新rays的坐标？只计算了opd
             # update OPD
             rays.opd = rays.opd + be.abs(t * self.material_pre.n(rays.w))
 
@@ -223,7 +226,6 @@ class Surface:
 
             # interact with surface
             rays = self.interaction_model.interact_real_rays(rays)
-
         # inverse transform coordinate system
         self.geometry.globalize(rays)
 

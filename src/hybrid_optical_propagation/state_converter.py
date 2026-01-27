@@ -262,12 +262,21 @@ class StateConverter:
             # 如果没有 pilot_beam_params，使用网格物理尺寸的一半作为 w0 估计
             beam_diameter_m = grid_sampling.physical_size_mm * 1e-3 * 0.5
         
-        # beam_diam_fraction = 0.5（PROPER 固定用法）
+        # beam_diam_fraction Calculation:
+        # PROPER logic:
+        #   dx = beam_diameter / (grid_n * beam_diam_fraction)
+        #   physical_size = dx * grid_n = beam_diameter / beam_diam_fraction
+        # Therefore:
+        #   beam_diam_fraction = beam_diameter / physical_size
+        
+        target_physical_size_m = grid_sampling.physical_size_mm * 1e-3
+        beam_diam_fraction = beam_diameter_m / target_physical_size_m
+        
         wfo = proper.prop_begin(
             beam_diameter_m,
             wavelength_m,
             grid_sampling.grid_size,
-            0.5,
+            beam_diam_fraction,
         )
         
         if pilot_beam_params is not None:

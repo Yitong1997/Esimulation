@@ -227,8 +227,12 @@ class PilotBeamParams:
         if np.isinf(radius_mm):
             return self  # 平面镜，无聚焦效果
         
-        # 球面镜变换: 1/q_out = 1/q_in - 2/R
-        A, B, C, D = 1, 0, -2/radius_mm, 1
+        # 球面镜变换: 1/q_out = 1/q_in + 2/R (注意：R<0为凹面，C应为负，所以公式需为 +2/R ?? No.
+        # Wait. If R < 0 (Concave), we want focusing power. Focusing lens has C < 0 (Matrix: [[1,0], [-1/f, 1]]).
+        # If f = -R/2. Then -1/f = -1/(-R/2) = 2/R.
+        # So C = 2/R.
+        # Input R = -2000. C = 2/-2000 = -1/1000. This is converging power. Correct.
+        A, B, C, D = 1, 0, 2/radius_mm, 1
         q_new = (A * self.q_parameter + B) / (C * self.q_parameter + D)
         return PilotBeamParams.from_q_parameter(q_new, self.wavelength_um)
     

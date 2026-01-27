@@ -121,10 +121,21 @@ class StandardGeometry(BaseGeometry):
         d = b**2 - 4 * a * c
 
         # two solutions for distance to conic
+        # Robust calculation (Citardauq formula) to handle a -> 0
+        sign_b = be.sign(b)
+        # Ensure sign is not 0
+        sign_b = be.where(sign_b == 0, 1.0, sign_b)
+        
+        q = -0.5 * (b + sign_b * be.sqrt(d))
+        
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            t1 = (-b + be.sqrt(d)) / (2 * a)
-            t2 = (-b - be.sqrt(d)) / (2 * a)
+            t1 = q / a
+            
+        t2 = c / q
+        
+        if be.any(be.abs(a) < 1e-10):
+             print(f"[DEBUG OPTILAND FIX] Using local standard.py (Robust Quad). a_min={be.min(be.abs(a)):.2e}")
 
         # find intersection points in z
         z1 = rays.z + t1 * rays.N

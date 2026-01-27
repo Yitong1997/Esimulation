@@ -123,13 +123,26 @@ class WavefrontData:
         residual = self.get_residual_phase()
         
         # 有效区域掩模
-        norm_amp = self.amplitude / np.max(self.amplitude) if np.max(self.amplitude) > 0 else self.amplitude
+        # Debug Amplitude
+        if np.any(np.isnan(self.amplitude)):
+            print(f"DEBUG: Amplitude contains NaNs! Count: {np.sum(np.isnan(self.amplitude))}")
+        print(f"DEBUG: Amplitude Max: {np.nanmax(self.amplitude)}")
+            
+        norm_amp = self.amplitude / np.nanmax(self.amplitude) if np.nanmax(self.amplitude) > 0 else self.amplitude
         valid_mask = norm_amp > 0.01
         
         if np.sum(valid_mask) == 0:
             return np.nan
         
-        rms_rad = np.sqrt(np.mean(residual[valid_mask] ** 2))
+        # Check for NaNs in residual within valid mask
+        valid_residual = residual[valid_mask]
+        
+        if np.any(np.isnan(valid_residual)):
+            # print("Warning: NaNs detected in residual phase within valid readout region. Ignoring NaNs.")
+            rms_rad = np.sqrt(np.nanmean(valid_residual ** 2))
+        else:
+            rms_rad = np.sqrt(np.mean(valid_residual ** 2))
+        
         return rms_rad / (2 * np.pi)
     
     def get_residual_pv_waves(self) -> float:

@@ -330,10 +330,11 @@ class RayToWavefrontReconstructor:
         amplitude = np.zeros_like(ray_x_in)
         amplitude[valid_mask] = amplitude_valid
         
-        # 相位 = -2π × OPD（复振幅公式）
-        # 负号是因为 OPD 增加对应相位滞后
+        # 相位 = 2π × OPD（修正符号）
+        # 物理约定：光程增加对应相位滞后 exp(-iφ)，但这里重建的是相位值
+        # 保持与 Pilot Beam 一致的正负号体系
         phase = np.zeros_like(ray_x_in)
-        phase[valid_mask] = -2 * np.pi * valid_opd
+        phase[valid_mask] = 2 * np.pi * valid_opd
         
         return amplitude, phase
 
@@ -442,6 +443,7 @@ class RayToWavefrontReconstructor:
         valid_mask: np.ndarray,
         check_phase_discontinuity: bool = True,
         input_amplitude: np.ndarray = None,
+        debug_pilot_phase: np.ndarray = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """重建振幅和相位网格（不转换为复振幅）
         
@@ -462,6 +464,7 @@ class RayToWavefrontReconstructor:
             check_phase_discontinuity: 是否检测相位突变（默认 True）
             input_amplitude: 输入振幅数组（可选），如果提供则保留输入振幅分布
                             形状必须与 ray_x_in 相同
+            debug_pilot_phase: 调试用 Pilot Beam 相位网格（可选）
         
         返回:
             (amplitude_grid, phase_grid) 元组
@@ -485,7 +488,11 @@ class RayToWavefrontReconstructor:
         
         # 3. 检测相位突变
         if check_phase_discontinuity:
-            self._check_phase_discontinuity_on_grid(phase_grid, amp_grid)
+            self._check_phase_discontinuity_on_grid(
+                phase_grid, 
+                amp_grid, 
+                debug_pilot_phase=debug_pilot_phase
+            )
         
         return amp_grid, phase_grid
 
@@ -499,6 +506,7 @@ class RayToWavefrontReconstructor:
         valid_mask: np.ndarray,
         check_phase_discontinuity: bool = True,
         input_amplitude: np.ndarray = None,
+        debug_pilot_phase: np.ndarray = None,
     ) -> np.ndarray:
         """重建复振幅（使用雅可比矩阵方法）
         
@@ -534,6 +542,7 @@ class RayToWavefrontReconstructor:
                                       如果检测到相位差 > π，发出 UserWarning
             input_amplitude: 输入振幅数组（可选），如果提供则保留输入振幅分布
                             形状必须与 ray_x_in 相同
+            debug_pilot_phase: 调试用 Pilot Beam 相位网格（可选）
         
         返回:
             复振幅网格 (grid_size × grid_size 复数数组)
@@ -593,7 +602,11 @@ class RayToWavefrontReconstructor:
         # 3. 检测相位突变（重采样后、加回理想相位之前）（需求 6.2）
         # 如果相邻像素相位差 > π，可能导致相位混叠
         if check_phase_discontinuity:
-            self._check_phase_discontinuity_on_grid(phase_grid, amp_grid)
+            self._check_phase_discontinuity_on_grid(
+                phase_grid, 
+                amp_grid, 
+                debug_pilot_phase=debug_pilot_phase
+            )
         
         # 4. 组合为复振幅
         # 复振幅 = 振幅 × exp(j × 相位)
@@ -606,6 +619,7 @@ class RayToWavefrontReconstructor:
         phase_grid: np.ndarray,
         amplitude_grid: np.ndarray,
         threshold_rad: float = np.pi,
+        debug_pilot_phase: np.ndarray = None,
     ) -> bool:
         """检测重采样后网格上的相位突变
         
@@ -636,7 +650,7 @@ class RayToWavefrontReconstructor:
         import warnings
         
         # 创建有效区域掩模（振幅 > 0 的区域）
-        valid_mask = amplitude_grid > 1e-10
+        valid_mask = amplitude_grid > 1e-5
         
         # 如果没有有效区域，直接返回
         if not np.any(valid_mask):
@@ -660,9 +674,122 @@ class RayToWavefrontReconstructor:
         
         # 检查是否超过阈值
         has_discontinuity = max_phase_diff > threshold_rad
+        # Debug: 打印最大相位差
+        # print(f"DEBUG: max_phase_diff = {max_phase_diff:.4f} rad (threshold: {threshold_rad:.4f})")
         
-        if has_discontinuity:
+        # 强制绘制调试图像（如果提供了 debug_pilot_phase）
+        if debug_pilot_phase is not None:
+             # has_discontinuity = True # 强制触发绘图
+             pass
+
+        if has_discontinuity or (debug_pilot_phase is not None): # 修改条件以始终绘图
             max_opd_waves = max_phase_diff / (2 * np.pi)
+            
+            # 如果提供了 debug_pilot_phase，绘制调试图像
+            if debug_pilot_phase is not None:
+                try:
+                    import matplotlib.pyplot as plt
+                    from datetime import datetime
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    # 1. 残差相位
+                    plt.figure(figsize=(12, 10))
+                    extent = self.grid_extent_mm + self.grid_extent_mm
+                    plt.subplot(2, 2, 1)
+                    plt.imshow(phase_grid, origin='lower', extent=extent)
+                    plt.colorbar(label='Residual Phase (rad)')
+                    plt.title('Residual Phase')
+                    
+                    # 2. Pilot Beam 相位
+                    plt.subplot(2, 2, 2)
+                    plt.imshow(debug_pilot_phase, origin='lower', extent=extent)
+                    plt.colorbar(label='Pilot Phase (rad)')
+                    plt.title('Pilot Beam Phase')
+                    
+                    # 3. 完整相位
+                    plt.subplot(2, 2, 3)
+                    total_phase = phase_grid + debug_pilot_phase
+                    plt.imshow(np.angle(np.exp(1j * total_phase)), origin='lower', extent=extent)
+                    plt.colorbar(label='Total Phase (wrapped rad)')
+                    plt.title('Total Phase (Wrapped)')
+                    
+                    # 4. 振幅
+                    plt.subplot(2, 2, 4)
+                    plt.imshow(amplitude_grid, origin='lower', extent=extent)
+                    plt.colorbar(label='Amplitude')
+                    plt.title(f'Amplitude\nMax Phase Diff: {max_phase_diff:.3f} rad')
+                    
+                    plt.tight_layout()
+                    filename = f"debug_discontinuity_{timestamp}.png"
+                    plt.savefig(filename)
+                    plt.close()
+                    # print(f"  已保存相位突变调试图像: {filename}")
+                except Exception as e:
+                    # print(f"  调试绘图失败: {e}")
+                    pass
+
+                except Exception as e:
+                    # print(f"  调试绘图失败: {e}")
+                    pass
+            
+            # Zernike 分解分析 (用户要求)
+            try:
+                # 简单的 Zernike 分解 (前 4 项：Piston, Tilt X, Tilt Y, Defocus)
+                # 使用最小二乘法拟合
+                
+                # 创建坐标网格 (归一化到单位圆)
+                y, x = np.indices(phase_grid.shape)
+                y = (y - phase_grid.shape[0]/2) / (phase_grid.shape[0]/2)
+                x = (x - phase_grid.shape[1]/2) / (phase_grid.shape[1]/2)
+                
+                # 只在有效区域内拟合
+                valid_mask = amplitude_grid > 1e-5
+                if np.any(valid_mask):
+                    x_valid = x[valid_mask]
+                    y_valid = y[valid_mask]
+                    phase_valid = phase_grid[valid_mask]
+                    
+                    r = np.sqrt(x_valid**2 + y_valid**2)
+                    theta = np.arctan2(y_valid, x_valid)
+                    
+                    # 定义 Zernike 多项式 (Noll index)
+                    # Z1: Piston = 1
+                    # Z2: Tilt X = 2 * r * cos(theta) = 2 * x
+                    # Z3: Tilt Y = 2 * r * sin(theta) = 2 * y
+                    # Z4: Defocus = sqrt(3) * (2*r^2 - 1)
+                    
+                    Z1 = np.ones_like(r)
+                    Z2 = 2 * x_valid # Tilt X (Horizontal)
+                    Z3 = 2 * y_valid # Tilt Y (Vertical)
+                    Z4 = np.sqrt(3) * (2*r**2 - 1)
+                    
+                    A_zern = np.column_stack([Z1, Z2, Z3, Z4])
+                    
+                    coeffs, _, _, _ = np.linalg.lstsq(A_zern, phase_valid, rcond=None)
+                    
+                    zernike_msg = (
+                        f"\n[DEBUG] Residual Phase Zernike Analysis (first 4 terms):\n"
+                        f"  Z1 (Piston) : {coeffs[0]:.6f} rad\n"
+                        f"  Z2 (Tilt X) : {coeffs[1]:.6f} rad\n"
+                        f"  Z3 (Tilt Y) : {coeffs[2]:.6f} rad\n"
+                        f"  Z4 (Defocus): {coeffs[3]:.6f} rad\n"
+                    )
+                    print(zernike_msg)
+                    
+                    # 保存到文件以便读取
+                    try:
+                        with open("zernike_analysis.txt", "w", encoding="utf-8") as f:
+                            f.write(zernike_msg)
+                    except Exception:
+                        pass
+                    
+                    if abs(coeffs[1]) > 0.1 or abs(coeffs[2]) > 0.1:
+                         print("  [WARNING] Significant Tilt detected! Check Optical Axis alignment.")
+
+            except Exception as e:
+                print(f"  Zernike 分析失败: {e}")
+
             warnings.warn(
                 f"检测到相位突变：重采样后网格上相邻像素最大相位差为 "
                 f"{max_phase_diff:.3f} 弧度 ({max_opd_waves:.3f} 波长)，"

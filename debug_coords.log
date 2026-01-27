@@ -1,0 +1,6 @@
+
+[DEBUG] Coordinate Verification at Exit Plane:
+  Exit Position (Global): [    0.      0.  10002.5]
+  Output Rays X (Min/Max): -19.9660 / 19.9660
+  Output Rays Y (Min/Max): -19.9566 / 19.9767
+  Calculated Local X (Min/Max): -19.9660 / 19.9660

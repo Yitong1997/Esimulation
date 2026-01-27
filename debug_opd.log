@@ -1,0 +1,9 @@
+
+[DEBUG] OPD Verification:
+  R_out: -1002.5408 mm
+  Absolute OPD (Min/Max): -3153.5108 / 3154.9886 waves
+  Pilot OPD (Min/Max): 0.0000 / 320.9973 waves
+  Residual OPD (Min/Max): -3467.9305 / 2841.2013 waves
+  Coordinates Local X (Min/Max): -19.9660 / 19.9660
+  Ray L (Min/Max/Mean): -0.019912 / 0.019912 / -0.000000
+  Ray M (Min/Max/Mean): -0.019923 / 0.019903 / 0.000004

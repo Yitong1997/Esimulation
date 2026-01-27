@@ -56,10 +56,10 @@ import bts
 # 光学参数
 WAVELENGTH_UM = 0.633      # 波长 (μm)
 W0_MM = 10.0               # 束腰半径 (mm)
-RADIUS_MM = 2000.0         # 曲率半径 (mm)，R = 2f，焦距 1000mm
+RADIUS_MM = 2000.0         # 曲率半径 (mm)，R = 2f，焦距 1000mm（凹面镜 R < 0）
 
 # 表面顶点 Y 坐标（离轴效果由此产生）
-SURFACE_Y_POSITION_MM = 100.0  # 离轴 100mm
+SURFACE_Y_POSITION_MM = 200.0  # 离轴 100mm
 
 # 网格参数
 GRID_SIZE = 256
@@ -77,6 +77,11 @@ def run_oap_test(
     radius_mm: float = RADIUS_MM,
     surface_y_mm: float = SURFACE_Y_POSITION_MM,
     verbose: bool = True,
+    use_global_raytracer: bool = False,
+    grid_size: int = GRID_SIZE,
+    z_mm: float = 1000.0,
+    propagation_method: str = "local_raytracing",
+    debug: bool = True,
 ) -> dict:
     """运行离轴抛物面镜测试
     
@@ -84,6 +89,8 @@ def run_oap_test(
         radius_mm: 曲率半径 (mm)，R = 2f
         surface_y_mm: 表面顶点 Y 坐标 (mm)，这就是"离轴量"
         verbose: 是否输出详细信息
+        use_global_raytracer: 是否使用全局坐标系光线追迹器
+        z_mm: 表面 Z 坐标 (mm)
     
     返回:
         测试结果字典
@@ -91,6 +98,8 @@ def run_oap_test(
     if verbose:
         print("=" * 70)
         print("离轴抛物面镜传输误差标准测试")
+        if use_global_raytracer:
+            print("（使用全局坐标系光线追迹器）")
         print("=" * 70)
 
     # ========================================================
@@ -103,6 +112,7 @@ def run_oap_test(
         print(f"\n【光学系统参数】")
         print(f"  曲率半径: {radius_mm} mm (焦距 {focal_length} mm)")
         print(f"  表面顶点 Y 坐标: {surface_y_mm} mm")
+        print(f"  表面 Z 坐标: {z_mm} mm")
         
         # 计算理论出射角
         exit_angle_deg = 2 * np.degrees(np.arctan(surface_y_mm / (2 * focal_length)))
@@ -114,7 +124,7 @@ def run_oap_test(
     system.add_parabolic_mirror(
         x=0.0,
         y=surface_y_mm,
-        z=0.0,
+        z=z_mm,
         radius=radius_mm,
     )
     
@@ -128,7 +138,7 @@ def run_oap_test(
     source = bts.GaussianSource(
         wavelength_um=WAVELENGTH_UM,
         w0_mm=W0_MM,
-        grid_size=GRID_SIZE,
+        grid_size=grid_size,
     )
     
     if verbose:
@@ -143,13 +153,22 @@ def run_oap_test(
     # ========================================================
     
     if verbose:
-        print(f"\n【执行仿真】")
+        print(f"\n【执行仿真】(Method: {propagation_method})")
     
     try:
-        result = bts.simulate(system, source)
+        result = bts.simulate(
+            system, 
+            source, 
+            use_global_raytracer=use_global_raytracer,
+            propagation_method=propagation_method,
+            debug=debug,
+        )
     except Exception as e:
-        print(f"仿真失败: {e}")
+        print(f"Simulation Failed: {e}")
         import traceback
+        with open(r'd:\BTS\error_info.txt', 'w', encoding='utf-8') as f:
+            f.write(traceback.format_exc())
+            
         traceback.print_exc()
         return {
             'success': False,
@@ -161,34 +180,32 @@ def run_oap_test(
     # ========================================================
     
     if verbose:
-        print(f"\n【仿真结果】")
+        print(f"\n[Simulation Results]")
     
-    # 获取最终波前数据
+    # Get final wavefront data
     final_wavefront = result.get_final_wavefront()
     output_amplitude = final_wavefront.amplitude
     output_phase = final_wavefront.phase
     
     if verbose:
-        print(f"  振幅形状: {output_amplitude.shape}")
-        print(f"  振幅最大值: {np.max(output_amplitude):.6f}")
-        print(f"  非零元素数: {np.sum(output_amplitude > 0)}")
+        print(f"  Non-zero elements: {np.sum(output_amplitude > 0)}")
     
-    # 创建有效区域掩模
+    # Create valid region mask
     amp_max = np.max(output_amplitude)
     valid_mask = output_amplitude > 0.01 * amp_max
     
     if verbose:
-        print(f"  有效区域像素数: {np.sum(valid_mask)}")
+        print(f"  Valid region pixel count: {np.sum(valid_mask)}")
     
     if np.sum(valid_mask) < 100:
-        print("警告: 有效区域太小")
+        print("Warning: Valid region is too small")
         return {
             'success': False,
-            'error': '有效区域太小',
+            'error': 'Valid region is too small',
         }
 
     # --------------------------------------------------------
-    # 4.1 振幅分析
+    # 4.1 Amplitude Analysis
     # --------------------------------------------------------
     
     sampling = final_wavefront.grid.physical_size_mm / final_wavefront.grid.grid_size
@@ -198,7 +215,7 @@ def run_oap_test(
     xx, yy = np.meshgrid(x, y)
     rr = np.sqrt(xx**2 + yy**2)
     
-    # 理论高斯振幅
+    # Theoretical Gaussian amplitude
     theoretical_amplitude = np.exp(-rr**2 / W0_MM**2)
     theoretical_amplitude = theoretical_amplitude / np.max(theoretical_amplitude) * amp_max
     
@@ -210,37 +227,57 @@ def run_oap_test(
     amp_pv_percent = np.ptp(amp_error_valid) / amp_max * 100
     
     if verbose:
-        print(f"\n  振幅分析:")
-        print(f"    振幅 RMS 误差: {amp_rms_percent:.3f}%")
-        print(f"    振幅 PV 误差: {amp_pv_percent:.3f}%")
+        print(f"\n  Amplitude Analysis:")
+        print(f"    RMS Error: {amp_rms_percent:.3f}%")
+        print(f"    PV Error: {amp_pv_percent:.3f}%")
     
     # --------------------------------------------------------
-    # 4.2 相位分析
+    # 4.2 Phase Analysis
     # --------------------------------------------------------
     
     phase_valid = output_phase[valid_mask]
     x_valid = xx[valid_mask]
     y_valid = yy[valid_mask]
     
-    # 去除整体倾斜
-    A = np.column_stack([np.ones_like(x_valid), x_valid, y_valid])
-    coeffs, _, _, _ = np.linalg.lstsq(A, phase_valid, rcond=None)
-    phase_plane = coeffs[0] + coeffs[1] * x_valid + coeffs[2] * y_valid
-    phase_residual = phase_valid - phase_plane
+    # Calculate residual relative to Pilot Beam
+    phase_rms_waves = final_wavefront.get_residual_rms_waves()
+    phase_pv_waves = final_wavefront.get_residual_pv_waves()
     
-    # 转换为 milli-waves
-    phase_rms_waves = np.std(phase_residual) / (2 * np.pi)
-    phase_pv_waves = np.ptp(phase_residual) / (2 * np.pi)
+    # Convert to milli-waves
     phase_rms_mwaves = phase_rms_waves * 1000
     phase_pv_mwaves = phase_pv_waves * 1000
     
     if verbose:
-        print(f"\n  相位分析:")
-        print(f"    相位 RMS: {phase_rms_mwaves:.3f} milli-waves")
-        print(f"    相位 PV: {phase_pv_mwaves:.3f} milli-waves")
+        print(f"\n  Phase Analysis:")
+        print(f"    Phase RMS (vs Pilot): {phase_rms_mwaves:.3f} milli-waves")
+        print(f"    Phase PV (vs Pilot): {phase_pv_mwaves:.3f} milli-waves")
+        
+        # Save residual image
+        try:
+            import matplotlib.pyplot as plt
+            from datetime import datetime
+            
+            error_waves = final_wavefront.get_residual_phase()
+            
+            plt.figure(figsize=(10, 8))
+            plt.imshow(error_waves, origin='lower', extent=[x.min(), x.max(), y.min(), y.max()])
+            plt.colorbar(label='Residual Phase (waves)')
+            plt.title(f'Residual Phase Error\nRMS={phase_rms_mwaves:.3f}mw, PV={phase_pv_mwaves:.3f}mw')
+            plt.xlabel('x (mm)')
+            plt.ylabel('y (mm)')
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"oap_residual_phase_{timestamp}.png"
+            plt.savefig(filename)
+            print(f"  Saved residual image: {filename}")
+            plt.close()
+        except ImportError:
+            print("  matplotlib not installed, skipping plot")
+        except Exception as e:
+            print(f"  Plotting failed: {e}")
 
     # ========================================================
-    # 5. 判断测试结果
+    # 5. Determine Result
     # ========================================================
     
     phase_pass = phase_rms_mwaves < PHASE_RMS_THRESHOLD_MWAVES
@@ -248,14 +285,14 @@ def run_oap_test(
     overall_pass = phase_pass and amp_pass
     
     if verbose:
-        print(f"\n【测试结果】")
-        print(f"  相位 RMS: {phase_rms_mwaves:.3f} milli-waves " +
-              f"({'通过' if phase_pass else '失败'}, 阈值 < {PHASE_RMS_THRESHOLD_MWAVES})")
-        print(f"  振幅 RMS: {amp_rms_percent:.3f}% " +
-              f"({'通过' if amp_pass else '失败'}, 阈值 < {AMPLITUDE_RMS_THRESHOLD_PERCENT}%)")
-        print(f"\n  总体结果: {'✓ 通过' if overall_pass else '✗ 失败'}")
+        print(f"\n[Test Results]")
+        print(f"  Phase RMS: {phase_rms_mwaves:.3f} milli-waves " +
+              f"({'PASS' if phase_pass else 'FAIL'}, Threshold < {PHASE_RMS_THRESHOLD_MWAVES})")
+        print(f"  Amplitude RMS: {amp_rms_percent:.3f}% " +
+              f"({'PASS' if amp_pass else 'FAIL'}, Threshold < {AMPLITUDE_RMS_THRESHOLD_PERCENT}%)")
+        print(f"\n  Overall: {'PASS' if overall_pass else 'FAIL'}")
     
-    return {
+    result_dict = {
         'success': overall_pass,
         'phase_rms_mwaves': phase_rms_mwaves,
         'phase_pv_mwaves': phase_pv_mwaves,
@@ -264,6 +301,11 @@ def run_oap_test(
         'phase_pass': phase_pass,
         'amp_pass': amp_pass,
     }
+    
+    with open(r'd:\BTS\test_results.txt', 'w', encoding='utf-8') as f:
+        f.write(str(result_dict))
+        
+    return result_dict
 
 
 # ============================================================
@@ -272,7 +314,19 @@ def run_oap_test(
 
 def main():
     """主函数"""
-    result = run_oap_test(verbose=True)
+    import argparse
+    parser = argparse.ArgumentParser(description='离轴抛物面镜传输误差测试')
+    parser.add_argument('--global-raytracer', action='store_true',
+                        help='使用全局坐标系光线追迹器')
+    parser.add_argument('--debug', action='store_true',
+                        help='开启调试模式')
+    args = parser.parse_args()
+    
+    result = run_oap_test(
+        verbose=True, 
+        use_global_raytracer=args.global_raytracer,
+        # debug 使用默认值 (True)
+    )
     
     print("\n" + "=" * 70)
     print("测试完成")
