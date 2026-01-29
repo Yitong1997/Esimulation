@@ -76,8 +76,9 @@ class WavefrontData:
             Pilot Beam 振幅网格，归一化到与实际振幅相同的峰值
         """
         n = self.grid.grid_size
-        half_size = self.grid.physical_size_mm / 2
-        coords = np.linspace(-half_size, half_size, n)
+        n = self.grid.grid_size
+        dx = self.grid.physical_size_mm / n
+        coords = (np.arange(n) - n // 2) * dx
         X, Y = np.meshgrid(coords, coords)
         r_sq = X**2 + Y**2
         

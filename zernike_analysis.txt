@@ -1,6 +1,6 @@
 
 [DEBUG] Residual Phase Zernike Analysis (first 4 terms):
-  Z1 (Piston) : -0.004599 rad
-  Z2 (Tilt X) : -0.000650 rad
-  Z3 (Tilt Y) : -0.000605 rad
-  Z4 (Defocus): -0.045724 rad
+  Z1 (Piston) : 0.011977 rad
+  Z2 (Tilt X) : -0.000000 rad
+  Z3 (Tilt Y) : -0.000121 rad
+  Z4 (Defocus): 0.018950 rad

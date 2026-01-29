@@ -18,7 +18,7 @@ def simulate(
     system: "OpticalSystem",
     source: "GaussianSource",
     verbose: bool = True,
-    num_rays: int = 200,
+    num_rays: int = 4096,
     use_global_raytracer: bool = False,
     propagation_method: str = "local_raytracing",
     debug: bool = False,
@@ -31,7 +31,7 @@ def simulate(
         system: 光学系统定义
         source: 高斯光源定义
         verbose: 是否输出详细信息，默认 True
-        num_rays: 光线追迹使用的光线数量，默认 200
+        num_rays: 光线追迹使用的光线数量，默认 4096
         use_global_raytracer: 是否使用全局坐标系光线追迹器，默认 False
             - False: 使用 HybridElementPropagator（局部坐标系）
             - True: 使用 HybridElementPropagatorGlobal（全局坐标系）

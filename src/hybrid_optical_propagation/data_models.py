@@ -314,8 +314,10 @@ class PilotBeamParams:
         
         **Validates: Requirements 8.5, 8.6, 8.7**
         """
-        half_size = physical_size_mm / 2
-        coords = np.linspace(-half_size, half_size, grid_size)
+        # 修正：使用离散采样网格，确保中心点 (0,0) 对齐
+        # 匹配 GridSampling.get_coordinate_arrays 的逻辑
+        dx = physical_size_mm / grid_size
+        coords = (np.arange(grid_size) - grid_size // 2) * dx
         X, Y = np.meshgrid(coords, coords)
         r_sq = X**2 + Y**2  # mm²
         
@@ -327,6 +329,35 @@ class PilotBeamParams:
         
         pilot_phase = k * r_sq / (2 * self.curvature_radius_mm)
         return pilot_phase
+    
+    def compute_amplitude_grid(
+        self,
+        grid_size: int,
+        physical_size_mm: float,
+    ) -> NDArray[np.floating]:
+        """在网格上计算 Pilot Beam 参考振幅
+        
+        参数:
+            grid_size: 网格大小 (N × N)
+            physical_size_mm: 物理尺寸（直径）(mm)
+        
+        返回:
+            参考振幅网格 (归一化)，形状 (grid_size, grid_size)
+        """
+        # 修正：使用离散采样网格，确保中心点 (0,0) 对齐
+        dx = physical_size_mm / grid_size
+        coords = (np.arange(grid_size) - grid_size // 2) * dx
+        X, Y = np.meshgrid(coords, coords)
+        r_sq = X**2 + Y**2  # mm²
+        
+        w = self.spot_size_mm
+        if w <= 0:
+             return np.zeros((grid_size, grid_size))
+             
+        # 高斯光束振幅分布: A(r) = A0 * exp(-r²/w²)
+        # 这里返回归一化的分布 (A0=1)
+        amplitude = np.exp(-r_sq / w**2)
+        return amplitude
     
     @property
     def rayleigh_length_mm(self) -> float:
@@ -674,12 +705,14 @@ class SourceDefinition:
         # beam_diameter = 2 * w0（PROPER 固定用法）
         beam_diameter_m = 2 * self.w0_mm * 1e-3
         
-        # beam_diam_fraction = 0.5（PROPER 固定用法）
+        # beam_diam_fraction (默认 0.5)
+        beam_ratio = self.beam_diam_fraction if self.beam_diam_fraction is not None else 0.5
+        
         wfo = proper.prop_begin(
             beam_diameter_m,
             wavelength_m,
             self.grid_size,
-            0.5,
+            beam_ratio,
         )
         
         # 同步 PROPER 高斯光束参数（关键！）
@@ -698,11 +731,12 @@ class SourceDefinition:
             wfo.reference_surface = "SPHERI"
         
         # 创建坐标网格
+        # 修正：使用离散采样网格，确保中心点 (0,0) 对齐（与 PilotBeamParams 和 Reconstructor 一致）
         n = self.grid_size
         sampling_m = proper.prop_get_sampling(wfo)
         sampling_mm = sampling_m * 1e3
-        half_size = sampling_mm * n / 2
-        coords = np.linspace(-half_size, half_size, n)
+        dx = sampling_mm # explicit rename for clarity
+        coords = (np.arange(n) - n // 2) * dx
         X, Y = np.meshgrid(coords, coords)
         R_sq = X**2 + Y**2
         
@@ -775,14 +809,15 @@ class SourceDefinition:
         返回:
             GridSampling 对象
         """
-        # 网格物理尺寸固定为 4 × w0（PROPER 固定用法）
-        # 当 beam_diameter = 2*w0 且 beam_diam_fraction = 0.5 时：
-        # dx = beam_diameter / (grid_n * 0.5) = 4*w0 / grid_n
-        # physical_size = dx * grid_n = 4 * w0
-        actual_physical_size_mm = 4 * self.w0_mm
+        # 网格物理尺寸计算
+        # beam_diameter = 2 * w0
+        # dx = beam_diameter / (grid_n * beam_ratio)
+        # physical_size = dx * grid_n = beam_diameter / beam_ratio = 2 * w0 / beam_ratio
+        beam_ratio = self.beam_diam_fraction if self.beam_diam_fraction is not None else 0.5
+        actual_physical_size_mm = 2 * self.w0_mm / beam_ratio
         
         return GridSampling.create(
             grid_size=self.grid_size,
             physical_size_mm=actual_physical_size_mm,
-            beam_ratio=0.5,  # 固定为 0.5
+            beam_ratio=beam_ratio,
         )

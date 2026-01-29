@@ -87,18 +87,69 @@ class RealRays(BaseRays):
 
         self.is_normalized = True
 
+    def _get_snapped_sin_cos(self, angle: ScalarOrArray) -> tuple[ScalarOrArray, ScalarOrArray]:
+        """Get sine and cosine of an angle with snapping to exact values for multiples of pi/2.
+
+        Args:
+            angle: The angle in radians.
+
+        Returns:
+            A tuple containing (sin(angle), cos(angle)).
+        """
+        # handling for scalar angles to improve precision
+        if isinstance(angle, (int, float)) or (hasattr(angle, "ndim") and angle.ndim == 0):
+            # Check proximity to multiples of pi/2
+            # 0, pi/2, pi, 3pi/2, 2pi, etc.
+            # We check if angle / (pi/2) is close to an integer
+            
+            # Normalize angle to [0, 2pi) for easier checking, or just check modulo
+            # Ideally we just want to catch common manual inputs like np.pi, np.pi/2
+            
+            # Simple check for common values
+            # multiple of pi/2?
+            import numpy as np
+            
+            # get the closest multiple of pi/2
+            factor = angle / (np.pi / 2)
+            nearest_int = round(factor)
+            
+            if abs(factor - nearest_int) < 1e-9:
+                # It is a multiple of pi/2
+                remainder = nearest_int % 4
+                if remainder == 0:   # 0, 2pi, ...
+                    return 0.0, 1.0
+                elif remainder == 1: # pi/2
+                    return 1.0, 0.0
+                elif remainder == 2: # pi
+                    return 0.0, -1.0
+                elif remainder == 3: # 3pi/2
+                    return -1.0, 0.0
+                elif remainder == -1: # -pi/2
+                    return -1.0, 0.0
+                elif remainder == -2: # -pi
+                    return 0.0, -1.0
+                elif remainder == -3: # -3pi/2
+                    return 1.0, 0.0
+        
+        return be.sin(angle), be.cos(angle)
+
     def rotate_x(self, rx: ScalarOrArray):
         """Rotate the rays about the x-axis.
 
         Args:
             rx: Rotation angle around x-axis in radians.
         """
-        rx = be.array(rx)
+        sin_rx, cos_rx = self._get_snapped_sin_cos(rx)
+        
+        # Check if we need to cast back to backend arrays if they are scalars
+        # because the operations below expect compatible types with self.y etc.
+        # But multiplying array by scalar float is fine in both numpy and torch.
+        
         self.y, self.z, self.M, self.N = (
-            self.y * be.cos(rx) - self.z * be.sin(rx),
-            self.y * be.sin(rx) + self.z * be.cos(rx),
-            self.M * be.cos(rx) - self.N * be.sin(rx),
-            self.M * be.sin(rx) + self.N * be.cos(rx),
+            self.y * cos_rx - self.z * sin_rx,
+            self.y * sin_rx + self.z * cos_rx,
+            self.M * cos_rx - self.N * sin_rx,
+            self.M * sin_rx + self.N * cos_rx,
         )
 
     def rotate_y(self, ry: ScalarOrArray):
@@ -107,12 +158,13 @@ class RealRays(BaseRays):
         Args:
             ry: Rotation angle around y-axis in radians.
         """
-        ry = be.array(ry)
+        sin_ry, cos_ry = self._get_snapped_sin_cos(ry)
+        
         self.x, self.z, self.L, self.N = (
-            self.x * be.cos(ry) + self.z * be.sin(ry),
-            -self.x * be.sin(ry) + self.z * be.cos(ry),
-            self.L * be.cos(ry) + self.N * be.sin(ry),
-            -self.L * be.sin(ry) + self.N * be.cos(ry),
+            self.x * cos_ry + self.z * sin_ry,
+            -self.x * sin_ry + self.z * cos_ry,
+            self.L * cos_ry + self.N * sin_ry,
+            -self.L * sin_ry + self.N * cos_ry,
         )
 
     def rotate_z(self, rz: ScalarOrArray):
@@ -121,12 +173,13 @@ class RealRays(BaseRays):
         Args:
             rz: Rotation angle around z-axis in radians.
         """
-        rz = be.array(rz)
+        sin_rz, cos_rz = self._get_snapped_sin_cos(rz)
+
         self.x, self.y, self.L, self.M = (
-            self.x * be.cos(rz) - self.y * be.sin(rz),
-            self.x * be.sin(rz) + self.y * be.cos(rz),
-            self.L * be.cos(rz) - self.M * be.sin(rz),
-            self.L * be.sin(rz) + self.M * be.cos(rz),
+            self.x * cos_rz - self.y * sin_rz,
+            self.x * sin_rz + self.y * cos_rz,
+            self.L * cos_rz - self.M * sin_rz,
+            self.L * sin_rz + self.M * cos_rz,
         )
 
     def clip(self, condition: BEArray):

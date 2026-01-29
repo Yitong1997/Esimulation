@@ -1,58 +1,25 @@
 Traceback (most recent call last):
-  File "d:\BTS\src\hybrid_simulation\simulator.py", line 276, in run
-    propagator = HybridOpticalPropagator(
-        optical_system=self._surfaces,
-    ...<6 lines>...
-        debug=self._debug,
-    )
-  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 197, in __init__
-    self._precompute_optical_axis()
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 218, in _precompute_optical_axis
-    chief_ray_data = self._trace_chief_ray_through_system()
-  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 321, in _trace_chief_ray_through_system
-    raytracer.trace_chief_ray()
-    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "d:\BTS\src\wavefront_to_rays\element_raytracer.py", line 1406, in trace_chief_ray
-    calculated_direction = self._compute_exit_chief_direction()
-  File "d:\BTS\src\wavefront_to_rays\element_raytracer.py", line 1334, in _compute_exit_chief_direction
-    return self._compute_exit_direction_optiland()
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "d:\BTS\src\wavefront_to_rays\element_raytracer.py", line 1358, in _compute_exit_direction_optiland
-    chief_rays = tracer.trace_generic(
-        Hx=0.0, Hy=0.0, Px=0.0, Py=0.0,
-        wavelength=self.wavelength
-    )
-  File "d:\BTS\optiland-master\optiland\raytrace\real_ray_tracer.py", line 121, in trace_generic
-    rays = self.ray_generator.generate_rays(Hx, Hy, Px, Py, wavelength)
-  File "d:\BTS\optiland-master\optiland\rays\ray_generator.py", line 75, in generate_rays
-    x0, y0, z0, L, M, N = self.aimer.aim_rays(
-                          ~~~~~~~~~~~~~~~~~~~^
-        (Hx, Hy),
-        ^^^^^^^^^
-        wavelength,
-        ^^^^^^^^^^^
-        (Px, Py),
-        ^^^^^^^^^
+  File "d:\BTS\src\bts\simulation.py", line 112, in simulate
+    sim.set_source(
+    ~~~~~~~~~~~~~~^
+        wavelength_um=source.wavelength_um,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        beam_diam_fraction=source.beam_diam_fraction,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     )
     ^
-  File "d:\BTS\optiland-master\optiland\rays\ray_aiming\paraxial.py", line 77, in aim_rays
-    x0, y0, z0 = self.optic.field_definition.get_ray_origins(
-                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        self.optic, Hx, Hy, Px, Py, vx, vy
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\BTS\src\hybrid_simulation\simulator.py", line 228, in set_source
+    from hybrid_optical_propagation import SourceDefinition
+  File "d:\BTS\src\hybrid_optical_propagation\__init__.py", line 50, in <module>
+    from .data_models import (
+    ...<4 lines>...
     )
-    ^
-  File "d:\BTS\optiland-master\optiland\fields\field_types\angle.py", line 33, in get_ray_origins
-    EPL = optic.paraxial.EPL()
-  File "d:\BTS\optiland-master\optiland\paraxial.py", line 215, in EPL
-    stop_index = self.surfaces.stop_index
-                 ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "d:\BTS\optiland-master\optiland\surfaces\surface_group.py", line 173, in stop_index
-    raise ValueError("No stop surface found.")
-ValueError: No stop surface found.
+  File "d:\BTS\src\hybrid_optical_propagation\data_models.py", line 739
+    R_sq = X**2 + Y**2
+IndentationError: unexpected indent
 
-During handling of the above exception, another exception occurred:
+The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File "d:\BTS\tests\integration\离轴抛物面镜传输误差标准测试文件.py", line 159, in run_oap_test
@@ -61,8 +28,6 @@ Traceback (most recent call last):
     ...<3 lines>...
         debug=debug,
     )
-  File "d:\BTS\src\bts\simulation.py", line 122, in simulate
-    result = sim.run()
-  File "d:\BTS\src\hybrid_simulation\simulator.py", line 302, in run
-    raise SimulationError(f"仿真执行失败: {e}")
-hybrid_simulation.exceptions.SimulationError: 仿真执行失败: No stop surface found.
+  File "d:\BTS\src\bts\simulation.py", line 137, in simulate
+    raise SimulationError(f"仿真执行失败: {e}") from e
+hybrid_simulation.exceptions.SimulationError: 仿真执行失败: unexpected indent (data_models.py, line 739)

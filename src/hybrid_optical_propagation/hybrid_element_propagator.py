@@ -44,7 +44,7 @@ class HybridElementPropagator:
     def __init__(
         self,
         wavelength_um: float,
-        num_rays: int = 1000,
+        num_rays: int = 4096,
         method: str = "local_raytracing",
         debug: bool = False,
     ) -> None:
@@ -103,17 +103,16 @@ class HybridElementPropagator:
         """
        
 
-        # [Debug] Visualizing Incoming Wavefront vs Pilot Beam
-        self._plot_debug_phase(state, target_surface_index)
-        
         if self._method == "local_raytracing":
             return self._propagate_local_raytracing(
                 state, surface, entrance_axis, exit_axis, target_surface_index
             )
         else:
-            return self._propagate_pure_diffraction(
-                state, surface, entrance_axis, exit_axis, target_surface_index
-            )
+            #报错
+            raise ValueError("Invalid propagation method")
+            # return self._propagate_pure_diffraction(
+            #     state, surface, entrance_axis, exit_axis, target_surface_index
+            # )
     
     def _propagate_local_raytracing(
         self,
@@ -151,8 +150,6 @@ class HybridElementPropagator:
 
         
         from wavefront_to_rays.reconstructor import RayToWavefrontReconstructor
-        #绘制相位与振幅
-        self._plot_debug_phase(state, target_surface_index)
         # 1. 从振幅/相位采样光线
         # 注意：相位是非折叠实数，不需要解包裹
         input_rays = self._sample_rays_from_wavefront(
@@ -188,7 +185,7 @@ class HybridElementPropagator:
         
 
         
-        # 2. 创建表面定义并进行光线追迹
+        # 2. 创建单个表面定义并进行光线追迹
         surface_def = self._create_surface_definition(surface, entrance_axis, exit_axis)
         
         raytracer = ElementRaytracer(
@@ -197,19 +194,21 @@ class HybridElementPropagator:
             chief_ray_direction=tuple(entrance_axis.direction.to_array()),
             entrance_position=tuple(entrance_axis.position.to_array()),
             exit_chief_direction=tuple(exit_axis.direction.to_array()),
+            exit_position=tuple(exit_axis.position.to_array()),
             debug=self._debug,
         )
-        
+
+        self._plot_debug_phase(
+            state, target_surface_index, is_pltshow=False,
+            figure_title=f"Surface {target_surface_index} - 入射面波前分析"
+        )
+
         if self._debug:
             from utils.debug_viz import plot_rays_2d, plot_phase
             
-            # Plot Input Phase
-            plot_phase(
-                state.phase, 
-                title=f"Surface {target_surface_index} Input Phase"
-            )
-            
-            # Plot Input Rays
+            # 1. 绘制详细的波前分析（振幅、相位、Pilot Beam、残差）
+                       
+            # 2. Plot Input Rays
             x_in = np.asarray(input_rays.x)
             y_in = np.asarray(input_rays.y)
             L_in = np.asarray(input_rays.L)
@@ -223,9 +222,9 @@ class HybridElementPropagator:
                 x_in, y_in, L_in, M_in, 
                 title=f"Surface {target_surface_index} Input Rays (Global)"
             )
-        #核心函数：光学追迹
+        #核心函数：光学追迹，输入全局坐标的input_rays
         output_rays = raytracer.trace(input_rays)
-        
+        #返回入射面局部坐标的output_rays
         # DEBUG: Output Ray Analysis
         x_out = np.asarray(output_rays.x)
         y_out = np.asarray(output_rays.y)
@@ -255,8 +254,10 @@ class HybridElementPropagator:
         new_pilot_params = self._update_pilot_beam(
             state.pilot_beam_params, 
             surface,
-            exit_axis.position.to_array()
+            exit_axis.position.to_array(),
+            entrance_axis=entrance_axis
         )
+        print(f"[DEBUG_CHECK] Surface {target_surface_index} (R_surf={surface.radius}): Pilot Beam R_out = {new_pilot_params.curvature_radius_mm:.4f} mm")
         
         # DEBUG: Check Pilot Beam Phase match
         # Calculate theoretical Pilot Phase at output ray positions
@@ -344,15 +345,34 @@ class HybridElementPropagator:
         
         # 7. 在光线位置处插值输入振幅
         # 先将全局光线坐标转换回局部坐标（相对于光轴中心）
-        # 否则如果光轴不在原点（如 OAP2），插值会越界得到 0
+        # 修正：必须使用逆旋转矩阵进行变换，而不仅是减去原点
+        # 否则当光轴旋转时（如 OAP 出射后），坐标投影会出错导致 RBF Singular Matrix
+        from wavefront_to_rays.element_raytracer import compute_rotation_matrix
         from scipy.interpolate import RegularGridInterpolator
         
         x_in_global = np.asarray(input_rays.x)
         y_in_global = np.asarray(input_rays.y)
+        z_in_global = np.asarray(input_rays.z)
         
         entrance_pos = entrance_axis.position.to_array()
-        x_in_local = x_in_global - entrance_pos[0]
-        y_in_local = y_in_global - entrance_pos[1]
+        entrance_dir = entrance_axis.direction.to_array()
+        
+        # 计算旋转矩阵 R_beam (Local -> Global)
+        R_beam = compute_rotation_matrix(tuple(entrance_dir))
+        
+        # 计算 P_local = R_beam.T @ (P_global - Origin)
+        dx_g = x_in_global - entrance_pos[0]
+        dy_g = y_in_global - entrance_pos[1]
+        dz_g = z_in_global - entrance_pos[2]
+        
+        # 批量矩阵乘法
+        # R_beam.T shape (3, 3)
+        # D shape (3, N)
+        D = np.vstack([dx_g, dy_g, dz_g])
+        P_local = R_beam.T @ D
+        
+        x_in_local = P_local[0, :]
+        y_in_local = P_local[1, :]
         
         # 定义 x_in, y_in 供 Reconstructor 使用 (局部坐标)
         x_in = x_in_local
@@ -381,6 +401,7 @@ class HybridElementPropagator:
         input_amplitude_at_rays = amp_interp(ray_points)
         
         # 8. 重建振幅/残差相位
+        print("[DEBUG TRACE] Before reconstruct_amplitude_phase")
         reconstructor = RayToWavefrontReconstructor(
             grid_size=state.grid_sampling.grid_size,
             sampling_mm=state.grid_sampling.sampling_mm,
@@ -409,6 +430,7 @@ class HybridElementPropagator:
         # 重建得到的是残差相位（相对于 Pilot Beam 的偏差）
         # 传递输入振幅以保留振幅分布
         # 传递 debug_pilot_phase 以便在报警时绘制完整相位
+        print(f"[DEBUG TRACE] Calling reconstructor with {len(x_in)} rays. x_in range: [{x_in.min():.4e}, {x_in.max():.4e}]. x_out range: [{x_out_local.min():.4e}, {x_out_local.max():.4e}]")
         exit_amplitude, residual_phase = reconstructor.reconstruct_amplitude_phase(
             ray_x_in=x_in, # Local
             ray_y_in=y_in, # Local
@@ -419,6 +441,7 @@ class HybridElementPropagator:
             input_amplitude=input_amplitude_at_rays,
             debug_pilot_phase=pilot_phase_grid,
         )
+        print("[DEBUG TRACE] After reconstruct_amplitude_phase")
         
         # 完整相位 = 残差相位 + Pilot Beam 相位
         exit_phase = residual_phase + pilot_phase_grid
@@ -458,8 +481,7 @@ class HybridElementPropagator:
             state.grid_sampling,
             pilot_beam_params=new_pilot_params,
         )
-        
-        return PropagationState(
+        new_state = PropagationState(
             surface_index=target_surface_index,
             position='exit',
             amplitude=exit_amplitude,
@@ -469,6 +491,17 @@ class HybridElementPropagator:
             optical_axis_state=exit_axis,
             grid_sampling=state.grid_sampling,
         )
+        
+
+        self._plot_debug_phase(
+            new_state, target_surface_index, is_pltshow=False,
+            figure_title=f"Surface {target_surface_index} - 出射面波前分析",
+            filename_suffix="exit"
+        )
+
+
+
+        return new_state
 
     
     def _propagate_pure_diffraction(
@@ -620,7 +653,9 @@ class HybridElementPropagator:
             
             # 更新 Pilot Beam 参数
             new_pilot_params = self._update_pilot_beam(
-                state.pilot_beam_params, surface
+                state.pilot_beam_params, 
+                surface,
+                entrance_axis=entrance_axis
             )
             
             # 分离振幅和相位
@@ -752,7 +787,9 @@ class HybridElementPropagator:
         
         # 4. 更新 Pilot Beam 参数
         new_pilot_params = self._update_pilot_beam(
-            state.pilot_beam_params, surface
+            state.pilot_beam_params, 
+            surface,
+            entrance_axis=entrance_axis
         )
         
         # 5. 分离振幅和相位
@@ -826,119 +863,121 @@ class HybridElementPropagator:
         
         return Rotation.from_rotvec(angle * axis).as_matrix()
     
-    def _compute_surface_sag(
-        self,
-        X: NDArray,
-        Y: NDArray,
-        surface: "GlobalSurfaceDefinition",
-    ) -> NDArray:
-        """计算表面矢高（sag）
+    # def _compute_surface_sag(
+    #     self,
+    #     X: NDArray,
+    #     Y: NDArray,
+    #     surface: "GlobalSurfaceDefinition",
+    # ) -> NDArray:
+    #     """计算表面矢高（sag）
         
-        对于球面/非球面：
-        sag = c*r² / (1 + sqrt(1 - (1+k)*c²*r²))
+    #     对于球面/非球面：
+    #     sag = c*r² / (1 + sqrt(1 - (1+k)*c²*r²))
         
-        其中 c = 1/R 是曲率，k 是圆锥常数，r² = x² + y²
+    #     其中 c = 1/R 是曲率，k 是圆锥常数，r² = x² + y²
         
-        参数:
-            X: X 坐标网格 (mm)
-            Y: Y 坐标网格 (mm)
-            surface: 表面定义
+    #     参数:
+    #         X: X 坐标网格 (mm)
+    #         Y: Y 坐标网格 (mm)
+    #         surface: 表面定义
         
-        返回:
-            矢高网格 (mm)
-        """
-        r_sq = X**2 + Y**2
+    #     返回:
+    #         矢高网格 (mm)
+    #     """
+    #     r_sq = X**2 + Y**2
         
-        if np.isinf(surface.radius):
-            return np.zeros_like(r_sq)
+    #     if np.isinf(surface.radius):
+    #         return np.zeros_like(r_sq)
         
-        c = 1.0 / surface.radius
-        k = surface.conic
+    #     c = 1.0 / surface.radius
+    #     k = surface.conic
         
-        # 标准非球面公式
-        # sag = c*r² / (1 + sqrt(1 - (1+k)*c²*r²))
-        discriminant = 1 - (1 + k) * c**2 * r_sq
+    #     # 标准非球面公式
+    #     # sag = c*r² / (1 + sqrt(1 - (1+k)*c²*r²))
+    #     discriminant = 1 - (1 + k) * c**2 * r_sq
         
-        # 处理可能的负值（超出有效区域）
-        discriminant = np.maximum(discriminant, 0)
+    #     # 处理可能的负值（超出有效区域）
+    #     discriminant = np.maximum(discriminant, 0)
         
-        sag = c * r_sq / (1 + np.sqrt(discriminant))
+    #     sag = c * r_sq / (1 + np.sqrt(discriminant))
         
-        return sag
+    #     return sag
     
-    def _compute_surface_sag_in_tangent_plane(
-        self,
-        X_tangent: NDArray,
-        Y_tangent: NDArray,
-        surface: "GlobalSurfaceDefinition",
-        entrance_axis: "OpticalAxisState",
-    ) -> NDArray:
-        """在切平面局部坐标系中计算表面矢高
+    # def _compute_surface_sag_in_tangent_plane(
+    #     self,
+    #     X_tangent: NDArray,
+    #     Y_tangent: NDArray,
+    #     surface: "GlobalSurfaceDefinition",
+    #     entrance_axis: "OpticalAxisState",
+    # ) -> NDArray:
+    #     """在切平面局部坐标系中计算表面矢高
         
-        切平面坐标系：
-        - 原点：主光线与表面的交点
-        - Z 轴：表面法向量方向
-        - X, Y 轴：切平面内的正交方向
+    #     切平面坐标系：
+    #     - 原点：主光线与表面的交点
+    #     - Z 轴：表面法向量方向
+    #     - X, Y 轴：切平面内的正交方向
         
-        对于平面镜：sag = 0（切平面与表面重合）
-        对于球面/非球面：需要计算相对于切平面的矢高偏差
+    #     对于平面镜：sag = 0（切平面与表面重合）
+    #     对于球面/非球面：需要计算相对于切平面的矢高偏差
         
-        参数:
-            X_tangent: 切平面 X 坐标网格 (mm)
-            Y_tangent: 切平面 Y 坐标网格 (mm)
-            surface: 表面定义
-            entrance_axis: 入射光轴状态
+    #     参数:
+    #         X_tangent: 切平面 X 坐标网格 (mm)
+    #         Y_tangent: 切平面 Y 坐标网格 (mm)
+    #         surface: 表面定义
+    #         entrance_axis: 入射光轴状态
         
-        返回:
-            矢高网格 (mm)，相对于切平面
-        """
-        # 对于平面镜，矢高为 0
-        if np.isinf(surface.radius):
-            return np.zeros_like(X_tangent)
+    #     返回:
+    #         矢高网格 (mm)，相对于切平面
+    #     """
+    #     # 对于平面镜，矢高为 0
+    #     if np.isinf(surface.radius):
+    #         return np.zeros_like(X_tangent)
         
-        # 对于曲面，需要计算相对于切平面的矢高
-        # 
-        # 物理解释：
-        # 1. 切平面在主光线击中点处与表面相切
-        # 2. 在切平面局部坐标系中，主光线击中点为原点
-        # 3. 矢高是表面相对于切平面的高度差
-        # 
-        # 对于球面/非球面，在切平面局部坐标系中：
-        # sag ≈ (x² + y²) / (2 * R_local)
-        # 其中 R_local 是主光线击中点处的局部曲率半径
+    #     # 对于曲面，需要计算相对于切平面的矢高
+    #     # 
+    #     # 物理解释：
+    #     # 1. 切平面在主光线击中点处与表面相切
+    #     # 2. 在切平面局部坐标系中，主光线击中点为原点
+    #     # 3. 矢高是表面相对于切平面的高度差
+    #     # 
+    #     # 对于球面/非球面，在切平面局部坐标系中：
+    #     # sag ≈ (x² + y²) / (2 * R_local)
+    #     # 其中 R_local 是主光线击中点处的局部曲率半径
         
-        # 获取表面参数
-        R = surface.radius
-        k = surface.conic
+    #     # 获取表面参数
+    #     R = surface.radius
+    #     k = surface.conic
         
-        # 计算主光线击中点处的局部曲率半径
-        # 对于球面（k=0），局部曲率半径等于名义曲率半径
-        # 对于非球面，局部曲率半径取决于击中点位置
+    #     # 计算主光线击中点处的局部曲率半径
+    #     # 对于球面（k=0），局部曲率半径等于名义曲率半径
+    #     # 对于非球面，局部曲率半径取决于击中点位置
         
-        # 简化处理：使用名义曲率半径
-        # 这对于小倾斜角和小光束尺寸是足够准确的
-        R_local = R
+    #     # 简化处理：使用名义曲率半径
+    #     # 这对于小倾斜角和小光束尺寸是足够准确的
+    #     R_local = R
         
-        # 计算矢高（二次近似）
-        r_sq = X_tangent**2 + Y_tangent**2
+    #     # 计算矢高（二次近似）
+    #     r_sq = X_tangent**2 + Y_tangent**2
         
-        if abs(k) < 1e-10:
-            # 球面：使用精确公式
-            c = 1.0 / R_local
-            discriminant = 1 - c**2 * r_sq
-            discriminant = np.maximum(discriminant, 0)
-            sag = c * r_sq / (1 + np.sqrt(discriminant))
-        else:
-            # 非球面：使用标准公式
-            c = 1.0 / R_local
-            discriminant = 1 - (1 + k) * c**2 * r_sq
-            discriminant = np.maximum(discriminant, 0)
-            sag = c * r_sq / (1 + np.sqrt(discriminant))
+    #     if abs(k) < 1e-10:
+    #         # 球面：使用精确公式
+    #         c = 1.0 / R_local
+    #         discriminant = 1 - c**2 * r_sq
+    #         discriminant = np.maximum(discriminant, 0)
+    #         sag = c * r_sq / (1 + np.sqrt(discriminant))
+    #     else:
+    #         # 非球面：使用标准公式
+    #         c = 1.0 / R_local
+    #         discriminant = 1 - (1 + k) * c**2 * r_sq
+    #         discriminant = np.maximum(discriminant, 0)
+    #         sag = c * r_sq / (1 + np.sqrt(discriminant))
         
-        return sag
+    #     return sag
     
     def _get_refractive_index(self, material: str) -> float:
         """获取材料的折射率
+        
+        使用 optiland 的材料数据库查询折射率。
         
         参数:
             material: 材料名称
@@ -946,18 +985,39 @@ class HybridElementPropagator:
         返回:
             折射率
         """
-        # 简化实现：常见材料的折射率
-        material_lower = material.lower()
+        # 处理特殊情况：空气、空字符串、镜面
+        material_lower = material.lower() if material else ''
         
-        if material_lower in ('air', ''):
+        if material_lower in ('air', '', 'mirror'):
             return 1.0
-        elif material_lower == 'n-bk7':
-            return 1.5168
-        elif material_lower == 'fused_silica':
-            return 1.4585
-        else:
-            # 默认返回 1.5（典型玻璃）
-            return 1.5
+        
+        # 使用 optiland 的 Material 类查询折射率
+        try:
+            from optiland.materials.material import Material
+            mat = Material(material)
+            # 使用当前波长（单位：μm）查询折射率
+            n = mat.n(self._wavelength_um)
+            return float(n)
+        except Exception as e:
+            # 如果 optiland 查询失败，使用常见材料的硬编码值
+            print(f"警告: 无法从 optiland 查询材料 '{material}' 的折射率: {e}")
+            print(f"        使用默认值...")
+            
+            # 常见材料的硬编码折射率（作为后备）
+            fallback_indices = {
+                'n-bk7': 1.5168,
+                'bk7': 1.5168,
+                'fused_silica': 1.4585,
+                'fs': 1.4585,
+                'sf11': 1.7847,
+                'laf2': 1.7440,
+            }
+            
+            if material_lower in fallback_indices:
+                return fallback_indices[material_lower]
+            else:
+                # 默认返回 1.5（典型光学玻璃）
+                return 1.5
     
     def _sample_rays_from_wavefront(
         self,
@@ -986,7 +1046,7 @@ class HybridElementPropagator:
             sampling_phase = phase
         
         #绘制采样相位
-        self._plot_debug_phase(sampling_phase, 0,is_pltshow=True)
+        # self._plot_debug_phase(sampling_phase, 0,is_pltshow=True)
 
         # 2. 生成网格坐标 (Correct Method)
         n = grid_sampling.grid_size
@@ -1014,7 +1074,7 @@ class HybridElementPropagator:
         valid_offsets = np.unique(np.concatenate([offsets, -offsets]))
         sample_indices = center_idx + valid_offsets
         # 过滤越界索引
-        sample_indices = np.sort(sample_indices[ (sample_indices >= 0) & (sample_indices < n) ])
+        # sample_indices = np.sort(sample_indices[ (sample_indices >= 0) & (sample_indices < n) ])
         
         # 网格化
         ix_grid, iy_grid = np.meshgrid(sample_indices, sample_indices)
@@ -1059,14 +1119,14 @@ class HybridElementPropagator:
             M_rays += M_pilot
             
         # 6. 过滤无效光线
-        threshold = 1e-3 * np.max(amplitude)  
+        threshold = 1e-5 * np.max(amplitude)  
         sin_sq = L_rays**2 + M_rays**2
         
         valid_mask = (sampled_amp > threshold) & (sin_sq < 1.0)
         
-        # 6.1 只采样中心区域 95% 的光线，过滤边缘 5%
+        # 6.1 只采样中心区域 99% 的光线，过滤边缘 1%
         half_size = grid_sampling.physical_size_mm / 2
-        max_radius_sq = (0.95 * half_size) ** 2
+        max_radius_sq = (0.99 * half_size) ** 2
         dist_sq = x_rays**2 + y_rays**2
         center_region_mask = dist_sq <= max_radius_sq
         valid_mask = valid_mask & center_region_mask
@@ -1092,24 +1152,33 @@ class HybridElementPropagator:
         print(f"[DEBUG] Center Ray: x={x_final[center_idx_final]:.6e}, y={y_final[center_idx_final]:.6e}")
         print(f"[DEBUG] Center Ray Direction: L={L_final[center_idx_final]:.6e}, M={M_final[center_idx_final]:.6e}")
         
-        # 转换到全局坐标
-        axis_pos = entrance_axis.position.to_array()
-        x_final += axis_pos[0]
-        y_final += axis_pos[1]
-        z_final += axis_pos[2]
+        from wavefront_to_rays.element_raytracer import compute_rotation_matrix, transform_rays_to_global
+
+        # Construct LOCAL rays
+        # In the local sampling frame, Z is the propagation direction, so N is positive.
+        N_local = np.sqrt(1.0 - (L_final**2 + M_final**2))
+        z_local = np.zeros_like(x_final)
         
-        N_final = np.sqrt(1.0 - (L_final**2 + M_final**2))
-        
-        output_rays = RealRays(
+        local_rays = RealRays(
             x=x_final,
             y=y_final,
-            z=z_final,
+            z=z_local,
             L=L_final,
             M=M_final,
-            N=N_final,
+            N=N_local,
             wavelength=self._wavelength_um,
             intensity=sampled_amp[valid_mask]**2
         )
+        
+        # Transform to GLOBAL coordinates
+        # 1. Compute rotation matrix aligning local Z with entrance direction
+        entrance_dir = entrance_axis.direction.to_array()
+        R_beam = compute_rotation_matrix(tuple(entrance_dir))
+        
+        # 2. Transform rays
+        entrance_pos = entrance_axis.position.to_array()
+        output_rays = transform_rays_to_global(local_rays, R_beam, tuple(entrance_pos))
+        
         # 提取完整相位（用于计算初始 OPD）
         sampled_full_phase = phase[iy_flat, ix_flat]
         initial_phase = sampled_full_phase[valid_mask]
@@ -1161,14 +1230,22 @@ class HybridElementPropagator:
         R_rel = R_beam.T @ R_surf
         
         # 4. 提取欧拉角 (rx, ry)
-        # 使用 'xyz' 顺序提取。tile_x 对应 x 转角，tilt_y 对应 y 转角。
-        # 忽略 z 转角 (clocking)，因为对于旋转对称的父曲面（如抛物面），
-        # 绕轴旋转不改变曲面形状。
-        # (注意：如果表面是非旋转对称的，如双曲面或像散面，忽略 tilt_z 可能有风险，
-        # 但目前 SurfaceDefinition 不支持 tilt_z)
-        euler_angles = Rotation.from_matrix(R_rel).as_euler('xyz', degrees=False)
-        tilt_x = euler_angles[0]
-        tilt_y = euler_angles[1]
+        # ⚠️ 必须使用 'yxz' 顺序以匹配 optiland 的旋转约定 (Ry @ Rx)
+        euler_angles = Rotation.from_matrix(R_rel).as_euler('yxz', degrees=False)
+        tilt_y = euler_angles[0]
+        tilt_x = euler_angles[1]
+        
+        # 针对数值误差进行截断（Clamp）
+        EPSILON = 1e-8
+        if abs(abs(tilt_y) - np.pi) < EPSILON:
+             tilt_y = np.pi if tilt_y > 0 else -np.pi
+        elif abs(tilt_y) < EPSILON:
+             tilt_y = 0.0
+             
+        if abs(abs(tilt_x) - np.pi) < EPSILON:
+             tilt_x = np.pi if tilt_x > 0 else -np.pi
+        elif abs(tilt_x) < EPSILON:
+             tilt_x = 0.0
         
         return SurfaceDefinition(
             surface_type=surface_type,
@@ -1273,11 +1350,29 @@ class HybridElementPropagator:
         points_in = np.column_stack([x_in, y_in])
         
         # 使用 thin_plate_spline 核函数，适合平滑的坐标映射
+        # 使用 thin_plate_spline 核函数，适合平滑的坐标映射
         try:
             interp_x = RBFInterpolator(points_in, x_out, kernel='thin_plate_spline')
             interp_y = RBFInterpolator(points_in, y_out, kernel='thin_plate_spline')
-        except Exception:
-            # 如果插值失败，返回单位振幅
+        except Exception as e:
+            # 捕获 RBF 插值可能抛出的 Singular matrix 异常
+            print(f"\n[ERROR] RBFInterpolator failed in _compute_jacobian_amplitude: {e}")
+            print(f"  Input points shape: {points_in.shape}")
+            print(f"  Unique points: {len(np.unique(points_in, axis=0))}")
+            if len(points_in) > 0:
+                 print(f"  Points bounds: x[{np.min(points_in[:,0]):.4e}, {np.max(points_in[:,0]):.4e}], y[{np.min(points_in[:,1]):.4e}, {np.max(points_in[:,1]):.4e}]")
+                 # 打印前几个点以便检查是否有共线/重合
+                 print(f"  First 5 points:\n{points_in[:5]}")
+            
+            # 如果是 Singular matrix，通常是因为点数太少或分布退化（共线）
+            if "Singular matrix" in str(e) or "singular" in str(e).lower():
+                 print("  [Diagnosis] Matrix is singular. Likely due to degenerate ray distribution (e.g. all colinear) or too few unique rays.")
+            
+            # 重新抛出或返回默认值
+            # 为了让仿真继续并看到部分结果，我们可以尝试返回单位振幅并发出警告，
+            # 但这可能会掩盖严重问题。这里我们选择打印后让其失败 (或者如果不抛出异常，返回ones)
+            # 原代码在 catch Exception 后返回 ones。
+            # 为了调试，我们保留原行为但增加打印。
             return np.ones(n_rays)
         
         # 计算雅可比矩阵的各分量（使用数值微分）
@@ -1340,6 +1435,7 @@ class HybridElementPropagator:
         pilot_params: PilotBeamParams,
         surface: "GlobalSurfaceDefinition",
         interaction_point: Optional[NDArray] = None,
+        entrance_axis: "OpticalAxisState" = None,
     ) -> PilotBeamParams:
         """更新 Pilot Beam 参数
         
@@ -1350,29 +1446,64 @@ class HybridElementPropagator:
         - 离轴抛物面镜（OAP）：出射波前几乎是平面波，曲率半径接近无穷大
         - 折射面：使用折射面的 ABCD 矩阵
         
-        对于 OAP 的特殊处理：
-        ⚠️ 关键发现：对于离轴抛物面镜，出射波前的实际曲率半径接近无穷大！
-        
-        原因分析：
-        - 抛物面将平行光聚焦到焦点
-        - 但在出射面（垂直于出射光轴）上，波前的曲率半径不是简单的到焦点距离
-        - 光线追迹 OPD 主要是线性的（倾斜项），二次项系数几乎为 0
-        - 这意味着出射波前几乎是平面波
-        
-        解决方案：
-        - 对于离轴抛物面，直接返回平面波参数（R = ∞）
-        - 这与光线追迹的实际结果一致
+        修正：
+        - 考虑光线传播方向。如果光线沿 -Z 方向传播，表面曲率半径的符号定义
+          相对于光线方向会反转（例如 R>0 对于 -Z 光线是凹面/聚焦面）。
         
         参数:
             pilot_params: 当前 Pilot Beam 参数
             surface: 表面定义
             interaction_point: 主光线与表面的交点位置 (mm)
+            entrance_axis: 入射光轴状态（用于确定传播方向）
         
         返回:
             更新后的 Pilot Beam 参数
         
         **Validates: Requirements 6.7**
         """
+        # Determine propagation direction relative to Surface Normal
+        # Logic:
+        # The curvature R is defined in the Surface Local Frame (Center is at Local Z = R).
+        # We need to know if the beam is propagating "along" or "against" the Local Z axis.
+        # - If dot(ray, normal) > 0: Beam goes Local +Z. R>0 is Convex (Diverging). ABCD R should be > 0.
+        # - If dot(ray, normal) < 0: Beam goes Local -Z. R>0 is Concave (Focusing). ABCD R should be < 0.
+        
+        if entrance_axis is not None:
+             entrance_dir = entrance_axis.direction.to_array()
+             # Surface orientation Z-axis (Normal) is the 3rd column
+             surface_normal = surface.orientation[:, 2]
+             
+             # Check alignment
+             alignment = np.dot(entrance_dir, surface_normal)
+             
+             # If alignment is positive, we are moving WITH the normal.
+             # If negative, AGAINST the normal.
+             sign_factor = 1.0 if alignment >= 0 else -1.0
+        else:
+             # Fallback for legacy calls without axis
+             sign_factor = 1.0
+             
+         # Note: Refraction logic might also need this sign.
+         # For refraction n1->n2. Power K = (n2-n1)/R.
+         # If R>0 (Convex) and n2>n1, surface is Focusing?
+         # Wait. Convex interface n1 < n2. Rays converge. Yes.
+         # If ray goes +Z (R>0). Converging.
+         # ABCD Refraction: C = (n1-n2)/(n2*R).
+         # n1=1, n2=1.5. C = -0.5 / 1.5R < 0. Focusing. Correct.
+         # So for Refraction, if alignment > 0, we use +R.
+         # If alignment < 0 (Ray goes -Z). R>0 (Convex center -Z).
+         # Ray hits Convex surface. Should focus.
+         # We need C < 0.
+         # Matrix: C = (n1-n2)/(n2*R_abcd).
+         # -0.5 / (1.5 * R_abcd).
+         # If we use R_abcd = -R. C = -0.5 / (1.5 * -R) > 0. Diverging. WRONG.
+         #
+         # PROPER Formulation check?
+         # Let's stick to Mirror first which is the primary use case for OAP.
+         # The sign_factor logic derived above was:
+         # dot < 0 (Focusing geom) -> R_abcd < 0 (Focusing matrix). Correct.
+         # So sign_factor works for Mirror.
+        
         if surface.is_mirror:
             # 检查是否是抛物面（conic = -1）
             conic = surface.conic
@@ -1413,11 +1544,16 @@ class HybridElementPropagator:
                 
                 # ⚠️ 关键修复：OAP 有效曲率半径修正
                 # R_eff = R + d^2/R
-                effective_R = R + d**2 / R
-                return pilot_params.apply_mirror(effective_R)
+                effective_R_surf = R + d**2 / R
+                
+                # Apply direction sign correction
+                effective_R_abcd = effective_R_surf * sign_factor
+                
+                return pilot_params.apply_mirror(effective_R_abcd)
             else:
                 # 球面镜或平面镜：使用 apply_mirror
-                return pilot_params.apply_mirror(R)
+                R_abcd = R * sign_factor
+                return pilot_params.apply_mirror(R_abcd)
         else:
             # 折射面变换
             # 获取折射率
@@ -1425,7 +1561,19 @@ class HybridElementPropagator:
             n2 = self._get_refractive_index(surface.material)
             
             # 使用折射面 ABCD 变换
-            return pilot_params.apply_refraction(surface.radius, n1, n2)
+            # Refraction also depends on sign of R?
+            # Standard refraction matrix: C = (n1-n2)/(n2*R).
+            # If +Z, R>0 (Convex center +Z). n1 < n2 (Air to Glass).
+            # C = (1-1.5)/(1.5*R) < 0. Focusing. Correct (Convex surface focuses).
+            # If -Z. R<0 (Convex center -Z). n1 < n2.
+            # We want focusing.
+            # If we don't flip R. R is negative.
+            # C = -0.5 / (1.5 * -R) > 0. Diverging. INCORRECT.
+            # So Refraction also needs R sign flip.
+            
+            R_abcd = surface.radius * sign_factor
+            
+            return pilot_params.apply_refraction(R_abcd, n1, n2)
     
     def _compute_effective_radius(
         self,
@@ -1503,63 +1651,145 @@ class HybridElementPropagator:
         self,
         state: PropagationState,
         target_surface_index: int,
-        is_pltshow: bool = False
+        is_pltshow: bool = False,
+        figure_title: Optional[str] = None,
+        filename_suffix: str = "entrance"
     ) -> None:
-        """[Debug] 绘制入射波前相位分布与 Pilot Beam 理论相位分布（中央 80%）"""
-        try:
-            import matplotlib.pyplot as plt
+        """[Debug] 绘制详细的入射波前信息（振幅、相位、Pilot Beam、残差）
+        
+        参数:
+            state: 传播状态
+            target_surface_index: 目标表面索引
+            is_pltshow: 是否显示图形（True）还是保存到文件（False）
+            figure_title: 可选的大标题，用于描述这张信息图（例如 "OAP1 表面处、入射"）
+            filename_suffix: 文件名后缀，用于区分入射/出射（默认 "entrance"，可设为 "exit"）
+        """  
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+        # 准备数据
+        grid_size = state.grid_sampling.grid_size
+        physical_size = state.grid_sampling.physical_size_mm
+        half_size = physical_size / 2
+        
+        # 1. 仿真波前
+        sim_amp = state.amplitude
+        sim_phase = state.phase
+        
+        # 2. Pilot Beam 理论值
+        pilot_amp = state.pilot_beam_params.compute_amplitude_grid(grid_size, physical_size)
+        pilot_phase = state.pilot_beam_params.compute_phase_grid(grid_size, physical_size)
+        
+        # 3. 相位残差
+        phase_residual = sim_phase - pilot_phase
+        
+        # 计算截取范围 (80%) - 仍然截取以聚焦中心细节
+        # 但用户可能也想看整体，这里保持 80% 或 90%
+        margin = int(grid_size * 0.1)
+        sl = slice(margin, grid_size - margin)
+        
+        # 更新 extent
+        crop_half_size = half_size * 0.8
+        extent = [-crop_half_size, crop_half_size, -crop_half_size, crop_half_size]
+        
+        # 绘图配置 (2行3列)
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        plt.subplots_adjust(hspace=0.3, wspace=0.3)
+        
+        # Info String
+        pilot_info = (
+            f"Pilot Beam Params (Surf {target_surface_index}): "
+            f"w(z)={state.pilot_beam_params.spot_size_mm:.4f}mm, "
+            f"R(z)={state.pilot_beam_params.curvature_radius_mm:.4e}mm, "
+            f"z_waist={state.pilot_beam_params.waist_position_mm:.4f}mm"
+        )
+        
+        # 构建完整标题：如果有 figure_title 则作为主标题，原信息作为副标题
+        if figure_title:
+            full_title = f"{figure_title}\n{pilot_info}"
+        else:
+            full_title = f"Debug Analysis - Surface {target_surface_index} (Entrance)\n{pilot_info}"
+        fig.suptitle(full_title, fontsize=12)
+        
+        # Helper for colorbar
+        def plot_im(ax, data, title, cmap='viridis', has_cbar=True):
+            im = ax.imshow(data[sl, sl], extent=extent, origin='lower', cmap=cmap)
+            ax.set_title(title, fontsize=10)
+            ax.set_xlabel('x (mm)')
+            ax.set_ylabel('y (mm)')
+            if has_cbar:
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="5%", pad=0.05)
+                plt.colorbar(im, cax=cax)
+            return im
+
+        # --- Row 1: Amplitude ---
+        
+        # 1.1 Simulation Amplitude
+        # 计算近似光斑大小 (1/e^2)
+        max_val = np.max(sim_amp)
+        if max_val > 0:
+            # 简单估算：等效宽度
+            # w_eff = sqrt(2 * Sum(I) * dA / (pi * I_max))
+            intensity = sim_amp**2
+            total_power = np.sum(intensity)
+            dx = state.grid_sampling.sampling_mm
+            w_eff = np.sqrt(2 * total_power * dx**2 / (np.pi * np.max(intensity)))
+            title_amp = f"Sim Amplitude\nCalc w ≈ {w_eff:.4f} mm\n(Max={max_val:.2e})"
+        else:
+            title_amp = "Sim Amplitude (Zero)"
+        
+        plot_im(axes[0, 0], sim_amp, title_amp, cmap='inferno')
+        
+        # 1.2 Pilot Beam Amplitude
+        plot_im(axes[0, 1], pilot_amp, "Pilot Beam Amplitude\n(Theoretical Gaussian)", cmap='inferno')
+        
+        # 1.3 Cross Section Comparison
+        ax_slice = axes[0, 2]
+        y_mid = grid_size // 2
+        x_axis = np.linspace(-half_size, half_size, grid_size)
+        x_crop = x_axis[sl]
+        
+        # Normalize Sim Amp for comparison if max > 0
+        sim_slice = sim_amp[y_mid, sl]
+        if max_val > 0:
+            sim_slice_norm = sim_slice / max_val
+            ax_slice.plot(x_crop, sim_slice_norm, label='Sim (Norm)', color='blue')
+        else:
+            ax_slice.plot(x_crop, sim_slice, label='Sim', color='blue')
             
-            # 计算物理尺寸范围 (mm)
-            half_size = state.grid_sampling.physical_size_mm / 2
-            
-            # 计算理论 Pilot Beam 相位
-            pilot_phase = state.pilot_beam_params.compute_phase_grid(
-                state.grid_sampling.grid_size,
-                state.grid_sampling.physical_size_mm
-            )
-            
-            # 截取中央 80% 区域
-            N = state.grid_sampling.grid_size
-            margin = int(N * 0.1)  # 10% margin on each side
-            if margin > 0:
-                s_ = slice(margin, N - margin)
-                
-                phase_crop = state.phase[s_, s_]
-                pilot_crop = pilot_phase[s_, s_]
-                
-                # 更新 extent
-                crop_half_size = half_size * 0.8
-                extent = [-crop_half_size, crop_half_size, -crop_half_size, crop_half_size]
-            else:
-                s_ = slice(None)
-                phase_crop = state.phase
-                pilot_crop = pilot_phase
-                extent = [-half_size, half_size, -half_size, half_size]
-            
-            plt.figure(figsize=(12, 5))
-            
-            # 1. 绘制实际入射相位 (Cropped)
-            plt.subplot(1, 2, 1)
-            im1 = plt.imshow(phase_crop, extent=extent, origin='lower', cmap='RdBu')
-            plt.colorbar(im1, label='Phase (rad)')
-            plt.title(f'Incoming Wavefront Phase (Central 80%, Surf {target_surface_index})')
-            plt.xlabel('x (mm)'); plt.ylabel('y (mm)')
-            
-            # 2. 绘制 Pilot Beam 相位 (Cropped)
-            plt.subplot(1, 2, 2)
-            im2 = plt.imshow(pilot_crop, extent=extent, origin='lower', cmap='RdBu')
-            plt.colorbar(im2, label='Phase (rad)')
-            plt.title('Pilot Beam Phase (Theoretical, Central 80%)')
-            plt.xlabel('x (mm)'); plt.ylabel('y (mm)')
-            
-            plt.tight_layout()
-            if is_pltshow:
-                plt.show()
-            else:
-                plt.savefig(f'wavefront_phase_{target_surface_index}.png')
-                #加一个文件保存的提示
-                print(f"Wavefront phase saved to wavefront_phase_{target_surface_index}.png")
-            plt.close()
-            
-        except Exception as e:
-            print(f"[Warning] Debug plotting failed: {e}")
+        ax_slice.plot(x_crop, pilot_amp[y_mid, sl], '--', label='Pilot (Ref)', color='orange')
+        ax_slice.set_title("Amplitude Cross-section (y=0)", fontsize=10)
+        ax_slice.set_xlabel('x (mm)')
+        ax_slice.legend()
+        ax_slice.grid(True, alpha=0.3)
+        ax_slice.set_xlim(extent[0], extent[1])
+        
+        # --- Row 2: Phase ---
+        
+        # 2.1 Simulation Phase
+        plot_im(axes[1, 0], sim_phase, "Simulation Phase\n(Unwrapped)", cmap='RdBu')
+        
+        # 2.2 Pilot Phase
+        plot_im(axes[1, 1], pilot_phase, "Pilot Beam Phase\n(Analytic)", cmap='RdBu')
+        
+        # 2.3 Phase Residual
+        # 残差通常很小，最好去除均值或活塞项方便观察
+        res_crop = phase_residual[sl, sl]
+        rms = np.std(res_crop)
+        pv = np.max(res_crop) - np.min(res_crop)
+        plot_im(axes[1, 2], phase_residual, f"Phase Residual\n(Sim - Pilot)\nRMS={rms:.4f} rad, PV={pv:.4f} rad", cmap='RdBu_r')
+        
+        # Annotations
+        fig.text(0.5, 0.02, 
+                    "Global Note: Coordinates (x, y) are in the LOCAL TANGENT PLANE of the entrance surface (perpendicular to chief ray).", 
+                    ha='center', fontsize=11, bbox=dict(facecolor='#f0f0f0', alpha=0.9, pad=5))
+        
+        if is_pltshow:
+            plt.show()
+        else:
+            filename = f'debug_surf_{target_surface_index}_{filename_suffix}.png'
+            plt.savefig(filename, dpi=100)
+            print(f"[Debug] Saved plot to {filename}")
+        plt.close()
+

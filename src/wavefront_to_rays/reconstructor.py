@@ -263,8 +263,22 @@ class RayToWavefrontReconstructor:
         points_in = np.column_stack([valid_x_in, valid_y_in])
         
         # 使用 thin_plate_spline 核函数，适合平滑的坐标映射
-        interp_x = RBFInterpolator(points_in, valid_x_out, kernel='thin_plate_spline')
-        interp_y = RBFInterpolator(points_in, valid_y_out, kernel='thin_plate_spline')
+        try:
+            interp_x = RBFInterpolator(points_in, valid_x_out, kernel='thin_plate_spline')
+            interp_y = RBFInterpolator(points_in, valid_y_out, kernel='thin_plate_spline')
+        except Exception as e:
+            # 捕获 RBF 插值可能抛出的 Singular matrix 异常
+            print(f"\n[ERROR] RBFInterpolator failed in reconstructor._compute_amplitude_phase_jacobian: {e}")
+            print(f"  Input points shape: {points_in.shape}")
+            print(f"  Unique points: {len(np.unique(points_in, axis=0))}")
+            if len(points_in) > 0:
+                 print(f"  Points bounds: x[{np.min(points_in[:,0]):.4e}, {np.max(points_in[:,0]):.4e}], y[{np.min(points_in[:,1]):.4e}, {np.max(points_in[:,1]):.4e}]")
+                 # 打印前几个点
+                 print(f"  First 5 points:\n{points_in[:5]}")
+            
+            # Re-raise or handle. Since this is critical for amplitude, we probably should raise or return defaults.
+            # RBF failure here means we can't compute the mapping.
+            raise e
         
         # 计算雅可比矩阵的各分量（使用数值微分）
         # 微分步长选择：足够小以保证精度，但不能太小以避免数值误差
@@ -397,8 +411,10 @@ class RayToWavefrontReconstructor:
         
         # 创建目标网格坐标
         # 网格范围：[-half_size, half_size]
-        half_size = self.sampling_mm * self.grid_size / 2
-        coords = np.linspace(-half_size, half_size, self.grid_size)
+        # 修正：使用离散采样网格，确保中心点 (0,0) 对齐（与 data_models.py 和 PROPER 一致）
+        dx = self.sampling_mm
+        n = self.grid_size
+        coords = (np.arange(n) - n // 2) * dx
         X_grid, Y_grid = np.meshgrid(coords, coords)
         
         # 准备插值点（有效光线的坐标）

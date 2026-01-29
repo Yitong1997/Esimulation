@@ -42,23 +42,27 @@ class GaussianSource:
             wavelength_um: 波长 (μm)，必须为正数
             w0_mm: 束腰半径 (mm)，必须为正数
             grid_size: 网格大小，默认 256，必须为正整数
-            physical_size_mm: 物理尺寸 (mm)，默认 4 倍束腰（PROPER 固定用法，不建议修改）
+            physical_size_mm: 物理尺寸 (mm)，默认自动计算。
             z0_mm: 束腰位置 (mm)，默认 0
-            beam_diam_fraction: PROPER beam_diam_fraction 参数（已废弃，固定为 0.5）
+            beam_diam_fraction: PROPER beam_diam_fraction 参数（默认 0.5）。
+                控制光束直径与网格宽度的比例。
+                physical_size = 2 * w0 / beam_diam_fraction
+                默认 0.5 时，physical_size = 4 * w0。
         
         异常:
             ValueError: 参数值无效
         
         注意:
-            physical_size_mm 默认为 4 × w0，这是 PROPER 库的固定用法。
-            当 beam_diameter = 2×w0 且 beam_diam_fraction = 0.5 时，
-            PROPER 的网格物理尺寸自动计算为 4×w0。
-            不建议修改此参数，否则可能导致网格不一致。
+            默认 beam_diam_fraction = 0.5，此时 physical_size_mm = 4 × w0。
+            如果指定了 physical_size_mm，则忽略 beam_diam_fraction 的自动计算逻辑。
+            建议通过 beam_diam_fraction 控制物理尺寸，以保持采样一致性。
         
         示例:
-            >>> # 基本用法（推荐）
+            >>> # 默认情况 (physical_size = 4*w0)
             >>> source = GaussianSource(wavelength_um=0.633, w0_mm=5.0)
-            >>> # physical_size_mm 自动设置为 4 × 5 = 20 mm
+            
+            >>> # 扩大采样范围 (physical_size = 8*w0)
+            >>> source = GaussianSource(wavelength_um=0.633, w0_mm=5.0, beam_diam_fraction=0.25)
         """
         # 参数验证
         if wavelength_um <= 0:
@@ -81,21 +85,27 @@ class GaussianSource:
         self._z0_mm = z0_mm
         self._beam_diam_fraction = beam_diam_fraction
         
-        # 网格物理尺寸固定为 4 × w0（PROPER 固定用法）
-        # 当 beam_diameter = 2*w0 且 beam_diam_fraction = 0.5 时：
-        # dx = beam_diameter / (grid_n * 0.5) = 4*w0 / grid_n
-        # physical_size = dx * grid_n = 4 * w0
+        # 自动计算网格物理尺寸
+        # 如果用户未指定 physical_size_mm，则根据 beam_diam_fraction 计算
+        # beam_diameter = 2*w0
+        # physical_size = beam_diameter / beam_diam_fraction
+        
+        # 默认 beam_diam_fraction 为 0.5
+        effective_fraction = beam_diam_fraction if beam_diam_fraction is not None else 0.5
+        
         if physical_size_mm is None:
-            self._physical_size_mm = 4.0 * w0_mm
+            self._physical_size_mm = 2.0 * w0_mm / effective_fraction
         else:
-            # 如果用户指定了 physical_size_mm，发出警告
-            expected_size = 4.0 * w0_mm
+            # 如果用户指定了 physical_size_mm，发出警告（仅当与 fraction 冲突时）
+            expected_size = 2.0 * w0_mm / effective_fraction
             if abs(physical_size_mm - expected_size) > 1e-10:
                 import warnings
                 warnings.warn(
-                    f"physical_size_mm 应该等于 4 × w0 = {expected_size:.3f} mm，"
-                    f"但用户指定了 {physical_size_mm:.3f} mm。"
-                    f"这可能导致网格不一致。建议不指定此参数。",
+                    f"用户指定的 physical_size_mm ({physical_size_mm:.3f} mm) "
+                    f"与 beam_diam_fraction ({effective_fraction:.3f}) "
+                    f"计算出的期望值 ({expected_size:.3f} mm) 不一致。\n"
+                    f"将使用用户指定的 physical_size_mm，但这可能导致 PROPER 初始化时的采样率不匹配。"
+                    f"建议不指定 physical_size_mm，而是通过 adjustments beam_diam_fraction 来控制尺寸。",
                     UserWarning,
                 )
             self._physical_size_mm = physical_size_mm

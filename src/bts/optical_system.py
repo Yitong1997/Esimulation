@@ -585,6 +585,7 @@ class OpticalSystem:
     
     def plot_layout(
         self,
+        mode: str = '2d',
         projection: str = "YZ",
         num_rays: int = 5,
         save_path: Optional[str] = None,
@@ -592,23 +593,25 @@ class OpticalSystem:
     ) -> Tuple[Any, Any]:
         """绘制光路图
         
-        复用现有的 ZmxOpticLoader 和 view_2d 功能进行可视化。
+        复用现有的 ZmxOpticLoader 和 view_2d/view_3d 功能进行可视化。
         
         参数:
-            projection: 投影平面 ('YZ', 'XZ', 'XY')，默认 'YZ'
+            mode: 可视化模式，'2d' 或 '3d'，默认 '2d'
+            projection: 投影平面 ('YZ', 'XZ', 'XY')，默认 'YZ'（仅 2D）
             num_rays: 光线数量，默认 5
-            save_path: 保存路径（可选），如果指定则保存图像
+            save_path: 保存路径（可选），如果指定则保存图像（仅 2D）
             show: 是否显示图形，默认 True
         
         返回:
-            (fig, ax) 元组，matplotlib Figure 和 Axes 对象
+            mode='2d': (fig, ax) 元组
+            mode='3d': None
         
         示例:
             >>> system = bts.load_zmx("system.zmx")
-            >>> fig, ax = system.plot_layout(projection='YZ', num_rays=5)
+            >>> fig, ax = system.plot_layout(mode='2d', projection='YZ')
             >>> 
-            >>> # 保存到文件
-            >>> system.plot_layout(save_path="layout.png", show=False)
+            >>> # 3D 可视化
+            >>> system.plot_layout(mode='3d')
         
         **Validates: Requirements 4.2, 4.4**
         """
@@ -617,10 +620,28 @@ class OpticalSystem:
         # 检查系统是否为空
         if len(self._surfaces) == 0:
             print("警告: 系统为空，无法绘制光路图")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.text(0.5, 0.5, "系统为空", ha='center', va='center', fontsize=14)
-            ax.set_title(f"光学系统: {self.name}")
-            return fig, ax
+            if mode == '2d':
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.text(0.5, 0.5, "系统为空", ha='center', va='center', fontsize=14)
+                ax.set_title(f"光学系统: {self.name}")
+                return fig, ax
+            return None
+        
+        # 3D 可视化处理
+        if mode == '3d':
+            try:
+                optic = self._create_optiland_optic()
+                from sequential_system.zmx_visualization import view_3d
+                if show:
+                    print(f"正在打开 3D 视图: {self.name}...")
+                    view_3d(optic)
+                return None
+            except Exception as e:
+                print(f"错误: 无法使用 3D 可视化 ({e})")
+                return None
+            
+        # 2D 可视化处理 (mode='2d')
+        # 尝试创建 optiland Optic 对象进行可视化
         
         # 尝试创建 optiland Optic 对象进行可视化
         try:

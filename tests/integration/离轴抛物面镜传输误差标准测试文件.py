@@ -81,7 +81,7 @@ def run_oap_test(
     grid_size: int = GRID_SIZE,
     z_mm: float = 1000.0,
     propagation_method: str = "local_raytracing",
-    debug: bool = True,
+    debug: bool = True, #默认不输出详细信息
 ) -> dict:
     """运行离轴抛物面镜测试
     

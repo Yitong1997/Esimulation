@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高斯光束多镜传输计算器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style type="text/tailwindcss">
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+        .input-group label {
+            @apply block text-xs font-medium text-gray-700 mb-1;
+        }
+
+        .input-group input {
+            @apply w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors;
+        }
+
+        .mirror-card {
+            @apply bg-slate-50 p-3 rounded-lg border border-slate-200 relative mb-3 transition-all;
+        }
+
+        .mirror-card:hover {
+            @apply border-blue-300 shadow-sm;
+        }
+
+        .btn-icon {
+            @apply p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded hover:bg-red-50;
+        }
+    </style>
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-wave-square text-blue-600 text-xl"></i>
+                <h1 class="text-xl font-bold text-slate-800">高斯光束多镜传输计算器</h1>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="addMirror()"
+                    class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-1.5 px-4 rounded-md transition-colors shadow-sm">
+                    <i class="fa-solid fa-plus"></i> 添加反射镜
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Sidebar: Configuration -->
+            <div class="lg:col-span-3 space-y-4 h-fit">
+
+                <!-- Initial Beam Source -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                        <h2 class="font-semibold text-sm text-slate-700"><i
+                                class="fa-solid fa-lightbulb mr-2 text-yellow-500"></i>初始光源</h2>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="input-group">
+                            <label>波长 $\lambda$ (nm)</label>
+                            <input type="number" id="wavelength" value="1064" onchange="calculate()">
+                        </div>
+                        <div class="input-group">
+                            <label>初始束腰 $w_{0}$ ($\mu m$)</label>
+                            <input type="number" id="w0_in" value="500" step="10" onchange="calculate()">
+                        </div>
+                        <div class="input-group">
+                            <label>束腰全局坐标 $Z_{waist}$ (mm) <span
+                                    class="text-xs text-gray-400 font-normal block">初始光源平面位于全局 $Z=0$</span></label>
+                            <input type="number" id="z_waist_in" value="0" step="10" onchange="calculate()">
+                        </div>
+                        <div class="input-group">
+                            <label>距第一个镜面的距离 (mm)</label>
+                            <input type="number" id="d_start" value="100" step="10" onchange="calculate()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Optical Elements List -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                        <h2 class="font-semibold text-sm text-slate-700"><i
+                                class="fa-solid fa-clone mr-2 text-blue-500"></i>光学元件序列</h2>
+                        <button onclick="addMirror()"
+                            class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded transition-colors">
+                            + 添加
+                        </button>
+                    </div>
+
+                    <div id="mirrors-container" class="p-4 max-h-[500px] overflow-y-auto">
+                        <!-- Mirrors will be injected here via JS -->
+                    </div>
+                </div>
+
+                <button onclick="calculate()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl shadow-md transition-all active:scale-95">
+                    <i class="fa-solid fa-rotate-right mr-2"></i> 重新计算
+                </button>
+            </div>
+
+            <!-- Right Content: Visualization & Data -->
+            <div class="lg:col-span-9 space-y-6">
+
+                <!-- Chart Panel -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                        <h3 class="font-semibold text-gray-700">
+                            <i class="fa-solid fa-chart-area mr-2"></i>全光路传输轮廓 (展开视图)
+                        </h3>
+                        <div class="flex gap-4 text-xs text-gray-500">
+                            <span><i
+                                    class="fa-solid fa-square text-blue-500/20 border border-blue-500 w-3 h-3 inline-block mr-1"></i>光斑半径
+                                (w)</span>
+                            <span><i
+                                    class="fa-solid fa-minus text-gray-400 transform rotate-90 inline-block mr-1"></i>镜面位置</span>
+                        </div>
+                    </div>
+                    <div class="relative h-96 w-full bg-white p-2">
+                        <canvas id="beamCanvas"></canvas>
+                    </div>
+                    <div class="p-3 bg-gray-50 text-xs text-gray-500 border-t flex justify-between">
+                        <span>* X轴为光轴总距离 (mm)，Y轴为光斑半径 (mm)。图表展示了沿光轴展开的等效光路。</span>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b flex items-center justify-between">
+                        <h3 class="font-semibold text-gray-700">分段传输参数</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3">阶段 / 元件</th>
+                                    <th class="px-4 py-3">元件焦距 (mm)</th>
+                                    <th class="px-4 py-3">累积位置 (Global Z) (mm)</th>
+                                    <th class="px-4 py-3">元件处光斑 $w$ (mm)</th>
+                                    <th class="px-4 py-3 bg-blue-50/50">该段束腰 $w_0$ ($\mu m$)</th>
+                                    <th class="px-4 py-3 bg-blue-50/50">束腰位置 (Global Z)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-table-body" class="divide-y divide-gray-200">
+                                <!-- Table rows via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let mirrors = [
+            { id: 1, f: 200, d: 300 } // Default: 1 mirror, 300mm after the first segment
+        ];
+        let beamChart = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderMirrors();
+            calculate();
+        });
+
+        // --- Mirror Management ---
+        function addMirror() {
+            const newId = mirrors.length > 0 ? Math.max(...mirrors.map(m => m.id)) + 1 : 1;
+            mirrors.push({ id: newId, f: 150, d: 200 }); // Default values for new mirror
+            renderMirrors();
+            calculate();
+        }
+
+        function removeMirror(id) {
+            mirrors = mirrors.filter(m => m.id !== id);
+            renderMirrors();
+            calculate();
+        }
+
+        function updateMirror(id, field, value) {
+            const m = mirrors.find(m => m.id === id);
+            if (m) {
+                m[field] = parseFloat(value);
+                calculate(); // Live update
+            }
+        }
+
+        function renderMirrors() {
+            const container = document.getElementById('mirrors-container');
+            container.innerHTML = '';
+
+            if (mirrors.length === 0) {
+                container.innerHTML = `<div class="text-center text-xs text-gray-400 py-4">无光学元件，仅自由传输</div>`;
+                return;
+            }
+
+            mirrors.forEach((m, index) => {
+                const el = document.createElement('div');
+                el.className = 'mirror-card';
+                el.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded">Mirror ${index + 1}</span>
+                        <button onclick="removeMirror(${m.id})" class="btn-icon" title="删除">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="input-group">
+                            <label>焦距 $f$ (mm)</label>
+                            <input type="number" value="${m.f}" step="10" oninput="updateMirror(${m.id}, 'f', this.value)">
+                        </div>
+                        <div class="input-group">
+                            <label>距上一级距离 $d$</label>
+                            <input type="number" value="${m.d}" step="10" oninput="updateMirror(${m.id}, 'd', this.value)">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        // --- Core Physics Logic ---
+        function calculate() {
+            // 1. Get Global Inputs
+            const lambda_nm = parseFloat(document.getElementById('wavelength').value);
+            const w0_in_um = parseFloat(document.getElementById('w0_in').value);
+            const z_waist_mm = parseFloat(document.getElementById('z_waist_in').value); // Global Z coordinate of waist
+            const d_start_mm = parseFloat(document.getElementById('d_start').value);
+
+            const lambda = lambda_nm * 1e-6; // mm
+            const w0_start = w0_in_um * 1e-3; // mm
+
+            // 2. Initial Beam State
+            // q0 at the waist is purely imaginary: i * zR
+            const zR0 = (Math.PI * w0_start * w0_start) / lambda;
+
+            // Initial q at the start point (Source Plane, Global Z=0)
+            // Convention: q(z) = z_rel + i*zR, where z_rel is distance FROM waist.
+            // z_rel = Z_current - Z_waist
+            // At Z_current = 0 (Source Plane):
+            // z_rel_start = 0 - z_waist_mm = -z_waist_mm.
+
+            const q_start_real = -z_waist_mm;
+            const q_start = { re: q_start_real, im: zR0 };
+            const q_start_inv = invComplex(q_start);
+
+            // We will store "segments" for plotting and table.
+            let segments = [];
+            let global_z = 0;
+
+            // --- Segment 0: Source to First Mirror ---
+            segments.push({
+                type: 'source',
+                start_z: global_z,
+                length: d_start_mm,
+                q_in_inv: q_start_inv,
+                w0_segment: w0_start,
+                zR_segment: zR0,
+                waist_global_z: z_waist_mm // Store Global Z of waist
+            });
+            global_z += d_start_mm;
+
+            // --- Process Mirrors ---
+            // Propagate q to the end of the previous segment to get input for the lens
+            // q_end = q_start + d.
+            // But we have 1/q. 
+            // q = 1 / (1/q). 
+
+            let last_q_inv = segments[0].q_in_inv; // 1/q at start of previous segment
+            let last_seg_len = segments[0].length;
+
+            mirrors.forEach((m, idx) => {
+                // 1. Propagate through free space of previous segment to get to the mirror surface
+                // q_at_mirror_inc = q_at_prev_start + length
+                const q_prev_start = invComplex(last_q_inv); // re + i*im
+                const q_at_mirror_inc = { re: q_prev_start.re + last_seg_len, im: q_prev_start.im };
+
+                // 2. Apply Lens/Mirror Formula: 1/q_out = 1/q_in - 1/f
+                const inv_q_inc = invComplex(q_at_mirror_inc); // 1/q before mirror
+
+                const inv_q_out = {
+                    re: inv_q_inc.re - (1 / m.f),
+                    im: inv_q_inc.im // Thin lens does not change beam size immediately, so imaginary part of 1/q (related to w) stays same?
+                    // 1/q = 1/R - i(lambda/pi*w^2). Thin lens changes R, keeps w same. Correct.
+                };
+
+                // 3. Analyze the new beam to find its parameters (w0, zR, location of waist) for the NEXT segment
+                // q_out is the parameter at the mirror surface for the outgoing beam.
+                const q_out = invComplex(inv_q_out); // q at mirror surface (z_local = 0 relative to mirror)
+                // q_out = z_dist_from_waist + i * zR_new
+                const zR_new = q_out.im;
+                const dist_from_waist = q_out.re;
+                // q_out is at mirror surface (Start of next segment).
+                // dist_from_waist = Z_start_next - Z_waist_next
+                // So Z_waist_next = Z_start_next - dist_from_waist
+                // Z_start_next IS global_z_next (which is global_z currently + length of *previous* segment, wait)
+
+                // Let's track exact Global Z of start of this new segment.
+                // We are inside loop. 'global_z' is currently Start of Previous Segment + Length of Previous Segment.
+                // So 'global_z' IS the position of the current mirror.
+                const mirror_global_z = global_z;
+
+                // Waist Position relative to this mirror is -dist_from_waist?
+                // dist_from_waist is distance FROM waist TO mirror.
+                // So Z_mirror = Z_waist + dist_from_waist
+                // => Z_waist = Z_mirror - dist_from_waist.
+                const waist_global_z_next = mirror_global_z - dist_from_waist;
+
+                const w0_new = Math.sqrt(zR_new * lambda / Math.PI);
+
+                // 4. Create Next Segment
+                // Length is m.d (distance to next mirror or just some display length if last)
+                // Wait, m.d is distance *from this mirror* to the *next*. 
+                // For the loop, we need the distance for the segment *leaving* this mirror.
+                // If it's the last mirror, we pick a default display length.
+                let next_length = (idx < mirrors.length - 1) ? mirrors[idx + 1].d : (Math.abs(m.f) * 2 || 500);
+
+                segments.push({
+                    type: 'mirror',
+                    index: idx + 1,
+                    f: m.f,
+                    start_z: mirror_global_z, // Mirror location
+                    length: next_length,
+                    q_in_inv: inv_q_out, // 1/q at start of this segment (at mirror)
+                    w0_segment: w0_new,
+                    zR_segment: zR_new,
+                    waist_global_z: waist_global_z_next, // Storing global Z coordinate
+                    w_at_mirror: calculateBeamWidth(inv_q_inc, lambda) // Beam size at the mirror (incidence)
+                });
+
+                // Update for next iteration
+                last_q_inv = inv_q_out;
+                last_seg_len = next_length;
+                global_z += next_length;
+            });
+
+            // 3. Render
+            updateTable(segments);
+            updateChart(segments, lambda);
+
+            // Re-render math
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise();
+            }
+        }
+
+        // --- Helpers ---
+        function invComplex(c) {
+            // Returns 1 / c
+            const denom = c.re * c.re + c.im * c.im;
+            return { re: c.re / denom, im: -c.im / denom };
+        }
+
+        function calculateBeamWidth(inv_q, lambda) {
+            // 1/q = 1/R - i * (lambda / (pi * w^2))
+            // im(1/q) = - lambda / (pi * w^2)
+            // w^2 = - lambda / (pi * im)
+            // w = sqrt(...)
+            // Note: im(1/q) should be negative.
+            return Math.sqrt(-lambda / (Math.PI * inv_q.im));
+        }
+
+        function calculateWidthAtDist(start_q_inv, dist, lambda) {
+            // Propagate q by distance `dist` then get w
+            const q_start = invComplex(start_q_inv);
+            const q_z = { re: q_start.re + dist, im: q_start.im };
+            const inv_q_z = invComplex(q_z);
+            return calculateBeamWidth(inv_q_z, lambda);
+        }
+
+        function updateTable(segments) {
+            const tbody = document.getElementById('results-table-body');
+            tbody.innerHTML = '';
+
+            segments.forEach(seg => {
+                let row = document.createElement('tr');
+                row.className = "bg-white border-b hover:bg-gray-50";
+
+                let name = seg.type === 'source' ? '初始光源' : `Mirror ${seg.index}`;
+                let f_text = seg.type === 'source' ? '-' : seg.f.toFixed(0);
+                let w_at_mirror = seg.type === 'source' ? '-' : seg.w_at_mirror ? seg.w_at_mirror.toFixed(3) : '-';
+
+
+                let waist_pos_text = seg.waist_global_z.toFixed(1);
+
+                // Interpret waist position
+                let waist_desc = '';
+                // Check if waist is within this segment's Global Z range.
+                // Segment spans [seg.start_z, seg.start_z + seg.length]
+
+                if (seg.waist_global_z >= seg.start_z && seg.waist_global_z <= seg.start_z + seg.length) {
+                    waist_desc = '(实/本段内)';
+                } else if (seg.waist_global_z < seg.start_z) {
+                    waist_desc = '(虚/本段前)';
+                } else {
+                    waist_desc = '(虚/本段后)';
+                }
+
+                row.innerHTML = `
+                    <td class="px-4 py-3 font-medium text-gray-900">${name}</td>
+                    <td class="px-4 py-3 text-gray-500">${f_text}</td>
+                    <td class="px-4 py-3 text-gray-500">${seg.start_z.toFixed(0)}</td>
+                    <td class="px-4 py-3 font-mono text-xs">${w_at_mirror}</td>
+                    <td class="px-4 py-3 font-bold text-blue-600 bg-blue-50/30">${(seg.w0_segment * 1000).toFixed(1)}</td>
+                    <td class="px-4 py-3 text-gray-600 bg-blue-50/30">${waist_pos_text} <span class="text-xs text-gray-400">${waist_desc}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateChart(segments, lambda) {
+            const ctx = document.getElementById('beamCanvas').getContext('2d');
+
+            // Generate Data Points
+            const pointsTop = [];
+            const pointsBot = [];
+
+            segments.forEach((seg, i) => {
+                const steps = 50;
+                for (let j = 0; j <= steps; j++) {
+                    let dist = seg.length * (j / steps);
+                    const globalX = seg.start_z + dist;
+                    const w = calculateWidthAtDist(seg.q_in_inv, dist, lambda);
+
+                    pointsTop.push({ x: globalX, y: w });
+                    pointsBot.push({ x: globalX, y: -w });
+                }
+            });
+
+            // Prepare Mirror Data for visualization
+            const mirrorsData = segments.filter(s => s.type === 'mirror');
+
+            if (beamChart) beamChart.destroy();
+
+            beamChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: '光束包络 (1/e²)',
+                            data: [...pointsTop, ...pointsBot.reverse()],
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 2,
+                            showLine: true,
+                            fill: {
+                                target: 'origin',
+                                above: 'rgba(59, 130, 246, 0.2)',
+                                below: 'rgba(59, 130, 246, 0.2)'
+                            },
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: { display: true, text: '光轴位置 z (mm)' },
+                            min: 0
+                        },
+                        y: {
+                            title: { display: true, text: '光斑半径 w (mm)' }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `z: ${ctx.parsed.x.toFixed(1)}, w: ${Math.abs(ctx.parsed.y).toFixed(3)}`
+                            }
+                        }
+                    }
+                },
+                plugins: [{
+                    id: 'mirrorVisuals',
+                    afterDraw: (chart) => {
+                        const ctx = chart.ctx;
+                        const xAxis = chart.scales.x;
+                        const yAxis = chart.scales.y;
+
+                        mirrorsData.forEach((m, idx) => {
+                            const x = xAxis.getPixelForValue(m.start_z);
+                            const w_val = m.w_at_mirror || 1.0;
+
+                            // Visual height: cover +/- 1.5 * w, but minimum display size
+                            // Convert w to pixels?
+                            const y_top = yAxis.getPixelForValue(w_val * 1.5);
+                            const y_bottom = yAxis.getPixelForValue(-w_val * 1.5);
+                            const y_center = yAxis.getPixelForValue(0);
+
+                            // Lens Width in pixels
+                            const lensWidth = 10;
+                            const curvature = 8;
+
+                            ctx.save();
+                            ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
+                            ctx.strokeStyle = '#3b82f6';
+                            ctx.lineWidth = 1;
+
+                            ctx.beginPath();
+                            if (m.f > 0) {
+                                // Convex
+                                ctx.moveTo(x, y_top);
+                                ctx.quadraticCurveTo(x + curvature, y_center, x, y_bottom);
+                                ctx.quadraticCurveTo(x - curvature, y_center, x, y_top);
+                            } else {
+                                // Concave
+                                ctx.moveTo(x - curvature / 2, y_top);
+                                ctx.quadraticCurveTo(x, y_center, x - curvature / 2, y_bottom);
+                                ctx.lineTo(x + curvature / 2, y_bottom);
+                                ctx.quadraticCurveTo(x, y_center, x + curvature / 2, y_top);
+                                ctx.lineTo(x - curvature / 2, y_top);
+                            }
+                            ctx.fill();
+                            ctx.stroke();
+
+                            // Label
+                            ctx.fillStyle = '#64748b';
+                            ctx.textAlign = 'center';
+                            ctx.font = '10px sans-serif';
+                            ctx.fillText(`M${m.index}`, x, yAxis.top + 10);
+                            ctx.fillText(`f=${m.f}`, x, yAxis.bottom - 5);
+
+                            ctx.restore();
+                        });
+                    }
+                }]
+            });
+        }
+    </script>
+</body>
+
+</html>

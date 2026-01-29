@@ -95,20 +95,19 @@ import bts
 # ============================================================
 
 # 光学参数
-WAVELENGTH_UM = 0.633      # 波长 (μm)
+WAVELENGTH_UM = 1      # 波长 (μm)
 W0_MM = 5.0                # 输入束腰半径 (mm)
 
 # OAP1 参数（凸面，发散）
-F1_MM = -100.0             # OAP1 焦距 (mm)，负值表示凸面
-D1_MM = 50.0               # OAP1 离轴距离 (mm)
+F1_MM = -1000.0             # OAP1 焦距 (mm)，负值表示凸面
+D1_MM = 100.0               # OAP1 离轴距离 (mm)
 
 # OAP2 参数（凹面，准直）
-F2_MM = 300.0              # OAP2 焦距 (mm)，正值表示凹面
+F2_MM = 2000.0              # OAP2 焦距 (mm)，正值表示凹面
 MAGNIFICATION = -F2_MM / F1_MM  # 放大倍率 = 3x
-#D2_MM = MAGNIFICATION * D1_MM   # OAP2 离轴距离 (mm) = 150 mm
-D2_MM = 50.0 # OAP2 离轴距离 (mm) = 50 mm才是对的
+D2_MM = D1_MM # OAP2 离轴距离 (mm) 
 # 几何参数
-L_MM = F2_MM + F1_MM       # 两镜间距 (mm) = 200 mm（共焦条件）
+L_MM = F2_MM + F1_MM       # 两镜间距  （共焦条件）
 
 # 网格参数
 GRID_SIZE = 512            # 增加网格大小以适应扩束
@@ -202,6 +201,9 @@ def run_galilean_oap_expander_test(
     use_global_raytracer: bool = False,
     grid_size: int = GRID_SIZE,
     propagation_method: str = "local_raytracing",
+    plot: bool = False,
+    plot_mode: str = '3d',
+    debug: bool = False,
 ) -> dict:
     """运行伽利略式 OAP 扩束镜测试"""
     if verbose:
@@ -215,25 +217,15 @@ def run_galilean_oap_expander_test(
     # 1. 计算设计参数
     # ========================================================
     
-    # 符号约定修正：
-    # 光学标准中，光线向 +Z 传播
-    # 凸面镜（发散）：球心在 +Z 侧，Radius > 0 (对于 z = r^2/2R)
-    # 凹面镜（会聚）：球心在 -Z 侧，Radius < 0
-    # 
-    # 等等，PROPER/Zemax 约定可能不同。
-    # 经过验证 (test_galilean_advanced.py)：
-    # F=-100 (凸面) -> Radius = 200 (正)
-    # F=300 (凹面) -> Radius = -600 (负)
-    # 所以公式为 R = -2 * f
     
-    r1_mm = -2 * f1_mm  # R = -2f
+    r1_mm = -2 * f1_mm 
     r2_mm = -2 * f2_mm
     
     # 放大倍率
     magnification = -f2_mm / f1_mm
     
     # OAP2 离轴距离
-    d2_mm = magnification * d1_mm
+    d2_mm = d1_mm
     
     # 两镜间距
     l_mm = f2_mm + f1_mm
@@ -261,17 +253,37 @@ def run_galilean_oap_expander_test(
     
     # OAP1：凸面抛物面镜（发散）
     system.add_parabolic_mirror(
-        x=0.0, y=d1_mm, z=0.0,
-        radius=r1_mm,
+        x=0.0, y=d1_mm, z=500,
+        radius=r1_mm, #2000
     )
     
     # OAP2：凹面抛物面镜（准直）
     # 注意：OAP1 无倾斜时反射光向 -Z 方向传播
     # 因此 OAP2 必须位于 -Z 侧（z = -L）才能接收到光束
     system.add_parabolic_mirror(
-        x=0.0, y=d2_mm, z=-l_mm,
-        radius=r2_mm,
+        x=0.0, y=d2_mm, z=500-l_mm, 
+        tilt_y=180,
+        radius=-4000,  #全局中凸，相对于-Z光线凹
     )
+
+    # system.add_surface(
+    #     x=0.0, y=d2_mm, z=0, 
+    #     radius=np.inf,  #全局中凸，相对于-Z光线凹
+    #     material="air"
+    # )
+
+    
+
+    
+    if plot:
+        if verbose:
+            print(f"\n【绘制光路图 ({plot_mode})】...")
+        system.plot_layout(
+            mode=plot_mode,
+            projection='YZ', 
+            save_path='galilean_oap_layout.png', 
+            show=True
+        )
     
     # ========================================================
     # 3. 定义光源
@@ -281,6 +293,9 @@ def run_galilean_oap_expander_test(
         wavelength_um=WAVELENGTH_UM,
         w0_mm=W0_MM,
         grid_size=grid_size,
+        z0_mm = 1000,
+        beam_diam_fraction=0.25,
+        physical_size_mm = 8 * W0_MM,
     )
     
     # ========================================================
@@ -296,7 +311,8 @@ def run_galilean_oap_expander_test(
             source, 
             use_global_raytracer=use_global_raytracer,
             propagation_method=propagation_method,
-            verbose=False
+            verbose=False,
+            debug=debug
         )
     except Exception as e:
         print(f"仿真失败: {e}")
@@ -344,6 +360,12 @@ def run_galilean_oap_expander_test(
         print(f"  准直性(发散): {'PASS' if div_pass else 'FAIL'} (< {theta_diff_limit_mrad + DIVERGENCE_TOLERANCE_MRAD:.3f} mrad)")
         print(f"  波前质量(RMS): {'PASS' if rms_pass else 'FAIL'} (< {PHASE_RMS_THRESHOLD_MWAVES} mwaves)")
         print(f"\n  总体结果: {'[PASS]' if overall_pass else '[FAIL]'}")
+        
+    with open('failure_reason.txt', 'w', encoding='utf-8') as f:
+        f.write(f"w_pass: {w_pass} (meas={w_out_meas:.3f}, err={w_error_percent:.2f}%)\n")
+        f.write(f"div_pass: {div_pass} (meas={theta_out_meas:.6f}, limit={theta_diff_limit_mrad + DIVERGENCE_TOLERANCE_MRAD:.3f})\n")
+        f.write(f"rms_pass: {rms_pass} (meas={phase_rms_mwaves:.3f}, limit={PHASE_RMS_THRESHOLD_MWAVES})\n")
+        f.write(f"Overall: {overall_pass}\n")
     
     return {
         'success': overall_pass,
@@ -363,11 +385,17 @@ def main():
     parser = argparse.ArgumentParser(description='伽利略式 OAP 扩束镜传输误差测试')
     parser.add_argument('--global-raytracer', action='store_true',
                         help='使用全局坐标系光线追迹器')#默认使用局部坐标系光线追迹器
+    parser.add_argument('--no-plot', action='store_true',
+                        help='不绘制光路图')
+    parser.add_argument('--plot-3d', action='store_true',
+                        help='使用 3D 绘图模式')
     args = parser.parse_args()
     
     result = run_galilean_oap_expander_test(
         verbose=True, 
-        use_global_raytracer=args.global_raytracer
+        use_global_raytracer=args.global_raytracer,
+        plot=not args.no_plot,
+        plot_mode='3d' if args.plot_3d else '2d'
     )
     
     print("\n" + "=" * 70)

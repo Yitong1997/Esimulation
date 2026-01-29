@@ -301,7 +301,7 @@ class HybridOpticalPropagator:
             # 1. 创建 SurfaceDefinition
             # 需要将 GlobalSurfaceDefinition 转换为 ElementRaytracer 可用的格式
             # 特别是正确处理姿态角
-            # surface从全局坐标系转换到入射面坐标系
+            # surface从全局坐标系转换到入射面坐标系，但是没有执行平移？只做了旋转，何意味
             surface_def = self._create_surface_definition_for_tracing(
                 surface, current_dir
             )
@@ -315,6 +315,8 @@ class HybridOpticalPropagator:
                 chief_ray_direction=tuple(current_pos * 0 + current_dir), # Ensure copy/type
                 entrance_position=tuple(current_pos),
             )
+
+            #这里surface_def，current_pos和current_dir是全局坐标系
             
             # 3. 追迹主光线
             # 这会计算出射方向和交点
@@ -386,7 +388,20 @@ class HybridOpticalPropagator:
         euler_angles = Rotation.from_matrix(R_rel).as_euler('yxz', degrees=False)
         tilt_y = euler_angles[0]
         tilt_x = euler_angles[1]
-        # tilt_z = euler_angles[2]  # 通常应接近 0
+        
+        # 针对数值误差进行截断（Clamp）
+        # 当 R_rel 接近对角阵时（如反向传播），euler角度可能出现 3.1415926535... 的细微误差
+        # 这会导致后续计算出现不必要的微小倾斜
+        EPSILON = 1e-8
+        if abs(abs(tilt_y) - np.pi) < EPSILON:
+             tilt_y = np.pi if tilt_y > 0 else -np.pi
+        elif abs(tilt_y) < EPSILON:
+             tilt_y = 0.0
+             
+        if abs(abs(tilt_x) - np.pi) < EPSILON:
+             tilt_x = np.pi if tilt_x > 0 else -np.pi
+        elif abs(tilt_x) < EPSILON:
+             tilt_x = 0.0
         
         return SurfaceDefinition(
             surface_type=surface_type,

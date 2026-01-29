@@ -93,14 +93,6 @@ class SurfaceDefinition:
         - 对于凹面镜，焦距 f = R/2（R 为曲率半径）
         - 抛物面的圆锥常数 k = -1
         - 离轴效果通过绝对坐标定位实现，不使用偏心参数
-    
-    Validates:
-        - Requirements 2.1: 支持定义球面反射镜（通过曲率半径参数）
-        - Requirements 2.2: 支持定义平面反射镜（曲率半径为无穷大）
-        - Requirements 2.3: 支持定义球面折射面（通过曲率半径和材料参数）
-        - Requirements 2.4: 负值曲率半径表示凹面镜（曲率中心在 -Z 方向）
-        - Requirements 2.6: 接受表面半口径参数以限制有效区域
-        - Requirements 2.1 (gaussian-beam): 支持定义抛物面反射镜（通过 conic=-1）
     """
     
     surface_type: str = 'mirror'
@@ -762,6 +754,7 @@ class ElementRaytracer:
         chief_ray_direction: Tuple[float, float, float] = (0, 0, 1),
         entrance_position: Tuple[float, float, float] = (0, 0, 0),
         exit_chief_direction: Optional[Tuple[float, float, float]] = None,
+        exit_position: Optional[Tuple[float, float, float]] = None,
         debug: bool = False,
     ) -> None:
         """初始化元件光线追迹器
@@ -956,6 +949,7 @@ class ElementRaytracer:
         self.chief_ray_direction: Tuple[float, float, float] = tuple(direction)
         self.entrance_position: Tuple[float, float, float] = tuple(position)
         self._provided_exit_direction: Optional[Tuple[float, float, float]] = exit_direction_validated
+        self._provided_exit_position: Optional[Tuple[float, float, float]] = exit_position
         self.debug = debug
         
         # 计算坐标转换旋转矩阵
@@ -977,11 +971,20 @@ class ElementRaytracer:
         self.optic = None  # 将由 _create_optic_base 方法创建
         self._create_optic_base()
         
-        # 如果提供了出射方向，直接完成光学系统
+        # 如果提供了出射方向，设置相关属性
+        # 注意：不再调用 _finalize_optic()，出射面将在 _trace_with_signed_opd 中动态添加
         if self._provided_exit_direction is not None:
             self.exit_chief_direction = self._provided_exit_direction
             self._chief_ray_traced = True
-            self._finalize_optic()
+            # 计算出射面旋转矩阵
+            self.exit_rotation_matrix = compute_rotation_matrix(self.exit_chief_direction)
+            # 如果同时提供了 exit_position，则转换为入射面局部坐标系
+            if self._provided_exit_position is not None:
+                exit_pos_global = np.array(self._provided_exit_position, dtype=np.float64)
+                entrance_pos = np.array(self.entrance_position, dtype=np.float64)
+                exit_pos_local = self.rotation_matrix.T @ (exit_pos_global - entrance_pos)
+                self._chief_intersection_local = tuple(exit_pos_local)
+            self._optic_finalized = True
     
     def trace(self, input_rays: RealRays) -> RealRays:
         """执行光线追迹
@@ -1139,8 +1142,6 @@ class ElementRaytracer:
             wavelength=np.asarray(input_rays.w).copy(),
         )
         traced_rays.opd = np.asarray(input_rays.opd).copy()
-        #这里少了一步吧，这里调试发现opd是0，但是我的设计期望是opd为入射面的相位分布，这样追迹完毕后
-        #出射面的opd就是入射面的相位分布加上光学系统的光学路径差
         
         
         # =====================================================================
@@ -1155,10 +1156,6 @@ class ElementRaytracer:
         self._trace_with_signed_opd(traced_rays, skip=1)
         
         # 光线现在位于出射面上
-        # 无需手动投影
-        #真的吗？结果显示，Surf2没有引入opd，Surf3引入了大量的倾斜opd，然后就停止了
-        #本来应该是surf2引入opd，3把倾斜量校正
-        
         # =====================================================================
         # 将输出光线从入射面局部坐标系转换到出射面局部坐标系
         # =====================================================================
@@ -1265,10 +1262,22 @@ class ElementRaytracer:
             chief_M_out = output_rays.M[min_r_idx]
             chief_N_out = output_rays.N[min_r_idx]
             
-            #计算方向是否垂直于出射面。这里是不垂直的，有问题
+            # 计算方向是否垂直于出射面。这里是不垂直的则有问题
+            angle_deviation = np.sqrt(chief_L_out**2 + chief_M_out**2)
+            if angle_deviation > 1e-6:
+                #打印变量 
+                print(f" angle_deviation Warming: {angle_deviation}")
+                # raise RuntimeError(
+                #     f"严重错误：主光线不垂直于出射面（方向偏离 Z 轴）。\n"
+                #     f"在出射面局部坐标系中，主光线方向应为 (0, 0, 1)。\n"
+                #     f"实际方向: ({chief_L_out:.6f}, {chief_M_out:.6f}, {chief_N_out:.6f})\n"
+                #     f"横向分量模长 (sin(theta)): {angle_deviation:.6e}\n"
+                #     f"可能原因：出射面旋转矩阵构建错误，或光线追迹精度不足。"
+                # )
+
         
         self.output_rays = output_rays
-        
+        #注意这里仍然是局部坐标
         return output_rays
     
     def _direction_to_rotation_angles(
@@ -1365,7 +1374,7 @@ class ElementRaytracer:
         L = float(np.asarray(chief_rays.L)[0])
         M = float(np.asarray(chief_rays.M)[0])
         N = float(np.asarray(chief_rays.N)[0])
-        
+        #可以考虑加一个阈值，避免sin(pi)的数值误差
         # 归一化
         norm = np.sqrt(L**2 + M**2 + N**2)
         if norm > 1e-10:
@@ -1414,15 +1423,11 @@ class ElementRaytracer:
         
         # 标记主光线已追迹
         self._chief_ray_traced = True
+        #这里是不是在多个元件的时候存在未赋值问题？
         
         # 完成光学系统的创建（添加出射面）
         self._finalize_optic()
-        #现在代码中在对元件表面逐个追迹主光路时，在每个表面处添加了_finalize_optic来将元件表面的光线追迹到出射面。
-        # 但是实际上，在追踪主光轴时，并不需要此处“出射面”的定义，
-        # 因为元件处的出射主光线的位置与方向已经被获取了，完成了数据闭环。
-        # （出射面是用于混合光线追迹的，不需要在主光线追迹中被计算。）
-        # 这一步可能会引入额外的不需要的计算与数据误差。
-        # 我不明白这个函数到底是用来干什么的。
+        # 这里是不是在多个元件的时候有问题？噢好像没关系，tracer没被复用
         return self.exit_chief_direction
     
     def get_exit_chief_ray_direction(self) -> Tuple[float, float, float]:
@@ -1570,6 +1575,7 @@ class ElementRaytracer:
             # 所以我们需要传递 负半径 (-R) 给 Optiland。
             #
             # 简而言之：user_R < 0 (凹面) -> optiland_R < 0
+            print(f"[DEBUG ElementRaytracer] Adding Surface {surface_index}: radius={radius}, rx={tilt_x_safe}, ry={tilt_y_safe}, conic={surface_def.conic}, material={material}")
             optic.add_surface(
                 index=surface_index,
                 radius=radius,
@@ -2001,6 +2007,110 @@ class ElementRaytracer:
                      L_before, M_before,
                      title=f"{step_name}: Input Rays"
                  )
+
+        # =====================================================================
+        # 动态添加并追迹出射面 (Dynamic Exit Surface Trace)
+        # =====================================================================
+        # 这是核心重构：出射面不再在 _finalize_optic 中静态添加到 optic 对象，
+        # 而是在这里动态创建一个临时表面对象并追迹光线。
+        # 
+        # 前提条件：
+        #   - self._chief_intersection_local 已设置（出射面中心位置，在入射面局部坐标系中）
+        #   - self.exit_chief_direction 已设置（出射方向，在全局坐标系中）
+        # 
+        # 实现步骤：
+        #   1. 计算出射方向在入射面局部坐标系中的表示
+        #   2. 创建一个倾斜的平面 Surface 对象
+        #   3. 调用 surface.trace(rays) 完成光线追迹
+        #   4. 使用带符号的 OPD 更新
+        
+        if self._chief_intersection_local is not None and self.exit_chief_direction is not None:
+            from optiland.surfaces.standard_surface import Surface
+            from optiland.coordinate_system import CoordinateSystem
+            from optiland.geometries.standard import StandardGeometry
+            from optiland.materials import IdealMaterial
+            
+            # 1. 计算出射方向在入射面局部坐标系中的表示
+            exit_dir_global = np.array(self.exit_chief_direction, dtype=np.float64)
+            exit_dir_local = self.rotation_matrix.T @ exit_dir_global
+            exit_dir_local = exit_dir_local / np.linalg.norm(exit_dir_local)
+            
+            # 2. 计算出射面的旋转角度 (rx, ry) - 与 _finalize_optic 相同的公式
+            L = exit_dir_local[0]
+            M = exit_dir_local[1]
+            N = exit_dir_local[2]
+            
+            rx = -np.arcsin(np.clip(M, -1.0, 1.0))
+            ry = np.arctan2(L, N)
+            
+            # 3. 获取出射面位置
+            exit_x, exit_y, exit_z = self._chief_intersection_local
+            
+            # 4. 创建临时出射面
+            # 使用 optiland 的 Surface 类创建一个平面（radius=inf）
+            cs = CoordinateSystem()
+            cs.x = exit_x
+            cs.y = exit_y
+            cs.z = exit_z
+            cs.rx = rx
+            cs.ry = ry
+            #这里可能也有数值问题
+
+            # 平面使用无穷大曲率半径
+            exit_geometry = StandardGeometry(cs, radius=np.inf, conic=0.0)
+            exit_material_post = IdealMaterial(n=1.0)  # 空气
+            
+            exit_surface = Surface(
+                previous_surface=None,  # 独立表面，无前序
+                geometry=exit_geometry,
+                material_post=exit_material_post,
+                is_stop=False,
+                aperture=None,
+            )
+            
+            # 5. 追迹到出射面
+            opd_before = np.asarray(rays.opd).copy()
+            x_before = np.asarray(rays.x).copy()
+            y_before = np.asarray(rays.y).copy()
+            z_before = np.asarray(rays.z).copy()
+            L_before = np.asarray(rays.L).copy()
+            M_before = np.asarray(rays.M).copy()
+            N_before = np.asarray(rays.N).copy()
+            
+            exit_surface.trace(rays)
+            
+            # 6. 计算带符号的 OPD 增量
+            x_after = np.asarray(rays.x)
+            y_after = np.asarray(rays.y)
+            z_after = np.asarray(rays.z)
+            opd_after = np.asarray(rays.opd)
+            
+            opd_increment_abs = opd_after - opd_before
+            
+            dx = x_after - x_before
+            dy = y_after - y_before
+            dz = z_after - z_before
+            dot_product = dx * L_before + dy * M_before + dz * N_before
+            
+            sign_t = np.sign(dot_product)
+            sign_t[sign_t == 0] = 1
+            
+            opd_increment_signed = sign_t * opd_increment_abs
+            rays.opd = opd_before + opd_increment_signed
+            
+            debug_msg = (
+                f"[DEBUG TRACE] Exit Surface (Dynamic)\n"
+                f"  Exit Pos Local: ({exit_x:.4f}, {exit_y:.4f}, {exit_z:.4f})\n"
+                f"  Exit Dir Local: ({L:.4f}, {M:.4f}, {N:.4f})\n"
+                f"  rx={np.degrees(rx):.2f}°, ry={np.degrees(ry):.2f}°\n"
+                f"  OPD Incr (signed): mean={np.mean(opd_increment_signed):.6f}, std={np.std(opd_increment_signed):.6f}\n"
+            )
+            print(debug_msg)
+            try:
+                with open('d:\\BTS\\debug_log.txt', 'a', encoding='utf-8') as f:
+                    f.write(debug_msg + '\n')
+            except:
+                pass
 
 
     

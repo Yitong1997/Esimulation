@@ -119,7 +119,6 @@ def load_zmx(path: str) -> "OpticalSystem":
             ),
             radius=gs.radius,
             conic=gs.conic,
-            semi_aperture=gs.semi_aperture,
             is_mirror=gs.is_mirror,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
@@ -146,19 +145,19 @@ def _extract_tilt_angles(orientation: "np.ndarray") -> tuple:
     
     # 从旋转矩阵提取角度
     # 假设 R = Ry @ Rx
-    # R[2,0] = sin(tilt_y)
-    # R[2,1] = -sin(tilt_x) * cos(tilt_y)
-    # R[2,2] = cos(tilt_x) * cos(tilt_y)
+    # R[2,0] = -sin(tilt_y)
+    # R[2,1] = cos(tilt_y) * sin(tilt_x)
+    # R[2,2] = cos(tilt_y) * cos(tilt_x)
     
     # 提取 tilt_y
-    sin_tilt_y = orientation[2, 0]
+    sin_tilt_y = -orientation[2, 0]
     sin_tilt_y = np.clip(sin_tilt_y, -1.0, 1.0)  # 防止数值误差
     tilt_y_rad = np.arcsin(sin_tilt_y)
     
     # 提取 tilt_x
     cos_tilt_y = np.cos(tilt_y_rad)
     if abs(cos_tilt_y) > 1e-10:
-        sin_tilt_x = -orientation[2, 1] / cos_tilt_y
+        sin_tilt_x = orientation[2, 1] / cos_tilt_y
         cos_tilt_x = orientation[2, 2] / cos_tilt_y
         sin_tilt_x = np.clip(sin_tilt_x, -1.0, 1.0)
         tilt_x_rad = np.arctan2(sin_tilt_x, cos_tilt_x)

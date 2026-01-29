@@ -64,9 +64,9 @@ class HybridSimulator:
         self._surfaces: List["GlobalSurfaceDefinition"] = []
         self._source: Optional["SourceDefinition"] = None
         self._wavelength_um: Optional[float] = None
-        self._grid_size: int = 256
+        self._grid_size: int = 512
         self._physical_size_mm: Optional[float] = None
-        self._num_rays: int = 200
+        self._num_rays: int = 4096
         self._beam_diam_fraction: Optional[float] = None
         self._verbose = verbose
         self._use_global_raytracer = use_global_raytracer
