@@ -1,0 +1,95 @@
+Found Surface 9 Debug Info at line 677:
+============================== Surface 9 Debug Info ==============================
+[Surface Info]
+  ID: 19
+  Type: standard
+  Comment: 
+  Material: air
+[Geometry (Global Frame)]
+  Vertex Position: [55.000000, -21.000000, 125.000000] mm
+  Curvature Radius: 60.000000 mm
+  Orientation: [Matrix]
+[[-3.58404070e-17 -1.00000000e+00 -4.26642159e-17]
+ [-1.00000000e+00  2.91949520e-17 -1.27814294e-16]
+ [-3.58404070e-17  3.58404070e-17 -1.00000000e+00]]
+  Normal Vector (at vertex): [0.000000, 0.000000, 1.000000]
+  Local Z-axis (Global):     [-0.000000, -0.000000, -1.000000]
+[Chief Ray Interaction]
+  Intersection Point (Global): [54.028242, -21.000000, 124.992130] mm
+  Incident Direction: [0.005667, 0.000000, 0.999984]
+  Exit Direction:     [0.016931, 0.000000, 0.999857]
+  Angle of Incidence: 0.3247°
+[Input Rays Stats]
+  OPD Mean: -7.789428e-02, Std: 4.708630e-02
+================================================================================
+
+[DEBUG ElementRaytracer] Surface 2 Orientation:
+  Normal: (0.0057, 0.0000, -1.0000)
+  Calculated Tilt: rx=-0.00°, ry=179.68°
+[DEBUG ElementRaytracer] Adding Surface 2: radius=60.0, rx=-2.536412448203692e-16, ry=3.135925889533192, conic=0.0, material=air
+[Debug] Saved plot to debug\hybrid\debug_surf_9_entrance.png
+
+[DEBUG ElementRaytracer] Inspecting 3 surfaces in Optiland Optic:
+[DEBUG ElementRaytracer] Coordinates are LOCAL to the Optic Entrance Position.
+  Surface 0 [ObjectSurface]:
+    Position  (x,y,z) : (0, 0, -0.0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001B012031950>
+  Surface 1 [Surface]:
+    Position  (x,y,z) : (0, 0, 0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001B0120319F0>
+  Surface 2 [Surface]:
+    Position  (x,y,z) : (0.9716975013567926, -5.102567437257816e-18, 0.013376357118204963)
+    Rotation (rx,ry,rz): (-2.536412448203692e-16, 3.135925889533192, 0)
+    Radius: 60.0
+    Conic (k): 0.0
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001B0172A0E60>
+============================================================
+
+[DEBUG TRACE] i=1, Surface=Surface
+  Pos Before: (-1.4576, -7.5312, -0.0000)
+  Pos After : (-1.4576, -7.5312, 0.0000)
+  OPD Incr  : 0.000000
+[DEBUG TRACE] i=2, Surface=Surface
+  Pos Before: (-1.4576, -7.5312, 0.0000)
+  Pos After : (-1.4618, -7.5544, -0.5278)
+  OPD Incr  : 0.528306
+[DEBUG] After mirror trace (should be in Optic Global): rays at (-0.0069, 0.0010, -0.2244), dir=(0.0000, 0.0000, 0.9995)
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Linking to previous surface Surface
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Material = <optiland.materials.ideal.IdealMaterial object at 0x000001B0172A0E60>
+[DEBUG Exit] Before exit_surface.trace: rays at (-0.0069, 0.0010, -0.2244), dir=(0.0000, 0.0000, 0.9995)
+[DEBUG Exit] After  exit_surface.trace: rays at (-0.0043, 0.0010, 0.0000)
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.224552, std=0.182985
+
+[DEBUG trace] traced_rays centroid (Optic Local): (-0.0043, 0.0010, 0.0000)
+[DEBUG trace] chief_intersection_local: (np.float64(0.0), np.float64(0.0), np.float64(0.0))
+[DEBUG Shift] ent_origin=[ 54.0282423  -21.         124.99213021]
+[DEBUG Shift] exit_origin_global=[ 54.0282423  -21.         124.99213021]
+[DEBUG Shift] v_ent_to_exit_ent=[0. 0. 0.]
+[DEBUG Shift] chief_pos_ent=(0.0000, 0.0000, 0.0000)
+[DEBUG Shift] v_shift_exit=(0.0000, 0.0000, 0.0000)
+[DEBUG_CHECK] Surface 9 (R_surf=60.0): Pilot Beam R_out = -171.5153 mm
+[DEBUG TRACE] Before reconstruct_amplitude_phase
+[DEBUG TRACE] Calling reconstructor with 2766 rays. x_in range: [-7.5312e+00, 7.5312e+00]. x_out range: [-7.5274e+00, 7.5349e+00]
+
+[DEBUG] Residual Phase Zernike Analysis (first 4 terms):
+  Z1 (Piston) : -0.446022 rad
+  Z2 (Tilt X) : -434.522290 rad
+  Z3 (Tilt Y) : 0.001525 rad
+  Z4 (Defocus): 0.161758 rad
+
+  [WARNING] Significant Tilt detected! Check Optical Axis alignment.
+[DEBUG TRACE] After reconstruct_amplitude_phase
+[DEBUG] Plotting detailed results for Surface 9...
+[Debug] Saved info plot to debug\hybrid\debug_surf_9_00_info.png
+[Debug] Saved plot to debug\hybrid\debug_surf_9_exit.png
+Propagating
+仿真完成！
+Simulation done.

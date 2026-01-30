@@ -98,6 +98,7 @@ class FreeSpacePropagator:
                 proper_wfo=state.proper_wfo,
                 optical_axis_state=target_axis_state,
                 grid_sampling=state.grid_sampling,
+                current_refractive_index=state.current_refractive_index,
             )
         
         # 使用 PROPER 执行传播
@@ -122,7 +123,12 @@ class FreeSpacePropagator:
             pilot_beam_params=new_pilot_params,
             proper_wfo=state.proper_wfo,
             optical_axis_state=target_axis_state,
+<<<<<<< Updated upstream
             grid_sampling=state.grid_sampling,
+=======
+            grid_sampling=new_grid_sampling,
+            current_refractive_index=state.current_refractive_index,
+>>>>>>> Stashed changes
         )
     
     def propagate_distance(
@@ -160,6 +166,7 @@ class FreeSpacePropagator:
                 proper_wfo=state.proper_wfo,
                 optical_axis_state=target_axis_state or state.optical_axis_state,
                 grid_sampling=state.grid_sampling,
+                current_refractive_index=state.current_refractive_index,
             )
         
         # 使用 PROPER 执行传播
@@ -189,6 +196,7 @@ class FreeSpacePropagator:
             proper_wfo=state.proper_wfo,
             optical_axis_state=target_axis_state,
             grid_sampling=state.grid_sampling,
+            current_refractive_index=state.current_refractive_index,
         )
 
     

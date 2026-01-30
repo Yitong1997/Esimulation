@@ -196,6 +196,7 @@ class ZmxSurfaceData:
         tilt_x_deg: 绕 X 轴旋转角度 (度)，用于坐标断点
         tilt_y_deg: 绕 Y 轴旋转角度 (度)，用于坐标断点
         tilt_z_deg: 绕 Z 轴旋转角度 (度)，用于坐标断点
+        order: 旋转顺序标志 (0-5)，用于坐标断点
         asphere_coeffs: 非球面系数列表，用于偶次非球面
         comment: 原始注释，通常包含元件名称
     
@@ -226,6 +227,7 @@ class ZmxSurfaceData:
     tilt_x_deg: float = 0.0             # X 轴旋转 (度)
     tilt_y_deg: float = 0.0             # Y 轴旋转 (度)
     tilt_z_deg: float = 0.0             # Z 轴旋转 (度)
+    order: int = 0                      # 旋转顺序标志 (0-5)
     # 非球面系数
     asphere_coeffs: List[float] = field(default_factory=list)
     # 双锥面参数（BICONIC）
@@ -1005,7 +1007,7 @@ class ZmxParser:
             - PARM 3 → tilt_x (度，绕 X 轴旋转)
             - PARM 4 → tilt_y (度，绕 Y 轴旋转)
             - PARM 5 → tilt_z (度，绕 Z 轴旋转)
-            - PARM 6 → order (旋转顺序标志，可忽略)
+            - PARM 6 → order (旋转顺序标志)
             
             对于 PARAXIAL 表面类型，参数映射如下：
             - PARM 1 → focal_length (mm)，理想薄透镜焦距
@@ -1070,7 +1072,9 @@ class ZmxParser:
             elif param_index == 5:
                 # PARM 5 → tilt_z (度，绕 Z 轴旋转)
                 self._current_surface.tilt_z_deg = param_value
-            # PARM 6 是旋转顺序标志，可以忽略
+            elif param_index == 6:
+                # PARM 6 → order (旋转顺序标志)
+                self._current_surface.order = int(param_value)
         
         elif self._current_surface.surface_type == 'paraxial':
             # PARAXIAL 参数映射（Zemax 约定）

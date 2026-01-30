@@ -92,12 +92,46 @@ class CoordinateTransform:
         - Requirements 6.2: 折叠光路坐标变换跟踪
     """
     
-    decenter_x: float = 0.0  # mm
-    decenter_y: float = 0.0  # mm
-    decenter_z: float = 0.0  # mm
-    tilt_x_rad: float = 0.0  # 弧度
-    tilt_y_rad: float = 0.0  # 弧度
-    tilt_z_rad: float = 0.0  # 弧度
+    matrix: np.ndarray = field(default_factory=lambda: np.eye(4))
+    
+    @property
+    def decenter_x(self) -> float:
+        return float(self.matrix[0, 3])
+        
+    @property
+    def decenter_y(self) -> float:
+        return float(self.matrix[1, 3])
+        
+    @property
+    def decenter_z(self) -> float:
+        return float(self.matrix[2, 3])
+        
+    @property
+    def _euler_angles(self) -> np.ndarray:
+        """从旋转矩阵提取欧拉角 (xyz 顺序)"""
+        from scipy.spatial.transform import Rotation
+        R = self.matrix[:3, :3]
+        # 使用 xyz 顺序分解，对应 tilt_x, tilt_y, tilt_z
+        # 注意：scipy 返回的是弧度
+        try:
+            r = Rotation.from_matrix(R)
+            angles = r.as_euler('xyz', degrees=False)
+            return angles
+        except Exception:
+            # 鲁棒性处理：如果旋转矩阵无效
+            return np.zeros(3)
+
+    @property
+    def tilt_x_rad(self) -> float:
+        return float(self._euler_angles[0])
+        
+    @property
+    def tilt_y_rad(self) -> float:
+        return float(self._euler_angles[1])
+        
+    @property
+    def tilt_z_rad(self) -> float:
+        return float(self._euler_angles[2])
     
     def apply_coordinate_break(
         self,
@@ -107,97 +141,74 @@ class CoordinateTransform:
         rx_deg: float,
         ry_deg: float,
         rz_deg: float,
+        order: int = 0
     ) -> None:
         """应用坐标断点变换
         
-        将一个坐标断点的变换累积到当前变换中。
-        偏心值直接累加，旋转角度从度转换为弧度后累加。
+        基于当前变换矩阵，应用新的平移和旋转。
         
         参数:
-            dx: X 方向偏心 (mm)
-            dy: Y 方向偏心 (mm)
-            dz: Z 方向偏心/厚度 (mm)，通常来自 DISZ
-            rx_deg: 绕 X 轴旋转角度 (度)
-            ry_deg: 绕 Y 轴旋转角度 (度)
-            rz_deg: 绕 Z 轴旋转角度 (度)
-        
-        说明:
-            - 偏心值直接累加到对应的 decenter_x/y/z 属性
-            - 旋转角度从度转换为弧度后累加到 tilt_x/y/z_rad 属性
-            - 这是简化的累积方式，假设旋转顺序为 XYZ
-            - 对于复杂的三维旋转，可能需要使用旋转矩阵进行精确计算
-        
-        示例:
-            >>> transform = CoordinateTransform()
-            >>> transform.apply_coordinate_break(
-            ...     dx=5.0, dy=0, dz=10.0,
-            ...     rx_deg=45, ry_deg=0, rz_deg=0
-            ... )
-            >>> print(f"偏心: ({transform.decenter_x}, {transform.decenter_y}, {transform.decenter_z}) mm")
-            偏心: (5.0, 0.0, 10.0) mm
-            >>> print(f"倾斜: {np.rad2deg(transform.tilt_x_rad):.1f}°")
-            倾斜: 45.0°
-        
-        **Validates: Requirements 3.4, 6.2**
+            dx, dy, dz: 平移量 (mm)
+            rx_deg, ry_deg, rz_deg: 旋转角度 (度)
+            order: 旋转顺序标志 (0-5)
+                0: Decenter then Tilt
+                1: Tilt then Decenter
+                其他: 默认为 0
         """
-        # 累积偏心
-        self.decenter_x += dx
-        self.decenter_y += dy
-        self.decenter_z += dz
+        from scipy.spatial.transform import Rotation
         
-        # 累积旋转（度转弧度）
-        self.tilt_x_rad += np.deg2rad(rx_deg)
-        self.tilt_y_rad += np.deg2rad(ry_deg)
-        self.tilt_z_rad += np.deg2rad(rz_deg)
+        # 构建平移矩阵
+        T = np.eye(4)
+        T[0:3, 3] = [dx, dy, dz]
+        
+        # 构建旋转矩阵 (Extrinsic: Rx -> Ry -> Rz implies R = Rz @ Ry @ Rx)
+        rx_rad = np.deg2rad(rx_deg)
+        ry_rad = np.deg2rad(ry_deg)
+        rz_rad = np.deg2rad(rz_deg)
+        
+        if abs(rx_deg) < 1e-9 and abs(ry_deg) < 1e-9 and abs(rz_deg) < 1e-9:
+             R_mat = np.eye(3)
+        else:
+             # Zemax standard: Rx then Ry then Rz about NEW axes? Or old?
+             # Docs: "order of rotations is Rx, then Ry, then Rz".
+             # If intrinsic: 'xyz' (lowercase)
+             # If extrinsic: 'XYZ' (uppercase)
+             # Usually ray tracing codes define tilt x as rotation about local X.
+             # Then tilt y about NEW Y? Or original Y?
+             # "Tilt about x, then tilt about y, then tilt about z" usually implies intrinsic.
+             r = Rotation.from_euler('xyz', [rx_rad, ry_rad, rz_rad], degrees=False)
+             R_mat = r.as_matrix()
+        
+        R_4x4 = np.eye(4)
+        R_4x4[0:3, 0:3] = R_mat
+        
+        # 根据 Order 组合局部变换 M_local
+        if order == 0:
+            # Order 0: Decenter then Tilt
+            # P_new = R @ (P + D) => M = R @ T
+            M_local = R_4x4 @ T
+        elif order == 1:
+            # Order 1: Tilt then Decenter
+            # P_new = (R @ P) + D => M = T @ R
+            M_local = T @ R_4x4
+        else:
+            # 暂不支持 2-5
+            M_local = R_4x4 @ T
+            
+        # 更新累积矩阵: M_total = M_total @ M_local (从右乘，因为是相对于随体坐标系的变换)
+        self.matrix = self.matrix @ M_local
+        
+
     
     def reset(self) -> None:
-        """重置所有变换为零
-        
-        将所有偏心和旋转值重置为初始状态（零）。
-        
-        示例:
-            >>> transform = CoordinateTransform(
-            ...     decenter_x=5.0,
-            ...     tilt_x_rad=np.pi/4
-            ... )
-            >>> transform.reset()
-            >>> print(f"偏心: {transform.decenter_x} mm")
-            偏心: 0.0 mm
-            >>> print(f"倾斜: {transform.tilt_x_rad} rad")
-            倾斜: 0.0 rad
-        
-        **Validates: Requirements 3.4**
-        """
-        self.decenter_x = 0.0
-        self.decenter_y = 0.0
-        self.decenter_z = 0.0
-        self.tilt_x_rad = 0.0
-        self.tilt_y_rad = 0.0
-        self.tilt_z_rad = 0.0
-    
+        """重置所有变换为零"""
+        self.matrix = np.eye(4)
+
     def copy(self) -> 'CoordinateTransform':
-        """创建当前变换的副本
-        
-        返回:
-            CoordinateTransform: 当前变换的深拷贝
-        
-        示例:
-            >>> transform = CoordinateTransform(decenter_x=5.0, tilt_x_rad=0.5)
-            >>> transform_copy = transform.copy()
-            >>> transform_copy.decenter_x = 10.0
-            >>> print(f"原始: {transform.decenter_x} mm")
-            原始: 5.0 mm
-            >>> print(f"副本: {transform_copy.decenter_x} mm")
-            副本: 10.0 mm
-        """
-        return CoordinateTransform(
-            decenter_x=self.decenter_x,
-            decenter_y=self.decenter_y,
-            decenter_z=self.decenter_z,
-            tilt_x_rad=self.tilt_x_rad,
-            tilt_y_rad=self.tilt_y_rad,
-            tilt_z_rad=self.tilt_z_rad,
-        )
+        """创建当前变换的副本"""
+        new_transform = CoordinateTransform()
+        new_transform.matrix = self.matrix.copy()
+        return new_transform
     
     @property
     def has_decenter(self) -> bool:

@@ -4,7 +4,8 @@ simulate 函数模块
 提供仿真执行功能，内部调用 HybridSimulator.run()。
 """
 
-from typing import TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Optional
 
 from .exceptions import ConfigurationError, SimulationError
 
@@ -18,7 +19,15 @@ def simulate(
     system: "OpticalSystem",
     source: "GaussianSource",
     verbose: bool = True,
+<<<<<<< Updated upstream
     num_rays: int = 200,
+=======
+    num_rays: int = 4096,
+    use_global_raytracer: bool = False,
+    propagation_method: str = "local_raytracing",
+    debug: bool = False,
+    debug_dir: Optional[str] = None,
+>>>>>>> Stashed changes
 ) -> "SimulationResult":
     """执行混合光学仿真
     
@@ -66,7 +75,18 @@ def simulate(
         from hybrid_simulation import HybridSimulator
         
         # 创建 HybridSimulator 实例
+<<<<<<< Updated upstream
         sim = HybridSimulator(verbose=verbose)
+=======
+        sim = HybridSimulator(
+            verbose=verbose,
+            use_global_raytracer=use_global_raytracer,
+            propagation_method=propagation_method,
+        )
+        
+        # 设置调试模式
+        sim.set_debug_mode(debug, debug_dir=debug_dir)
+>>>>>>> Stashed changes
         
         # 复用现有的表面定义
         # 优先使用 _global_surfaces（从 ZMX 加载或手动创建的全局坐标表面）

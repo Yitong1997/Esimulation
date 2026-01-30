@@ -1227,11 +1227,65 @@ class ElementRaytracer:
         #
         # 重要：OPD 是标量，不受坐标变换影响
         
+<<<<<<< Updated upstream
         # 计算从入射面局部坐标系到出射面局部坐标系的旋转矩阵
         # R_entrance_to_exit = R_exit.T @ R_entrance
         R_entrance_to_exit = self.exit_rotation_matrix.T @ self.rotation_matrix
+=======
+        # =====================================================================
+        # 将输出光线从入射面局部坐标系转换到出射面局部坐标系
+        # =====================================================================
+        # 使用确定的几何关系进行坐标转换，而不是依赖于光线分布推断。
+        # 
+        # 变换公式：
+        # P_exit = R_exit^T @ (P_global - O_exit)
+        # P_global = R_ent @ P_ent + O_ent
+        # 
+        # 代入得：
+        # P_exit = R_exit^T @ (R_ent @ P_ent + O_ent - O_exit)
+        #        = (R_exit^T @ R_ent) @ P_ent + R_exit^T @ (O_ent - O_exit)
+        # 
+        # 定义：
+        # R_ent_to_exit = R_exit^T @ R_ent
+        # shift_vec = R_exit^T @ (O_ent - O_exit)
         
-        # 获取光线数据
+        if self.exit_rotation_matrix is None:
+             raise RuntimeError("exit_rotation_matrix not set via trace_chief_ray")
+
+        # 1. 计算旋转矩阵 R_ent_to_exit
+        R_ent_to_global = self.rotation_matrix
+        R_global_to_exit = self.exit_rotation_matrix.T
+        R_ent_to_exit = R_global_to_exit @ R_ent_to_global
+        
+        # 2. 准备原点坐标 (Global)
+        ent_origin_global = np.array(self.entrance_position, dtype=np.float64)
+        
+        if self.exit_position is not None:
+            exit_origin_global = np.array(self.exit_position, dtype=np.float64)
+        else:
+            # 如果未指定出射位置，使用主光线与表面的交点作为出射原点
+            if self._chief_intersection_local is None:
+                 raise RuntimeError("_chief_intersection_local not set")
+            
+            p_chief_local = np.array(self._chief_intersection_local)
+            # Convert Local -> Global to get Exit Origin
+            p_chief_global = R_ent_to_global @ p_chief_local + ent_origin_global.reshape(3)
+            exit_origin_global = p_chief_global
+            
+        # 3. 计算位移向量 (在 Exit Frame 下)
+        delta_origin_global = ent_origin_global.reshape(3) - exit_origin_global.reshape(3)
+        shift_vec_exit = R_global_to_exit @ delta_origin_global
+>>>>>>> Stashed changes
+        
+        if getattr(self, 'debug', False):
+            print(f"[DEBUG trace] Coordinate Transform:")
+            print(f"  Ent Origin (Global): {ent_origin_global}")
+            print(f"  Exit Origin (Global): {exit_origin_global}")
+            print(f"  Shift Vector (Exit Frame): {shift_vec_exit}")
+
+        # 4. 应用变换
+        
+        # 获取光线数据 (Entrance Local)
         x_entrance = np.asarray(traced_rays.x)
         y_entrance = np.asarray(traced_rays.y)
         z_entrance = np.asarray(traced_rays.z)
@@ -1239,6 +1293,7 @@ class ElementRaytracer:
         M_entrance = np.asarray(traced_rays.M)
         N_entrance = np.asarray(traced_rays.N)
         
+<<<<<<< Updated upstream
         # =====================================================================
         # 使用主光线交点位置作为出射面原点
         # =====================================================================
@@ -1261,8 +1316,21 @@ class ElementRaytracer:
         z_exit = pos_exit[2]
         
         # 方向转换
+=======
+        # 位置变换
+        # P_exit = R_ent_to_exit @ P_ent + shift_vec
+        pos_entrance = np.stack([x_entrance, y_entrance, z_entrance], axis=0) # (3, N)
+        pos_exit = R_ent_to_exit @ pos_entrance # (3, N)
+        
+        x_exit = pos_exit[0] + shift_vec_exit[0]
+        y_exit = pos_exit[1] + shift_vec_exit[1]
+        z_exit = pos_exit[2] + shift_vec_exit[2]
+        
+        # 方向变换
+        # D_exit = R_ent_to_exit @ D_ent
+>>>>>>> Stashed changes
         dir_entrance = np.stack([L_entrance, M_entrance, N_entrance], axis=0)
-        dir_exit = R_entrance_to_exit @ dir_entrance
+        dir_exit = R_ent_to_exit @ dir_entrance
         
         L_exit = dir_exit[0]
         M_exit = dir_exit[1]
@@ -1741,8 +1809,42 @@ class ElementRaytracer:
                           f"对于 OAP，倾斜通常通过顶点偏移定义。为了确保计算正确性，"
                           f"optiland 中的倾斜参数将被强制置为 0。")
                 
+<<<<<<< Updated upstream
                 tilt_x_safe = 0.0
                 tilt_y_safe = 0.0
+=======
+                # 计算直接从法向向量提取倾斜角度
+                # 能够避免欧拉角分解中的歧义（如 rz=180 度翻转问题）
+                # 同时也修复了之前代码中假设 sin(ry)=Nx 的数学错误
+                
+                # 公式推导：
+                # 法向 N = R @ (0,0,1) = (Nx, Ny, Nz)
+                # 使用 optiland 旋转顺序 (Ry @ Rx):
+                # Nx = cos(rx) * sin(ry)
+                # Ny = -sin(rx)
+                # Nz = cos(rx) * cos(ry)
+                
+                # 1. 提取法向向量 (R_rel 的第三列)
+                normal_local = R_rel[:, 2]
+                L, M, N = normal_local # Nx, Ny, Nz
+                
+                # 2. 计算 rx, ry
+                # rx = -arcsin(Ny)
+                tilt_x_rad = -np.arcsin(np.clip(M, -1.0, 1.0))
+                
+                # ry = arctan2(Nx, Nz)
+                # 处理万向节锁 (Gimbal Lock) 情况：当 rx = +/- 90度 (M = +/- 1)
+                # 此时 cos(rx) = 0, Nx = Nz = 0, ry 不确定
+                if abs(M) > 0.9999:
+                    tilt_y_rad = 0.0
+                else:
+                    tilt_y_rad = np.arctan2(L, N)
+                
+                if getattr(self, 'debug', False):
+                     print(f"[DEBUG ElementRaytracer] Surface {surface_index} Orientation:")
+                     print(f"  Normal: ({L:.4f}, {M:.4f}, {N:.4f})")
+                     print(f"  Calculated Tilt: rx={np.degrees(tilt_x_rad):.2f}°, ry={np.degrees(tilt_y_rad):.2f}°")
+>>>>>>> Stashed changes
             else:
                 # 其他表面：使用 SurfaceDefinition 中的倾斜角度
                 tilt_x_rad = surface_def.tilt_x if surface_def.tilt_x else 0.0

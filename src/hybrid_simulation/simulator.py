@@ -65,6 +65,23 @@ class HybridSimulator:
         self._num_rays: int = 200
         self._beam_diam_fraction: Optional[float] = None
         self._verbose = verbose
+<<<<<<< Updated upstream
+=======
+        self._use_global_raytracer = use_global_raytracer
+        self._propagation_method = propagation_method
+        self._debug = False  # Default to False
+    
+    def set_debug_mode(self, debug: bool = True, debug_dir: Optional[str] = None) -> "HybridSimulator":
+        """设置调试模式
+        
+        参数:
+            debug: 是否开启调试模式（开启后会显示详细绘图）
+            debug_dir: 调试输出目录（可选）
+        """
+        self._debug = debug
+        self._debug_dir = debug_dir
+        return self
+>>>>>>> Stashed changes
 
     def load_zmx(self, path: str) -> "HybridSimulator":
         """从 ZMX 文件加载光学系统
@@ -261,6 +278,13 @@ class HybridSimulator:
                 wavelength_um=self._wavelength_um,
                 grid_size=self._grid_size,
                 num_rays=self._num_rays,
+<<<<<<< Updated upstream
+=======
+                use_global_raytracer=self._use_global_raytracer,
+                propagation_method=self._propagation_method,
+                debug=self._debug,
+                debug_dir=self._debug_dir,
+>>>>>>> Stashed changes
             )
             
             # 执行传播

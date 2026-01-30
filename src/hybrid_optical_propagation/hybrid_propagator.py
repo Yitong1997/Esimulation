@@ -139,6 +139,12 @@ class HybridOpticalPropagator:
         grid_size: int = 512,
         num_rays: int = 200,
         propagation_method: str = "local_raytracing",
+<<<<<<< Updated upstream
+=======
+        use_global_raytracer: bool = False,
+        debug: bool = False,
+        debug_dir: Optional[str] = None,
+>>>>>>> Stashed changes
     ) -> None:
         """初始化混合光学传播器
         
@@ -151,6 +157,14 @@ class HybridOpticalPropagator:
             propagation_method: 元件传播方法
                 - 'local_raytracing': 局部光线追迹方法（默认）
                 - 'pure_diffraction': 纯衍射方法
+<<<<<<< Updated upstream
+=======
+            use_global_raytracer: 是否使用全局坐标系光线追迹器
+                - False: 使用 HybridElementPropagator（默认）
+                - True: 使用 HybridElementPropagatorGlobal
+            debug: 是否开启调试模式
+            debug_dir: 调试输出目录（可选）
+>>>>>>> Stashed changes
         
         **Validates: Requirements 16.1**
         """
@@ -169,11 +183,30 @@ class HybridOpticalPropagator:
         # 子组件
         self._state_converter = StateConverter(wavelength_um)
         self._free_space_propagator = FreeSpacePropagator(wavelength_um)
+<<<<<<< Updated upstream
         self._hybrid_element_propagator = HybridElementPropagator(
             wavelength_um=wavelength_um,
             num_rays=num_rays,
             method=propagation_method,
         )
+=======
+        
+        # 选择元件传播器
+        if use_global_raytracer:
+            self._hybrid_element_propagator = HybridElementPropagatorGlobal(
+                wavelength_um=wavelength_um,
+                num_rays=num_rays,
+            )
+        else:
+            self._hybrid_element_propagator = HybridElementPropagator(
+                wavelength_um=wavelength_um,
+                num_rays=num_rays,
+                method=propagation_method,
+                debug=debug,
+                debug_dir=debug_dir,
+            )
+        
+>>>>>>> Stashed changes
         self._paraxial_propagator = ParaxialPhasePropagator(wavelength_um)
         
         # 预计算光轴状态
@@ -273,9 +306,23 @@ class HybridOpticalPropagator:
         
         chief_ray_data = []
         
+<<<<<<< Updated upstream
         # 初始主光线：从原点沿 +Z 方向
         current_pos = np.array([0.0, 0.0, 0.0])
         current_dir = np.array([0.0, 0.0, 1.0])
+=======
+        current_state = PropagationState(
+            surface_index=-1,
+            position='source',
+            amplitude=amplitude,
+            phase=phase,
+            pilot_beam_params=pilot_beam,
+            proper_wfo=proper_wfo,
+            optical_axis_state=source_axis_state,
+            grid_sampling=grid_sampling,
+            current_refractive_index=1.0, # 初始假设为真空/空气
+        )
+>>>>>>> Stashed changes
         
         for surface in self._optical_system:
             # 计算主光线与表面的交点

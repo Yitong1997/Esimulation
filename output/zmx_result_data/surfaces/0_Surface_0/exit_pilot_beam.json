@@ -1,7 +1,0 @@
-{
-  "wavelength_um": 0.633,
-  "waist_radius_mm": 5.0,
-  "waist_position_mm": 0.0,
-  "curvature_radius_mm": "inf",
-  "spot_size_mm": 5.0
-}

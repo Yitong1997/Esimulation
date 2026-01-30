@@ -1,0 +1,228 @@
+d:\BTS\src\wavefront_to_rays\reconstructor.py:809: UserWarning: ��⵽��λͻ�䣺�ز������������������������λ��Ϊ 0.001 ���� (0.000 ����)��������ֵ 3.142 ���ȣ��У�������ܵ�����λ������������Ӳ����ܶȡ�
+  warnings.warn(
+======================================================================
+٤����ʽ������������������������׼����
+======================================================================
+
+�����ƹ�·ͼ (2d)��...
+[DEBUG OPTILAND FIX] Using local standard.py (Robust Quad). a_min=0.00e+00
+��·ͼ�ѱ��浽: galilean_oap_layout.png
+
+��ִ�з��桿...
+[bts.simulate] Called with debug=True
+[HybridSimulator.run] self._debug = True
+[HybridElementPropagator] Initialized with debug=True
+[HybridElementPropagator] Debug output directory: D:\BTS\debug\hybrid\galilean_test
+[DEBUG OPTILAND FIX] Using local standard.py (Robust Quad). a_min=0.00e+00
+[DEBUG_CHIEF] Map User Surf 0 -> Optiland Surf 1 (Surface)
+    Intersection: [  0.    0.  502.5]
+    Exit Dir    : [ 0.         -0.09975062 -0.99501247]
+[DEBUG_CHIEF] Map User Surf 1 -> Optiland Surf 2 (Surface)
+    Intersection: [   0. -100. -495.]
+    Exit Dir    : [-0.00000000e+00 -1.38777878e-17  1.00000000e+00]
+Propagating
+[DEBUG] Cartesian Sampling: 2313 rays (Target approx 4096)
+[DEBUG] Center Ray: x=0.000000e+00, y=0.000000e+00
+[DEBUG] Center Ray Direction: L=-6.184412e-21, M=-2.650462e-20
+
+============================== Surface 0 Debug Info ==============================
+[Surface Info]
+  ID: 0
+  Type: standard
+  Comment: 
+  Material: MIRROR
+[Geometry (Global Frame)]
+  Vertex Position: [0.000000, 100.000000, 500.000000] mm
+  Curvature Radius: 2000.000000 mm
+  Orientation: [Matrix]
+[[1. 0. 0.]
+ [0. 1. 0.]
+ [0. 0. 1.]]
+  Normal Vector (at vertex): [-0.000000, -0.000000, -1.000000]
+  Local Z-axis (Global):     [0.000000, 0.000000, 1.000000]
+[Chief Ray Interaction]
+  Intersection Point (Global): [0.000000, 0.000000, 502.500000] mm
+  Incident Direction: [0.000000, 0.000000, 1.000000]
+  Exit Direction:     [0.000000, -0.099751, -0.995012]
+  Angle of Incidence: 0.0000��
+[Input Rays Stats]
+  OPD Mean: -6.816996e-06, Std: 3.348210e-06
+================================================================================
+
+[DEBUG ElementRaytracer] Surface 2 Orientation:
+  Normal: (0.0000, 0.0000, 1.0000)
+  Calculated Tilt: rx=-0.00��, ry=0.00��
+[DEBUG ElementRaytracer] Adding Surface 2: radius=2000.0, rx=-0.0, ry=0.0, conic=-1.0, material=mirror
+[Debug] Saved plot to debug/hybrid/galilean_test\debug_surf_0_entrance.png
+
+[DEBUG ElementRaytracer] Inspecting 3 surfaces in Optiland Optic:
+[DEBUG ElementRaytracer] Coordinates are LOCAL to the Optic Entrance Position.
+  Surface 0 [ObjectSurface]:
+    Position  (x,y,z) : (0, 0, -0.0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C027929F30>
+  Surface 1 [Surface]:
+    Position  (x,y,z) : (0, 0, 0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C0279415B0>
+  Surface 2 [Surface]:
+    Position  (x,y,z) : (0.0, 100.0, -2.5)
+    Rotation (rx,ry,rz): (-0.0, 0.0, 0)
+    Radius: 2000.0
+    Conic (k): -1.0
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C0279415B0>
+============================================================
+
+[DEBUG TRACE] i=1, Surface=Surface
+  Pos Before: (-1.2500, -16.8750, 0.0000)
+  Pos After : (-1.2500, -16.8750, 0.0000)
+  OPD Incr  : 0.000000
+[DEBUG OPTILAND FIX] Using local standard.py (Robust Quad). a_min=0.00e+00
+[DEBUG TRACE] i=2, Surface=Surface
+  Pos Before: (-1.2500, -16.8750, 0.0000)
+  Pos After : (-1.2500, -16.8750, 0.9153)
+  OPD Incr  : 0.915332
+[DEBUG] After mirror trace (should be in Optic Global): rays at (-0.0000, 0.0000, 0.0360), dir=(-0.0000, -0.0997, -0.9949)
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Linking to previous surface Surface
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Material = <optiland.materials.ideal.IdealMaterial object at 0x000001C0279415B0>
+[DEBUG Exit] Before exit_surface.trace: rays at (-0.0000, 0.0000, 0.0360), dir=(-0.0000, -0.0997, -0.9949)
+[DEBUG Exit] After  exit_surface.trace: rays at (-0.0000, 0.0000, -0.0000)
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72��, ry=180.00��
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG trace] Coordinate Transform:
+  Ent Origin (Global): [  0.    0.  502.5]
+  Exit Origin (Global): [  0.    0.  502.5]
+  Shift Vector (Exit Frame): [0. 0. 0.]
+[DEBUG_CHECK] Surface 0 (R_surf=2000.0): Pilot Beam R_out = 1002.5811 mm
+[DEBUG TRACE] Before reconstruct_amplitude_phase
+[DEBUG TRACE] Calling reconstructor with 2313 rays. x_in range: [-1.6875e+01, 1.6875e+01]. x_out range: [-1.6877e+01, 1.6877e+01]
+
+[DEBUG] Residual Phase Zernike Analysis (first 4 terms):
+  Z1 (Piston) : -0.012224 rad
+  Z2 (Tilt X) : -0.000000 rad
+  Z3 (Tilt Y) : -0.000007 rad
+  Z4 (Defocus): -0.025478 rad
+
+[DEBUG TRACE] After reconstruct_amplitude_phase
+[DEBUG] Plotting detailed results for Surface 0...
+[Debug] Saved info plot to debug/hybrid/galilean_test\debug_surf_0_00_info.png
+[Debug] Saved plot to debug/hybrid/galilean_test\debug_surf_0_exit.png
+Propagating
+[DEBUG] Cartesian Sampling: 2241 rays (Target approx 4096)
+[DEBUG] Center Ray: x=0.000000e+00, y=0.000000e+00
+[DEBUG] Center Ray Direction: L=-2.037797e-13, M=2.555223e-11
+
+============================== Surface 1 Debug Info ==============================
+[Surface Info]
+  ID: 1
+  Type: standard
+  Comment: 
+  Material: MIRROR
+[Geometry (Global Frame)]
+  Vertex Position: [0.000000, 100.000000, -500.000000] mm
+  Curvature Radius: -4000.000000 mm
+  Orientation: [Matrix]
+[[-1.0000000e+00  0.0000000e+00  1.2246468e-16]
+ [ 0.0000000e+00  1.0000000e+00  0.0000000e+00]
+ [-1.2246468e-16  0.0000000e+00 -1.0000000e+00]]
+  Normal Vector (at vertex): [-0.000000, -0.000000, 1.000000]
+  Local Z-axis (Global):     [0.000000, 0.000000, -1.000000]
+[Chief Ray Interaction]
+  Intersection Point (Global): [0.000000, -100.000000, -495.000000] mm
+  Incident Direction: [0.000000, -0.099751, -0.995012]
+  Exit Direction:     [-0.000000, -0.000000, 1.000000]
+  Angle of Incidence: 5.7248��
+[Input Rays Stats]
+  OPD Mean: 1.389718e-01, Std: 8.021711e-02
+================================================================================
+
+[DEBUG ElementRaytracer] Surface 2 Orientation:
+  Normal: (-0.0000, 0.0998, 0.9950)
+  Calculated Tilt: rx=-5.72��, ry=-0.00��
+[DEBUG ElementRaytracer] Adding Surface 2: radius=-4000, rx=-0.09991679144388554, ry=-1.230785379594207e-16, conic=-1.0, material=mirror
+[Debug] Saved plot to debug/hybrid/galilean_test\debug_surf_1_entrance.png
+
+[DEBUG ElementRaytracer] Inspecting 3 surfaces in Optiland Optic:
+[DEBUG ElementRaytracer] Coordinates are LOCAL to the Optic Entrance Position.
+  Surface 0 [ObjectSurface]:
+    Position  (x,y,z) : (0, 0, -0.0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C027E23F00>
+  Surface 1 [Surface]:
+    Position  (x,y,z) : (0, 0, 0)
+    Rotation (rx,ry,rz): (0, 0, 0)
+    Radius: inf
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C027E23BD0>
+  Surface 2 [Surface]:
+    Position  (x,y,z) : (0.0, 199.50124688279305, -14.975062344139541)
+    Rotation (rx,ry,rz): (-0.09991679144388554, -1.230785379594207e-16, 0)
+    Radius: -4000
+    Conic (k): -1.0
+    Material (Post): <optiland.materials.ideal.IdealMaterial object at 0x000001C027E23BD0>
+============================================================
+
+[DEBUG TRACE] i=1, Surface=Surface
+  Pos Before: (-7.5003, -32.5013, 0.0000)
+  Pos After : (-7.5003, -32.5013, 0.0000)
+  OPD Incr  : 0.000000
+[DEBUG TRACE] i=2, Surface=Surface
+  Pos Before: (-7.5003, -32.5013, 0.0000)
+  Pos After : (-7.5059, -32.5256, 1.4871)
+  OPD Incr  : 1.487319
+[DEBUG] After mirror trace (should be in Optic Global): rays at (-0.0000, -0.0069, -0.0693), dir=(-0.0000, -0.0998, -0.9950)
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Linking to previous surface Surface
+[DEBUG ElementRaytracer] Dynamic Exit Surface: Material = <optiland.materials.ideal.IdealMaterial object at 0x000001C027E23BD0>d:\BTS\src\wavefront_to_rays\reconstructor.py:809: UserWarning: ��⵽��λͻ�䣺�ز������������������������λ��Ϊ 0.053 ���� (0.008 ����)��������ֵ 3.142 ���ȣ��У�������ܵ�����λ������������Ӳ����ܶȡ�
+  warnings.warn(
+d:\BTS\tests\integration\٤����ʽ������������������������׼�����ļ�.py:150: OptimizeWarning: Covariance of the parameters could not be estimated
+  popt_x, _ = curve_fit(gaussian_1d, coords, x_cut, p0=[np.max(x_cut), coords[x_idx], 5.0 * MAGNIFICATION, 0])
+
+[DEBUG Exit] Before exit_surface.trace: rays at (-0.0000, -0.0069, -0.0693), dir=(-0.0000, -0.0998, -0.9950)
+[DEBUG Exit] After  exit_surface.trace: rays at (0.0000, -0.0000, 0.0000)
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72��, ry=180.00��
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG trace] Coordinate Transform:
+  Ent Origin (Global): [   0. -100. -495.]
+  Exit Origin (Global): [   0. -100. -495.]
+  Shift Vector (Exit Frame): [0. 0. 0.]
+[DEBUG_CHECK] Surface 1 (R_surf=-4000): Pilot Beam R_out = 6579736279.4935 mm
+[DEBUG TRACE] Before reconstruct_amplitude_phase
+[DEBUG TRACE] Calling reconstructor with 2241 rays. x_in range: [-3.2501e+01, 3.2501e+01]. x_out range: [-3.2505e+01, 3.2505e+01]
+
+[DEBUG] Residual Phase Zernike Analysis (first 4 terms):
+  Z1 (Piston) : 0.011977 rad
+  Z2 (Tilt X) : -0.000000 rad
+  Z3 (Tilt Y) : -0.000121 rad
+  Z4 (Defocus): 0.018950 rad
+
+[DEBUG TRACE] After reconstruct_amplitude_phase
+[DEBUG] Plotting detailed results for Surface 1...
+[Debug] Saved info plot to debug/hybrid/galilean_test\debug_surf_1_00_info.png
+[Debug] Saved plot to debug/hybrid/galilean_test\debug_surf_1_exit.png
+DEBUG: Amplitude Max: 0.9985621116294184
+
+����������
+  �����������: 14.147 mm (��� 41.47%)
+  ������ɢ��: 0.045014 mrad (���� 31.830989 mrad)
+  �в� RMS: 1.986 milli-waves
+
+�������ж���
+  ����һ����: FAIL (< 5%)
+  ׼ֱ��(��ɢ): PASS (< 31.881 mrad)
+  ��ǰ����(RMS): PASS (< 500.0 mwaves)
+
+  ������: [FAIL]
+
+======================================================================
+�������
+======================================================================

@@ -476,8 +476,6 @@ class PropagationState:
     
     **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5**
     """
-    surface_index: int
-    position: str  # 'entrance', 'exit', or 'source'
     amplitude: NDArray[np.floating]  # 振幅（实数，非负）
     phase: NDArray[np.floating]  # 相位（实数，非折叠，弧度）
     pilot_beam_params: PilotBeamParams
@@ -485,10 +483,15 @@ class PropagationState:
     optical_axis_state: Optional["OpticalAxisState"]
     grid_sampling: GridSampling
     
+    surface_index: int = -1
+    position: str = "source"  # "source", "entrance", "exit", "intermediate"
+    current_refractive_index: float = 1.0 # 当前介质折射率
+    
     def get_complex_amplitude(self) -> NDArray[np.complexfloating]:
-        """获取复振幅形式（用于需要复数的场合）
+        """获取复振幅分布 (折叠相位)
         
-        注意：返回的复振幅会有相位折叠，仅用于显示或与 PROPER 交互。
+        A * exp(i * phi)
+注意：返回的复振幅会有相位折叠，仅用于显示或与 PROPER 交互。
         内部计算应使用分离的 amplitude 和 phase。
         
         返回:

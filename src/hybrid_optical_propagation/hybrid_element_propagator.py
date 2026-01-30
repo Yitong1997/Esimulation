@@ -14,17 +14,23 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, Any
 import numpy as np
 from numpy.typing import NDArray
+import os
 
 from .data_models import PilotBeamParams, GridSampling, PropagationState
 from .state_converter import StateConverter
 from .material_detection import classify_surface_interaction
 
+import matplotlib.pyplot as plt
+
 if TYPE_CHECKING:
     from sequential_system.coordinate_tracking import OpticalAxisState
     from sequential_system.coordinate_system import GlobalSurfaceDefinition
+
+    # For rotation decomposition
+    from scipy.spatial.transform import Rotation
 
 
 class HybridElementPropagator:
@@ -46,6 +52,11 @@ class HybridElementPropagator:
         wavelength_um: float,
         num_rays: int = 200,
         method: str = "local_raytracing",
+<<<<<<< Updated upstream
+=======
+        debug: bool = False,
+        debug_dir: Optional[str] = None,
+>>>>>>> Stashed changes
     ) -> None:
         """初始化混合元件传播器
         
@@ -55,10 +66,27 @@ class HybridElementPropagator:
             method: 传播方法
                 - 'local_raytracing': 局部光线追迹方法（默认）
                 - 'pure_diffraction': 纯衍射方法
+            debug: 是否开启调试模式
+            debug_dir: 调试输出目录（可选）
         """
         self._wavelength_um = wavelength_um
         self._num_rays = num_rays
         self._method = method
+<<<<<<< Updated upstream
+=======
+        self._debug = debug
+        print(f"[HybridElementPropagator] Initialized with debug={self._debug}")
+        
+        if debug_dir:
+            self._debug_dir = debug_dir
+        else:
+            self._debug_dir = os.path.join("debug", "hybrid")
+            
+        if self._debug:
+             os.makedirs(self._debug_dir, exist_ok=True)
+             print(f"[HybridElementPropagator] Debug output directory: {os.path.abspath(self._debug_dir)}")
+             
+>>>>>>> Stashed changes
         self._state_converter = StateConverter(wavelength_um)
     
     @property
@@ -150,8 +178,21 @@ class HybridElementPropagator:
             state.grid_sampling,
             entrance_axis,
         )
+<<<<<<< Updated upstream
         
         # 2. 创建表面定义并进行光线追迹
+=======
+
+        debug_info_text = ""
+        if self._debug:
+            opd_in = np.asarray(input_rays.opd)
+            debug_info_text = self._log_debug_info(
+                surface, entrance_axis, exit_axis, target_surface_index,
+                input_rays_opd_stats=(float(np.mean(opd_in)), float(np.std(opd_in)))
+            )
+
+        # 2. 创建单个表面定义并进行光线追迹 (Local Raytracing)
+>>>>>>> Stashed changes
         surface_def = self._create_surface_definition(surface, entrance_axis, exit_axis)
         
         raytracer = ElementRaytracer(
@@ -161,17 +202,57 @@ class HybridElementPropagator:
             entrance_position=tuple(entrance_axis.position.to_array()),
             exit_chief_direction=tuple(exit_axis.direction.to_array()),
         )
+<<<<<<< Updated upstream
         
         output_rays = raytracer.trace(input_rays)
+=======
+
+        # Plot Input Wavefront (if debug)
+        if self._debug:
+             self._plot_debug_phase(
+                state, target_surface_index, is_pltshow=False,
+                figure_title=f"Surface {target_surface_index} - 入射面波前分析"
+            )
+        #核心函数：光学追迹，输入全局坐标的input_rays
+        output_rays = raytracer.trace(input_rays)
+        # 返回出射面局部坐标系 (Exit Surface Local Frame) 下的 output_rays
+        # 坐标原点位于出射面中心 (主光线交点)，Z 轴沿出射法向
+        # DEBUG: Output Ray Analysis
+        x_out = np.asarray(output_rays.x)
+        y_out = np.asarray(output_rays.y)
+        L_out = np.asarray(output_rays.L)
+        M_out = np.asarray(output_rays.M)
+        
+>>>>>>> Stashed changes
         
         # 3. 计算绝对 OPD（相对于主光线）
         absolute_opd_waves = self._compute_opd(
             input_rays, output_rays, raytracer, surface
         )
         
+<<<<<<< Updated upstream
         # 4. 更新 Pilot Beam 参数（在计算残差 OPD 之前）
         new_pilot_params = self._update_pilot_beam(
             state.pilot_beam_params, surface
+=======
+        
+        # 4. 更新 Pilot Beam 参数（在计算残差 OPD 之前）
+        # 确定折射率
+        n1 = state.current_refractive_index
+        if surface.is_mirror:
+            n2 = n1
+        else:
+            n2 = self._get_refractive_index(surface.material)
+            
+        # 传递主光线交点位置（即出射面原点）
+        new_pilot_params = self._update_pilot_beam(
+            state.pilot_beam_params, 
+            surface,
+            n1=n1,
+            n2=n2,
+            interaction_point=exit_axis.position.to_array(),
+            entrance_axis=entrance_axis
+>>>>>>> Stashed changes
         )
         
         # 5. 计算出射面 Pilot Beam 理论 OPD
@@ -198,6 +279,9 @@ class HybridElementPropagator:
         # 所以残差 OPD = absolute_opd_waves + pilot_opd_waves
         # 对于理想球面镜，残差 OPD ≈ 0
         
+        # 确定出射介质折射率
+        n_exit = n2
+        
         x_out = np.asarray(output_rays.x)
         y_out = np.asarray(output_rays.y)
         r_sq_out = x_out**2 + y_out**2
@@ -208,12 +292,19 @@ class HybridElementPropagator:
         if np.isinf(R_out):
             pilot_opd_mm = np.zeros_like(r_sq_out)
         else:
-            pilot_opd_mm = r_sq_out / (2 * R_out)
+            # 修正: Phase = k * n * z = (2pi/lam) * n * (r^2/2R)
+            # OPD_waves = n * (r^2/2R) / lam
+            # 所以 pilot_opd_mm 需要乘 n_exit (OPD = n * geometric_sag)
+            pilot_opd_mm = n_exit * r_sq_out / (2 * R_out)
         
         # 转换为波长数（相对于主光线，主光线处 OPD = 0）
         chief_idx = np.argmin(r_sq_out)
         pilot_opd_waves = (pilot_opd_mm - pilot_opd_mm[chief_idx]) / wavelength_mm
         
+<<<<<<< Updated upstream
+=======
+        
+>>>>>>> Stashed changes
         # 6. 计算残差 OPD
         # 注意：是加法，不是减法！
         # 因为 absolute_opd_waves > 0，pilot_opd_waves < 0（当 R < 0）
@@ -320,9 +411,36 @@ class HybridElementPropagator:
             state.grid_sampling.grid_size,
             state.grid_sampling.physical_size_mm,
         )
+<<<<<<< Updated upstream
         
         # 完整相位 = 残差相位 + Pilot Beam 相位
         exit_phase = residual_phase + pilot_phase_grid
+=======
+        # 修正: Pilot Phase grid 也需要乘 n_exit
+        if abs(n_exit - 1.0) > 1e-6:
+             pilot_phase_grid *= n_exit
+
+        # 使用残差 OPD 进行重建
+        # 重建得到的是残差相位（相对于 Pilot Beam 的偏差）
+        # 传递输入振幅以保留振幅分布
+        # 传递 debug_pilot_phase 以便在报警时绘制完整相位
+        print(f"[DEBUG TRACE] Calling reconstructor with {len(x_in)} rays. x_in range: [{x_in.min():.4e}, {x_in.max():.4e}]. x_out range: [{x_out_local.min():.4e}, {x_out_local.max():.4e}]")
+        exit_amplitude, residual_phase = reconstructor.reconstruct_amplitude_phase(
+            ray_x_in=x_in, # Local
+            ray_y_in=y_in, # Local
+            ray_x_out=x_out_local, # Local
+            ray_y_out=y_out_local, # Local
+            opd_waves=residual_opd_waves,
+            valid_mask=valid_mask,
+            input_amplitude=input_amplitude_at_rays,
+            debug_pilot_phase=pilot_phase_grid,
+        )
+        print("[DEBUG TRACE] After reconstruct_amplitude_phase")
+        
+        # 完整相位 = 残差相位 + Pilot Beam 相位
+        exit_phase = residual_phase + pilot_phase_grid
+
+>>>>>>> Stashed changes
         
         # 10. 转换为 PROPER 形式
         new_wfo = self._state_converter.amplitude_phase_to_proper(
@@ -341,7 +459,31 @@ class HybridElementPropagator:
             proper_wfo=new_wfo,
             optical_axis_state=exit_axis,
             grid_sampling=state.grid_sampling,
+            current_refractive_index=n2,
         )
+<<<<<<< Updated upstream
+=======
+        
+        if self._debug:
+             self._plot_debug_results(
+                target_surface_index,
+                input_rays, output_rays,
+                absolute_opd_waves, pilot_opd_waves, residual_opd_waves,
+                residual_phase, pilot_phase_grid, exit_phase,
+                x_out_local, y_out_local,
+                debug_info_text=debug_info_text
+            )
+
+        self._plot_debug_phase(
+            new_state, target_surface_index, is_pltshow=False,
+            figure_title=f"Surface {target_surface_index} - 出射面波前分析",
+            filename_suffix="exit"
+        )
+
+
+
+        return new_state
+>>>>>>> Stashed changes
 
     
     def _propagate_pure_diffraction(
@@ -379,6 +521,7 @@ class HybridElementPropagator:
         # 表面法向量（切平面的法向量）
         surface_normal = surface.surface_normal
         
+<<<<<<< Updated upstream
         # 计算旋转矩阵：从入射面（垂直于入射光轴）到切平面（垂直于表面法向量）
         T_to_tangent = self._compute_rotation_matrix(entrance_dir, surface_normal)
         
@@ -386,6 +529,167 @@ class HybridElementPropagator:
         # 注意：tilted_asm 假设传播距离为 0（只是坐标变换）
         u_tangent = tilted_asm(
             u, wavelength_mm, dx_mm, dy_mm, T_to_tangent, expand=True
+=======
+        # 特殊情况：入射和出射方向相同（无光轴折叠）
+        # 这种情况下不需要使用 tilted_asm，直接应用表面相位延迟即可
+        if total_rotation_deg < 1e-6:
+            # 直接应用表面相位延迟
+            n = state.grid_sampling.grid_size
+            half_size = state.grid_sampling.physical_size_mm / 2
+            coords = np.linspace(-half_size, half_size, n)
+            X, Y = np.meshgrid(coords, coords)
+            
+            sag = self._compute_surface_sag_in_tangent_plane(
+                X, Y, surface, entrance_axis
+            )
+            
+            k = 2 * np.pi / wavelength_mm
+            if surface.is_mirror:
+                phase_delay = 2 * k * sag
+                n1 = state.current_refractive_index
+                n2 = n1
+            else:
+                n1 = state.current_refractive_index
+                n2 = self._get_refractive_index(surface.material)
+                phase_delay = k * sag * (n2 - n1)
+            
+            u_exit = u * np.exp(1j * phase_delay)
+            
+            # 更新 Pilot Beam 参数
+            new_pilot_params = self._update_pilot_beam(
+                state.pilot_beam_params, 
+                surface,
+                n1=n1,
+                n2=n2
+            )
+            
+            # 分离振幅和相位
+            exit_amplitude = np.abs(u_exit)
+            exit_phase = np.angle(u_exit)
+            
+            # 使用 Pilot Beam 解包裹出射相位
+            exit_phase = self._state_converter.unwrap_with_pilot_beam(
+                exit_phase,
+                new_pilot_params,
+                state.grid_sampling,
+            )
+            
+            # 转换为 PROPER 形式
+            new_wfo = self._state_converter.amplitude_phase_to_proper(
+                exit_amplitude,
+                exit_phase,
+                state.grid_sampling,
+                pilot_beam_params=new_pilot_params,
+            )
+            
+            return PropagationState(
+                surface_index=target_surface_index,
+                position='exit',
+                amplitude=exit_amplitude,
+                phase=exit_phase,
+                pilot_beam_params=new_pilot_params,
+                proper_wfo=new_wfo,
+                optical_axis_state=exit_axis,
+                grid_sampling=state.grid_sampling,
+                current_refractive_index=n2,
+            )
+        
+        # 特殊情况：180° 旋转（光线原路返回，如正入射反射镜）
+        # 180° 旋转等价于坐标翻转，不需要使用 tilted_asm
+        if total_rotation_deg > 179.9:
+            # 应用表面相位延迟
+            n = state.grid_sampling.grid_size
+            half_size = state.grid_sampling.physical_size_mm / 2
+            coords = np.linspace(-half_size, half_size, n)
+            X, Y = np.meshgrid(coords, coords)
+            
+            sag = self._compute_surface_sag_in_tangent_plane(
+                X, Y, surface, entrance_axis
+            )
+            
+            k = 2 * np.pi / wavelength_mm
+            if surface.is_mirror:
+                phase_delay = 2 * k * sag
+                n1 = state.current_refractive_index
+                n2 = n1
+            else:
+                n1 = state.current_refractive_index
+                n2 = self._get_refractive_index(surface.material)
+                phase_delay = k * sag * (n2 - n1)
+            
+            u_after_surface = u * np.exp(1j * phase_delay)
+            
+            # 180° 旋转：翻转坐标（等价于 np.flip）
+            # 对于反射镜，还需要取共轭
+            if surface.is_mirror:
+                u_exit = np.conj(np.flip(np.flip(u_after_surface, axis=0), axis=1))
+            else:
+                u_exit = np.flip(np.flip(u_after_surface, axis=0), axis=1)
+            
+            # 更新 Pilot Beam 参数
+            new_pilot_params = self._update_pilot_beam(
+                state.pilot_beam_params, 
+                surface,
+                n1=n1,
+                n2=n2,
+                entrance_axis=entrance_axis
+            )
+            
+            # 分离振幅和相位
+            exit_amplitude = np.abs(u_exit)
+            exit_phase = np.angle(u_exit)
+            
+            # 使用 Pilot Beam 解包裹出射相位
+            exit_phase = self._state_converter.unwrap_with_pilot_beam(
+                exit_phase,
+                new_pilot_params,
+                state.grid_sampling,
+            )
+            
+            # 转换为 PROPER 形式
+            new_wfo = self._state_converter.amplitude_phase_to_proper(
+                exit_amplitude,
+                exit_phase,
+                state.grid_sampling,
+                pilot_beam_params=new_pilot_params,
+            )
+            
+            return PropagationState(
+                surface_index=target_surface_index,
+                position='exit',
+                amplitude=exit_amplitude,
+                phase=exit_phase,
+                pilot_beam_params=new_pilot_params,
+                proper_wfo=new_wfo,
+                optical_axis_state=exit_axis,
+                grid_sampling=state.grid_sampling,
+                current_refractive_index=n2,
+            )
+        
+        # 计算"和"角平分线作为中间平面法向量
+        # 这样可以将总旋转角度平均分配到两步
+        sum_dir = entrance_dir + exit_dir
+        sum_norm = np.linalg.norm(sum_dir)
+        
+        if sum_norm < 1e-10:
+            # 入射和出射方向相反（180° 旋转），使用任意垂直方向
+            perp = np.array([1, 0, 0]) if abs(entrance_dir[0]) < 0.9 else np.array([0, 1, 0])
+            mid_plane_normal = np.cross(entrance_dir, perp)
+            mid_plane_normal = mid_plane_normal / np.linalg.norm(mid_plane_normal)
+        else:
+            mid_plane_normal = sum_dir / sum_norm
+        
+        # 计算两步旋转的角度
+        angle_to_mid = np.rad2deg(np.arccos(np.clip(np.dot(entrance_dir, mid_plane_normal), -1, 1)))
+        angle_from_mid = np.rad2deg(np.arccos(np.clip(np.dot(mid_plane_normal, exit_dir), -1, 1)))
+        
+        # 1. 计算入射面到中间平面的旋转矩阵
+        T_to_mid = self._compute_rotation_matrix(entrance_dir, mid_plane_normal)
+        
+        # 使用 tilted_asm 传播到中间平面
+        u_mid = tilted_asm(
+            u, wavelength_mm, dx_mm, dy_mm, T_to_mid, expand=True
+>>>>>>> Stashed changes
         )
         
         # 2. 在切平面计算表面矢高并应用相位延迟
@@ -405,9 +709,15 @@ class HybridElementPropagator:
         
         if surface.is_mirror:
             phase_delay = 2 * k * sag
+            n1 = state.current_refractive_index
+            n2 = n1
         else:
+<<<<<<< Updated upstream
             # 折射面：需要折射率差
             n1 = 1.0  # 假设入射介质为空气
+=======
+            n1 = state.current_refractive_index
+>>>>>>> Stashed changes
             n2 = self._get_refractive_index(surface.material)
             phase_delay = k * sag * (n2 - n1)
         
@@ -428,7 +738,15 @@ class HybridElementPropagator:
         
         # 4. 更新 Pilot Beam 参数
         new_pilot_params = self._update_pilot_beam(
+<<<<<<< Updated upstream
             state.pilot_beam_params, surface
+=======
+            state.pilot_beam_params, 
+            surface,
+            n1=n1,
+            n2=n2,
+            entrance_axis=entrance_axis
+>>>>>>> Stashed changes
         )
         
         # 5. 分离振幅和相位
@@ -459,6 +777,7 @@ class HybridElementPropagator:
             proper_wfo=new_wfo,
             optical_axis_state=exit_axis,
             grid_sampling=state.grid_sampling,
+            current_refractive_index=n2,
         )
     
     def _compute_rotation_matrix(
@@ -887,6 +1206,13 @@ class HybridElementPropagator:
         self,
         pilot_params: PilotBeamParams,
         surface: "GlobalSurfaceDefinition",
+<<<<<<< Updated upstream
+=======
+        n1: float,
+        n2: float,
+        interaction_point: Optional[NDArray] = None,
+        entrance_axis: "OpticalAxisState" = None,
+>>>>>>> Stashed changes
     ) -> PilotBeamParams:
         """更新 Pilot Beam 参数
         
@@ -956,12 +1282,18 @@ class HybridElementPropagator:
                 return pilot_params.apply_mirror(R)
         else:
             # 折射面变换
-            # 获取折射率
-            n1 = 1.0  # 假设入射介质为空气
-            n2 = self._get_refractive_index(surface.material)
+            # n1, n2 已传入
             
             # 使用折射面 ABCD 变换
+<<<<<<< Updated upstream
             return pilot_params.apply_refraction(surface.radius, n1, n2)
+=======
+            
+            R_abcd = surface.radius * sign_factor
+            
+            return pilot_params.apply_refraction(R_abcd, n1, n2)
+
+>>>>>>> Stashed changes
     
     def _compute_effective_radius(
         self,
@@ -1026,3 +1358,336 @@ class HybridElementPropagator:
         else:
             # 非抛物面（球面镜等）：使用名义曲率半径
             return R
+<<<<<<< Updated upstream
+=======
+
+    def _plot_debug_phase(
+        self,
+        state: PropagationState,
+        target_surface_index: int,
+        is_pltshow: bool = False,
+        figure_title: Optional[str] = None,
+        filename_suffix: str = "entrance"
+    ) -> None:
+        """[Debug] 绘制详细的入射波前信息（振幅、相位、Pilot Beam、残差）
+        
+        参数:
+            state: 传播状态
+            target_surface_index: 目标表面索引
+            is_pltshow: 是否显示图形（True）还是保存到文件（False）
+            figure_title: 可选的大标题，用于描述这张信息图（例如 "OAP1 表面处、入射"）
+            filename_suffix: 文件名后缀，用于区分入射/出射（默认 "entrance"，可设为 "exit"）
+        """  
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+        # 准备数据
+        grid_size = state.grid_sampling.grid_size
+        physical_size = state.grid_sampling.physical_size_mm
+        half_size = physical_size / 2
+        
+        # 1. 仿真波前
+        sim_amp = state.amplitude
+        sim_phase = state.phase
+        
+        # 2. Pilot Beam 理论值
+        pilot_amp = state.pilot_beam_params.compute_amplitude_grid(grid_size, physical_size)
+        pilot_phase = state.pilot_beam_params.compute_phase_grid(grid_size, physical_size)
+        
+        # 3. 相位残差
+        phase_residual = sim_phase - pilot_phase
+        
+        # 计算截取范围 (80%) - 仍然截取以聚焦中心细节
+        # 但用户可能也想看整体，这里保持 80% 或 90%
+        margin = int(grid_size * 0.1)
+        sl = slice(margin, grid_size - margin)
+        
+        # 更新 extent
+        crop_half_size = half_size * 0.8
+        extent = [-crop_half_size, crop_half_size, -crop_half_size, crop_half_size]
+        
+        # 绘图配置 (2行3列)
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        plt.subplots_adjust(hspace=0.3, wspace=0.3)
+        
+        # Info String
+        pilot_info = (
+            f"Pilot Beam Params (Surf {target_surface_index}): "
+            f"w(z)={state.pilot_beam_params.spot_size_mm:.4f}mm, "
+            f"R(z)={state.pilot_beam_params.curvature_radius_mm:.4e}mm, "
+            f"z_waist={state.pilot_beam_params.waist_position_mm:.4f}mm"
+        )
+        
+        # 构建完整标题：如果有 figure_title 则作为主标题，原信息作为副标题
+        if figure_title:
+            full_title = f"{figure_title}\n{pilot_info}"
+        else:
+            full_title = f"Debug Analysis - Surface {target_surface_index} (Entrance)\n{pilot_info}"
+        fig.suptitle(full_title, fontsize=12)
+        
+        # Helper for colorbar
+        def plot_im(ax, data, title, cmap='viridis', has_cbar=True):
+            im = ax.imshow(data[sl, sl], extent=extent, origin='lower', cmap=cmap)
+            ax.set_title(title, fontsize=10)
+            ax.set_xlabel('x (mm)')
+            ax.set_ylabel('y (mm)')
+            if has_cbar:
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="5%", pad=0.05)
+                plt.colorbar(im, cax=cax)
+            return im
+
+        # --- Row 1: Amplitude ---
+        
+        # 1.1 Simulation Amplitude
+        # 计算近似光斑大小 (1/e^2)
+        max_val = np.max(sim_amp)
+        if max_val > 0:
+            # 简单估算：等效宽度
+            # w_eff = sqrt(2 * Sum(I) * dA / (pi * I_max))
+            intensity = sim_amp**2
+            total_power = np.sum(intensity)
+            dx = state.grid_sampling.sampling_mm
+            w_eff = np.sqrt(2 * total_power * dx**2 / (np.pi * np.max(intensity)))
+            title_amp = f"Sim Amplitude\nCalc w ≈ {w_eff:.4f} mm\n(Max={max_val:.2e})"
+        else:
+            title_amp = "Sim Amplitude (Zero)"
+        
+        plot_im(axes[0, 0], sim_amp, title_amp, cmap='inferno')
+        
+        # 1.2 Pilot Beam Amplitude
+        plot_im(axes[0, 1], pilot_amp, "Pilot Beam Amplitude\n(Theoretical Gaussian)", cmap='inferno')
+        
+        # 1.3 Cross Section Comparison
+        ax_slice = axes[0, 2]
+        y_mid = grid_size // 2
+        x_axis = np.linspace(-half_size, half_size, grid_size)
+        x_crop = x_axis[sl]
+        
+        # Normalize Sim Amp for comparison if max > 0
+        sim_slice = sim_amp[y_mid, sl]
+        if max_val > 0:
+            sim_slice_norm = sim_slice / max_val
+            ax_slice.plot(x_crop, sim_slice_norm, label='Sim (Norm)', color='blue')
+        else:
+            ax_slice.plot(x_crop, sim_slice, label='Sim', color='blue')
+            
+        ax_slice.plot(x_crop, pilot_amp[y_mid, sl], '--', label='Pilot (Ref)', color='orange')
+        ax_slice.set_title("Amplitude Cross-section (y=0)", fontsize=10)
+        ax_slice.set_xlabel('x (mm)')
+        ax_slice.legend()
+        ax_slice.grid(True, alpha=0.3)
+        ax_slice.set_xlim(extent[0], extent[1])
+        
+        # --- Row 2: Phase ---
+        
+        # 2.1 Simulation Phase
+        plot_im(axes[1, 0], sim_phase, "Simulation Phase\n(Unwrapped)", cmap='RdBu')
+        
+        # 2.2 Pilot Phase
+        plot_im(axes[1, 1], pilot_phase, "Pilot Beam Phase\n(Analytic)", cmap='RdBu')
+        
+        # 2.3 Phase Residual
+        # 残差通常很小，最好去除均值或活塞项方便观察
+        res_crop = phase_residual[sl, sl]
+        rms = np.std(res_crop)
+        pv = np.max(res_crop) - np.min(res_crop)
+        plot_im(axes[1, 2], phase_residual, f"Phase Residual\n(Sim - Pilot)\nRMS={rms:.4f} rad, PV={pv:.4f} rad", cmap='RdBu_r')
+        
+        # Annotations
+        fig.text(0.5, 0.02, 
+                    "Global Note: Coordinates (x, y) are in the LOCAL TANGENT PLANE of the entrance surface (perpendicular to chief ray).", 
+                    ha='center', fontsize=11, bbox=dict(facecolor='#f0f0f0', alpha=0.9, pad=5))
+        
+        if is_pltshow:
+            plt.show()
+        else:
+            filename = f'debug_surf_{target_surface_index}_{filename_suffix}.png'
+            filepath = os.path.join(self._debug_dir, filename)
+            plt.savefig(filepath, dpi=100)
+            print(f"[Debug] Saved plot to {filepath}")
+
+    def _log_debug_info(
+        self,
+        surface: "GlobalSurfaceDefinition",
+        entrance_axis: "OpticalAxisState",
+        exit_axis: "OpticalAxisState",
+        target_surface_index: int,
+        input_rays_opd_stats: Optional[Tuple[float, float]] = None
+    ) -> str:
+        """记录详细的调试信息 (User Requested)
+        
+        对于每个入射、出射面，记录：
+        - 几何信息：顶点(Global)，曲率，法向
+        - 旋转角：Local Rotation (Euler Angles by decomposing Global Orientation)
+        - 标注：Comment
+        - 光线信息：主光线交点(Global), 入射方向, 出射方向
+        
+        Returns:
+            The constructed debug info string.
+        """
+        lines = []
+        lines.append(f"{'='*30} Surface {target_surface_index} Debug Info {'='*30}")
+        
+        # 1. 表面信息
+        lines.append(f"[Surface Info]")
+        lines.append(f"  ID: {surface.index}")
+        lines.append(f"  Type: {surface.surface_type}")
+        lines.append(f"  Comment: {surface.comment}")
+        lines.append(f"  Material: {surface.material}")
+        
+        # 2. 几何信息 (Global)
+        lines.append(f"[Geometry (Global Frame)]")
+        lines.append(f"  Vertex Position: [{surface.vertex_position[0]:.6f}, {surface.vertex_position[1]:.6f}, {surface.vertex_position[2]:.6f}] mm")
+        
+        if np.isinf(surface.radius):
+             lines.append(f"  Curvature: Infinity (Flat)")
+        else:
+             lines.append(f"  Curvature Radius: {surface.radius:.6f} mm")
+        
+        # Orientation & Rotation
+        try:
+            r = Rotation.from_matrix(surface.orientation)
+            euler_angles = r.as_euler('xyz', degrees=True)
+            lines.append(f"  Global Orientation (Euler XYZ): [X={euler_angles[0]:.4f}°, Y={euler_angles[1]:.4f}°, Z={euler_angles[2]:.4f}°]")
+        except Exception as e:
+            lines.append(f"  Orientation: [Matrix]\n{surface.orientation}")
+        
+        lines.append(f"  Normal Vector (at vertex): [{surface.surface_normal[0]:.6f}, {surface.surface_normal[1]:.6f}, {surface.surface_normal[2]:.6f}]")
+        lines.append(f"  Local Z-axis (Global):     [{surface.local_z_axis[0]:.6f}, {surface.local_z_axis[1]:.6f}, {surface.local_z_axis[2]:.6f}]")
+
+        # 3. 主光线交互
+        lines.append(f"[Chief Ray Interaction]")
+        
+        intersect = entrance_axis.position.to_array()
+        lines.append(f"  Intersection Point (Global): [{intersect[0]:.6f}, {intersect[1]:.6f}, {intersect[2]:.6f}] mm")
+        
+        inc_dir = entrance_axis.direction.to_array()
+        lines.append(f"  Incident Direction: [{inc_dir[0]:.6f}, {inc_dir[1]:.6f}, {inc_dir[2]:.6f}]")
+        
+        exit_dir = exit_axis.direction.to_array()
+        lines.append(f"  Exit Direction:     [{exit_dir[0]:.6f}, {exit_dir[1]:.6f}, {exit_dir[2]:.6f}]")
+
+        # Angle of Incidence
+        cos_theta = np.dot(inc_dir, surface.surface_normal)
+        aoi = np.degrees(np.arccos(np.clip(abs(cos_theta), -1, 1)))
+        lines.append(f"  Angle of Incidence: {aoi:.4f}°")
+
+        if input_rays_opd_stats:
+            lines.append(f"[Input Rays Stats]")
+            lines.append(f"  OPD Mean: {input_rays_opd_stats[0]:.6e}, Std: {input_rays_opd_stats[1]:.6e}")
+
+        lines.append(f"{'='*80}")
+        
+        # Print and return
+        full_text = "\n".join(lines)
+        print("\n" + full_text + "\n")
+        return full_text
+
+    def _plot_debug_results(
+        self,
+        target_surface_index: int,
+        input_rays: Any,
+        output_rays: Any,
+        absolute_opd_waves: np.ndarray,
+        pilot_opd_waves: np.ndarray,
+        residual_opd_waves: np.ndarray,
+        residual_phase: np.ndarray,
+        pilot_phase_grid: np.ndarray,
+        exit_phase: np.ndarray,
+        x_out_local: np.ndarray, 
+        y_out_local: np.ndarray,
+        debug_info_text: str = ""
+    ) -> None:
+        """绘制调试图表"""
+        from utils.debug_viz import plot_rays_2d, plot_phase
+        
+        print(f"[DEBUG] Plotting detailed results for Surface {target_surface_index}...")
+
+        # 0. Save Debug Info Text Image
+        if debug_info_text:
+            fig_text = plt.figure(figsize=(10, 8))
+            # Use a monospace font for alignment
+            fig_text.text(0.05, 0.95, debug_info_text, fontsize=10, family='monospace', va='top')
+            plt.axis('off')
+            plt.title(f"Surface {target_surface_index} Info", fontsize=14)
+            filename_text = f'debug_surf_{target_surface_index}_00_info.png'
+            filepath_text = os.path.join(self._debug_dir, filename_text)
+            plt.savefig(filepath_text, dpi=100)
+            plt.close(fig_text)
+            print(f"[Debug] Saved info plot to {filepath_text}")
+
+        # Plot Input Rays
+        x_in = np.asarray(input_rays.x)
+        y_in = np.asarray(input_rays.y)
+        L_in = np.asarray(input_rays.L)
+        M_in = np.asarray(input_rays.M)
+        plot_rays_2d(
+            x_in, y_in, L_in, M_in, 
+            title=f"Surface {target_surface_index} Input Rays (Global)"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_01_input_rays.png'))
+        plt.close()
+        
+        # Plot Output Rays
+        L_out = np.asarray(output_rays.L)
+        M_out = np.asarray(output_rays.M)
+        plot_rays_2d(
+            x_out_local, y_out_local, L_out, M_out,
+            title=f"Surface {target_surface_index} Output Rays (Local)"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_02_output_rays.png'))
+        plt.close()
+        
+        # Plot Absolute OPD
+        plot_phase(
+            absolute_opd_waves, 
+            x=x_out_local, y=y_out_local,
+            title=f"Surface {target_surface_index} Absolute OPD (Waves)"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_03_abs_opd.png'))
+        plt.close()
+        
+        # Plot Theoretical Pilot OPD
+        plot_phase(
+            pilot_opd_waves,
+            x=x_out_local, y=y_out_local,
+            title=f"Surface {target_surface_index} Pilot Beam Theoretical OPD"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_04_pilot_opd.png'))
+        plt.close()
+        
+        # Plot Residual OPD (Scatter)
+        plot_phase(
+            residual_opd_waves,
+            x=x_out_local, y=y_out_local,
+            title=f"Surface {target_surface_index} Residual OPD (Waves) on Rays"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_05_resid_opd.png'))
+        plt.close()
+        
+        # Plot Reconstructed Residual Phase (Grid)
+        plot_phase(
+            residual_phase,
+            title=f"Surface {target_surface_index} Reconstructed Residual Phase (Grid)"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_06_resid_phase.png'))
+        plt.close()
+        
+        # Plot Pilot Phase on Grid
+        plot_phase(
+            pilot_phase_grid,
+            title=f"Surface {target_surface_index} Pilot Phase on Grid"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_07_pilot_phase.png'))
+        plt.close()
+        
+        # Plot Final Exit Phase
+        plot_phase(
+            exit_phase,
+            title=f"Surface {target_surface_index} Final Exit Phase"
+        )
+        plt.savefig(os.path.join(self._debug_dir, f'debug_surf_{target_surface_index}_08_exit_phase.png'))
+        plt.close()
+
+>>>>>>> Stashed changes
