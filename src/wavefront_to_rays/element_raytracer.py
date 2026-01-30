@@ -1663,6 +1663,26 @@ class ElementRaytracer:
                 else:
                     tilt_y_rad = np.arctan2(L, N)
                 
+                # 3. ⚠️ 关键修复：当表面法向背对入射光时，翻转曲率半径符号
+                # 
+                # 当 Nz < 0 时，表面法向朝向 -Z（入射坐标系），即背对入射光（+Z 方向）。
+                # 这意味着光线从表面的"背面"入射。
+                # 
+                # 在 optiland 中：
+                # - 曲率中心位于 vertex + R * local_z_axis
+                # - 当法向翻转后，local_z_axis 指向 -Z（全局）
+                # - 为了保持曲率中心在正确的全局位置，需要翻转 R 的符号
+                # 
+                # 几何论证：
+                # - 原始定义：曲率中心 = vertex + R * (+Z_global)
+                # - 翻转后：曲率中心 = vertex + R' * (-Z_global)
+                # - 要求两者相等：R' = -R
+                #
+                if N < 0:
+                    radius = -radius
+                    if getattr(self, 'debug', False):
+                        print(f"[DEBUG ElementRaytracer] Surface {surface_index}: Normal facing away (Nz={N:.4f}), flipping radius to {radius}")
+                
                 if getattr(self, 'debug', False):
                      print(f"[DEBUG ElementRaytracer] Surface {surface_index} Orientation:")
                      print(f"  Normal: ({L:.4f}, {M:.4f}, {N:.4f})")
