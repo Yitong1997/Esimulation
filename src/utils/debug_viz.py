@@ -163,7 +163,7 @@ def plot_rays_2d(
     ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.show()
+    # plt.show()  # Disabled for automation
 
 def plot_phase(
     phase: NDArray, 
@@ -201,7 +201,7 @@ def plot_phase(
     
     ax.set_title(full_title)
     plt.tight_layout()
-    plt.show()
+    # plt.show()  # Disabled for automation
 
 def plot_comparison(
     ground_truth: NDArray,
@@ -230,7 +230,7 @@ def plot_comparison(
     
     plt.suptitle(title)
     plt.tight_layout()
-    plt.show()
+    # plt.show()  # Disabled for automation
 
 def plot_opd_increment(
     x: NDArray, 
@@ -259,4 +259,4 @@ def plot_opd_increment(
         axes[1].axis('off')
         
     plt.tight_layout()
-    plt.show()
+    # plt.show()  # Disabled for automation

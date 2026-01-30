@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 if TYPE_CHECKING:
-    from sequential_system.coordinate_system import GlobalSurfaceDefinition
+    from sequential_system.coordinate_system import GlobalSurfaceDefinition, CoordinateBreakProcessor
 
 
 @dataclass
@@ -43,6 +43,7 @@ class SurfaceDefinition:
     is_mirror: bool = False
     tilt_x: float = 0.0
     tilt_y: float = 0.0
+    tilt_z: float = 0.0
     material: str = ""
     focal_length: Optional[float] = None
     
@@ -111,38 +112,7 @@ class OpticalSystem:
         """返回表面数量"""
         return len(self._surfaces)
     
-    def _create_rotation_matrix(
-        self,
-        tilt_x_deg: float,
-        tilt_y_deg: float,
-    ) -> np.ndarray:
-        """创建旋转矩阵
-        
-        参数:
-            tilt_x_deg: 绕 X 轴旋转角度（度）
-            tilt_y_deg: 绕 Y 轴旋转角度（度）
-        
-        返回:
-            3x3 旋转矩阵
-        """
-        tilt_x_rad = np.radians(tilt_x_deg)
-        tilt_y_rad = np.radians(tilt_y_deg)
-        
-        # 绕 X 轴旋转
-        Rx = np.array([
-            [1, 0, 0],
-            [0, np.cos(tilt_x_rad), -np.sin(tilt_x_rad)],
-            [0, np.sin(tilt_x_rad), np.cos(tilt_x_rad)],
-        ])
-        # 绕 Y 轴旋转
-        Ry = np.array([
-            [np.cos(tilt_y_rad), 0, np.sin(tilt_y_rad)],
-            [0, 1, 0],
-            [-np.sin(tilt_y_rad), 0, np.cos(tilt_y_rad)],
-        ])
-        
-        # 组合旋转矩阵：先绕 X 轴，再绕 Y 轴
-        return Ry @ Rx
+
     
     def _create_global_surface(
         self,
@@ -152,6 +122,7 @@ class OpticalSystem:
         is_mirror: bool,
         tilt_x: float,
         tilt_y: float,
+        tilt_z: float,
         material: str,
         surface_type: str = 'standard',
         focal_length: Optional[float] = None,
@@ -167,6 +138,7 @@ class OpticalSystem:
             is_mirror: 是否为反射镜
             tilt_x: 绕 X 轴旋转角度（度）
             tilt_y: 绕 Y 轴旋转角度（度）
+            tilt_z: 绕 Z 轴旋转角度（度）
             material: 材料名称
             surface_type: 表面类型
             focal_length: 焦距（仅用于 paraxial）
@@ -177,10 +149,18 @@ class OpticalSystem:
         注意:
             🚫 禁止设置口径/半口径参数！使用默认值 1000mm（足够大）。
         """
-        from sequential_system.coordinate_system import GlobalSurfaceDefinition
+        from sequential_system.coordinate_system import GlobalSurfaceDefinition, CoordinateBreakProcessor
         
         # 计算姿态矩阵
-        orientation = self._create_rotation_matrix(tilt_x, tilt_y)
+        # 将角度转换为弧度
+        tilt_x_rad = np.radians(tilt_x)
+        tilt_y_rad = np.radians(tilt_y)
+        tilt_z_rad = np.radians(tilt_z)
+        
+        # 使用 CoordinateBreakProcessor 计算旋转矩阵 (Rz @ Ry @ Rx)
+        orientation = CoordinateBreakProcessor.rotation_matrix_xyz(
+            tilt_x_rad, tilt_y_rad, tilt_z_rad
+        )
         
         # 创建全局表面定义
         # 🚫 semi_aperture 使用默认大值，不允许用户设置
@@ -208,6 +188,7 @@ class OpticalSystem:
         is_mirror: bool = False,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
         material: str = "",
     ) -> "OpticalSystem":
         """添加通用光学表面（支持链式调用）
@@ -220,11 +201,13 @@ class OpticalSystem:
             z: Z 位置 (mm)，与 x, y 配合使用
             x: X 位置 (mm)，默认 0.0
             y: Y 位置 (mm)，默认 0.0
-            radius: 曲率半径 (mm)，默认 inf（平面）
+            radius: 曲率半径 (mm)，默认 inf（平面）。
+                    正值表示凸面，负值表示凹面。
             conic: 圆锥常数，默认 0（球面），-1 为抛物面
             is_mirror: 是否为反射镜，默认 False
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
+            tilt_z: 绕 Z 轴旋转角度（度），默认 0
             material: 材料名称，默认空字符串（空气）
         
         返回:
@@ -261,6 +244,7 @@ class OpticalSystem:
             is_mirror=is_mirror,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            tilt_z=tilt_z,
             material=material if material else ('MIRROR' if is_mirror else ''),
         )
         self._surfaces.append(surface_def)
@@ -273,6 +257,7 @@ class OpticalSystem:
             is_mirror=is_mirror,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            tilt_z=tilt_z,
             material=material if material else ('MIRROR' if is_mirror else ''),
         )
         self._global_surfaces.append(global_surface)
@@ -287,6 +272,7 @@ class OpticalSystem:
         y: float = 0.0,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
     ) -> "OpticalSystem":
         """添加平面反射镜（支持链式调用）
         
@@ -297,6 +283,7 @@ class OpticalSystem:
             y: Y 位置 (mm)，默认 0.0
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
+            tilt_z: 绕 Z 轴旋转角度（度），默认 0
         
         返回:
             self（支持链式调用）
@@ -320,6 +307,7 @@ class OpticalSystem:
             is_mirror=True,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            tilt_z=tilt_z,
             material='MIRROR',
         )
     
@@ -332,17 +320,19 @@ class OpticalSystem:
         y: float = 0.0,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
     ) -> "OpticalSystem":
         """添加球面反射镜（支持链式调用）
         
         参数:
-            radius: 曲率半径 (mm)，正值为凹面镜
+            radius: 曲率半径 (mm)，正值为凸面镜（发散），负值为凹面镜（聚焦）
             position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
             z: Z 位置 (mm)，与 x, y 配合使用
             x: X 位置 (mm)，默认 0.0
             y: Y 位置 (mm)，默认 0.0
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
+            tilt_z: 绕 Z 轴旋转角度（度），默认 0
         
         返回:
             self（支持链式调用）
@@ -352,7 +342,7 @@ class OpticalSystem:
         
         示例:
             >>> system = bts.OpticalSystem()
-            >>> system.add_spherical_mirror(z=100, radius=200)  # 凹面镜，f=100mm
+            >>> system.add_spherical_mirror(z=100, radius=-200)  # 凹面镜，f=100mm
         
         **Validates: Requirements 2.6**
         """
@@ -366,6 +356,7 @@ class OpticalSystem:
             is_mirror=True,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            tilt_z=tilt_z,
             material='MIRROR',
         )
     
@@ -378,19 +369,21 @@ class OpticalSystem:
         y: float = 0.0,
         tilt_x: float = 0.0,
         tilt_y: float = 0.0,
+        tilt_z: float = 0.0,
     ) -> "OpticalSystem":
         """添加抛物面反射镜（支持链式调用）
         
         离轴抛物面镜（OAP）通过 (x, y) 坐标指定离轴量。
         
         参数:
-            radius: 曲率半径 (mm)，R = 2f（f 为焦距）
+            radius: 曲率半径 (mm)，R = 2f。正值为凸面，负值为凹面。
             position: 顶点位置 (x, y, z) (mm)，使用绝对坐标
             z: Z 位置 (mm)，与 x, y 配合使用
             x: X 位置 (mm)，默认 0.0
             y: Y 位置 (mm)，默认 0.0，离轴量由此坐标决定
             tilt_x: 绕 X 轴旋转角度（度），默认 0
             tilt_y: 绕 Y 轴旋转角度（度），默认 0
+            tilt_z: 绕 Z 轴旋转角度（度），默认 0
         
         返回:
             self（支持链式调用）
@@ -419,6 +412,7 @@ class OpticalSystem:
             is_mirror=True,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            tilt_z=tilt_z,
             material='MIRROR',
         )
     
@@ -556,8 +550,8 @@ class OpticalSystem:
                 print(f"  材料: {surface.material}")
             
             # 倾斜角度（非零时显示）
-            if surface.tilt_x != 0 or surface.tilt_y != 0:
-                print(f"  倾斜: tilt_x = {surface.tilt_x:.2f}°, tilt_y = {surface.tilt_y:.2f}°")
+            if surface.tilt_x != 0 or surface.tilt_y != 0 or surface.tilt_z != 0:
+                print(f"  倾斜: tilt_x = {surface.tilt_x:.2f}°, tilt_y = {surface.tilt_y:.2f}°, tilt_z = {surface.tilt_z:.2f}°")
             
             # 焦距（仅 paraxial 类型）
             if surface.surface_type == 'paraxial' and surface.focal_length is not None:
@@ -703,7 +697,14 @@ class OpticalSystem:
         global_surfaces = []
         for surface in self._surfaces:
             # 计算姿态矩阵
-            orientation = self._create_rotation_matrix(surface.tilt_x, surface.tilt_y)
+            tilt_x_rad = np.radians(surface.tilt_x)
+            tilt_y_rad = np.radians(surface.tilt_y)
+            tilt_z_rad = np.radians(surface.tilt_z)
+            
+            # 使用 CoordinateBreakProcessor 计算旋转矩阵
+            orientation = CoordinateBreakProcessor.rotation_matrix_xyz(
+                tilt_x_rad, tilt_y_rad, tilt_z_rad
+            )
             
             # 使用完整的 (x, y, z) 位置
             global_surface = GlobalSurfaceDefinition(

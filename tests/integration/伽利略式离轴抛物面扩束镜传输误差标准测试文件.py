@@ -203,7 +203,7 @@ def run_galilean_oap_expander_test(
     propagation_method: str = "local_raytracing",
     plot: bool = False,
     plot_mode: str = '3d',
-    debug: bool = False,
+    debug: bool = True,
 ) -> dict:
     """运行伽利略式 OAP 扩束镜测试"""
     if verbose:
@@ -235,16 +235,6 @@ def run_galilean_oap_expander_test(
     # 理论发散角 (衍射极限)
     theta_diff_limit_mrad = (WAVELENGTH_UM / (np.pi * w0_output_expected * 1000)) * 1000 * 1000 
     
-    if verbose:
-        print(f"\n【设计参数】")
-        print(f"  OAP1 焦距: {f1_mm} mm (Radius={r1_mm} mm)")
-        print(f"  OAP2 焦距: {f2_mm} mm (Radius={r2_mm} mm)")
-        print(f"  OAP1 离轴: {d1_mm} mm, OAP2 离轴: {d2_mm} mm")
-        print(f"  间距 L: {l_mm} mm")
-        print(f"  放大倍率: {magnification:.2f}x")
-        print(f"  预期输出束腰: {w0_output_expected:.3f} mm")
-        print(f"  衍射极限发散角: {theta_diff_limit_mrad:.6f} mrad")
-
     # ========================================================
     # 2. 定义光学系统
     # ========================================================
@@ -282,7 +272,7 @@ def run_galilean_oap_expander_test(
             mode=plot_mode,
             projection='YZ', 
             save_path='galilean_oap_layout.png', 
-            show=True
+            show=False
         )
     
     # ========================================================

@@ -108,6 +108,163 @@ def _compute_residual_amplitude(
     return wavefront.amplitude - pilot_amplitude
 
 
+
+def plot_wavefront(
+    wavefront: "WavefrontData",
+    title: str = "Wavefront Analysis",
+    save_path: Optional[str] = None,
+    show: bool = True,
+) -> Optional[plt.Figure]:
+    """绘制波前详细分析图（振幅、相位、Pilot Beam、残差、截面）
+    
+    采用了 2x3 的布局，包含横截面比较，提供更深入的物理洞察。
+    
+    布局:
+        Row 1: 振幅, Pilot Beam 振幅, 振幅截面比较 (y=0)
+        Row 2: 相位, Pilot Beam 相位, 相位残差
+    
+    参数:
+        wavefront: WavefrontData 对象
+        title: 图表标题
+        save_path: 保存路径（可选）
+        show: 是否显示图表
+    
+    返回:
+        matplotlib Figure 对象（如果 show=False）
+    """
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    
+    # 准备数据
+    grid_size = wavefront.grid.grid_size
+    physical_size = wavefront.grid.physical_size_mm
+    half_size = physical_size / 2
+    
+    # 1. 仿真波前
+    sim_amp = wavefront.amplitude
+    sim_phase = wavefront.phase
+    
+    # 2. Pilot Beam 理论值
+    pilot_amp = _compute_pilot_beam_amplitude(wavefront)
+    pilot_phase = wavefront.get_pilot_beam_phase()
+    
+    # 3. 相位残差
+    phase_residual = wavefront.get_residual_phase()
+    
+    # 计算截取范围 (80%) - 聚焦中心细节
+    margin = int(grid_size * 0.1)
+    sl = slice(margin, grid_size - margin)
+    
+    # 更新 extent
+    crop_half_size = half_size * 0.8
+    extent = [-crop_half_size, crop_half_size, -crop_half_size, crop_half_size]
+    
+    # 绘图配置 (2行3列)
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    plt.subplots_adjust(hspace=0.3, wspace=0.3)
+    
+    # Info String
+    pilot_info = (
+        f"Pilot Beam Params: "
+        f"w(z)={wavefront.pilot_beam.spot_size_mm:.4f}mm, "
+        f"R(z)={wavefront.pilot_beam.curvature_radius_mm:.4e}mm, "
+        f"z_waist={wavefront.pilot_beam.waist_position_mm:.4f}mm"
+    )
+    
+    fig.suptitle(f"{title}\n{pilot_info}", fontsize=12)
+    
+    # Helper for colorbar
+    def plot_im(ax, data, title, cmap='viridis', has_cbar=True):
+        im = ax.imshow(data[sl, sl], extent=extent, origin='lower', cmap=cmap)
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel('x (mm)')
+        ax.set_ylabel('y (mm)')
+        if has_cbar:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im, cax=cax)
+        return im
+
+    # --- Row 1: Amplitude ---
+    
+    # 1.1 Simulation Amplitude
+    max_val = np.max(sim_amp)
+    if max_val > 0:
+        intensity = sim_amp**2
+        total_power = np.sum(intensity)
+        dx = wavefront.grid.sampling_mm
+        w_eff = np.sqrt(2 * total_power * dx**2 / (np.pi * np.max(intensity)))
+        title_amp = f"Sim Amplitude\nCalc w ≈ {w_eff:.4f} mm\n(Max={max_val:.2e})"
+    else:
+        title_amp = "Sim Amplitude (Zero)"
+    
+    plot_im(axes[0, 0], sim_amp, title_amp, cmap='inferno')
+    
+    # 1.2 Pilot Beam Amplitude
+    plot_im(axes[0, 1], pilot_amp, "Pilot Beam Amplitude\n(Theoretical Gaussian)", cmap='inferno')
+    
+    # 1.3 Cross Section Comparison
+    ax_slice = axes[0, 2]
+    y_mid = grid_size // 2
+    x_axis = np.linspace(-half_size, half_size, grid_size)
+    x_crop = x_axis[sl]
+    
+    # Normalize Sim Amp for comparison if max > 0
+    sim_slice = sim_amp[y_mid, sl]
+    if max_val > 0:
+        sim_slice_norm = sim_slice / max_val
+        ax_slice.plot(x_crop, sim_slice_norm, label='Sim (Norm)', color='blue')
+    else:
+        ax_slice.plot(x_crop, sim_slice, label='Sim', color='blue')
+        
+    ax_slice.plot(x_crop, pilot_amp[y_mid, sl], '--', label='Pilot (Ref)', color='orange')
+    ax_slice.set_title("Amplitude Cross-section (y=0)", fontsize=10)
+    ax_slice.set_xlabel('x (mm)')
+    ax_slice.legend()
+    ax_slice.grid(True, alpha=0.3)
+    ax_slice.set_xlim(extent[0], extent[1])
+    
+    # --- Row 2: Phase ---
+    
+    # 2.1 Simulation Phase (Unwrapped raw phase)
+    # Note: Phase is already unwrapped in WavefrontData
+    phase_waves = sim_phase / (2 * np.pi)
+    plot_im(axes[1, 0], phase_waves, "Simulation Phase\n(Unwrapped, waves)", cmap='RdBu')
+    
+    # 2.2 Pilot Phase
+    pilot_phase_waves = pilot_phase / (2 * np.pi)
+    plot_im(axes[1, 1], pilot_phase_waves, "Pilot Beam Phase\n(Analytic, waves)", cmap='RdBu')
+    
+    # 2.3 Phase Residual
+    res_crop = phase_residual[sl, sl]
+    rms = np.std(res_crop)
+    pv = np.max(res_crop) - np.min(res_crop)
+    
+    # Convert to waves
+    res_crop_waves = res_crop / (2 * np.pi)
+    rms_waves = rms / (2 * np.pi)
+    pv_waves = pv / (2 * np.pi)
+    
+    plot_im(axes[1, 2], phase_residual / (2 * np.pi), 
+            f"Phase Residual\n(Sim - Pilot)\nRMS={rms_waves:.4f} waves, PV={pv_waves:.4f} waves", 
+            cmap='RdBu_r')
+    
+    # Annotations
+    fig.text(0.5, 0.02, 
+                f"Wavelength: {wavefront.wavelength_um} um", 
+                ha='center', fontsize=11, bbox=dict(facecolor='#f0f0f0', alpha=0.9, pad=5))
+    
+    if save_path:
+        plt.savefig(save_path, dpi=100)
+        print(f"Saved plot to {save_path}")
+    
+    if show:
+        plt.show()
+        return None
+    else:
+        plt.close()
+        return fig
+
+
 def plot_surface_detail(
     surface: "SurfaceRecord",
     wavelength_um: float,
@@ -116,144 +273,22 @@ def plot_surface_detail(
 ) -> Optional[plt.Figure]:
     """绘制单个表面的详细图表（2D）
     
-    包含：振幅、相位、Pilot Beam 相位、残差相位、
-          Pilot Beam 振幅、振幅残差
+    使用 plot_wavefront 进行绘制。
     
     参数:
         surface: 表面记录
         wavelength_um: 波长 (μm)
         save_path: 保存路径（可选）
         show: 是否显示图表
-    
-    返回:
-        matplotlib Figure 对象（如果 show=False）
     """
     wavefront = surface.exit if surface.exit is not None else surface.entrance
     if wavefront is None:
         print(f"表面 {surface.index} 无波前数据")
         return None
     
-    fig, axes = plt.subplots(3, 2, figsize=(12, 14))
-    fig.suptitle(
-        f"Surface {surface.index}: {surface.name} ({surface.surface_type})",
-        fontsize=14,
-    )
-    
-    half_size = wavefront.grid.physical_size_mm / 2
-    extent = [-half_size, half_size, -half_size, half_size]
-    
-    # 1. 振幅
-    ax = axes[0, 0]
-    im = ax.imshow(
-        wavefront.amplitude,
-        extent=extent,
-        origin='lower',
-        cmap='hot',
-    )
-    ax.set_title('振幅')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Amplitude')
+    title = f"Surface {surface.index}: {surface.name} ({surface.surface_type})"
+    return plot_wavefront(wavefront, title, save_path, show)
 
-    # 2. 相位
-    ax = axes[0, 1]
-    phase_waves = wavefront.phase / (2 * np.pi)
-    im = ax.imshow(
-        phase_waves,
-        extent=extent,
-        origin='lower',
-        cmap='twilight',
-    )
-    ax.set_title('相位')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Phase (waves)')
-    
-    # 3. Pilot Beam 相位
-    ax = axes[1, 0]
-    pilot_phase = wavefront.get_pilot_beam_phase()
-    pilot_waves = pilot_phase / (2 * np.pi)
-    im = ax.imshow(
-        pilot_waves,
-        extent=extent,
-        origin='lower',
-        cmap='twilight',
-    )
-    ax.set_title(f'Pilot Beam 相位 (R={wavefront.pilot_beam.curvature_radius_mm:.1f}mm)')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Phase (waves)')
-    
-    # 4. 残差相位
-    ax = axes[1, 1]
-    residual = wavefront.get_residual_phase()
-    residual_waves = residual / (2 * np.pi)
-    
-    valid_mask = _get_valid_mask(wavefront.amplitude)
-    residual_masked = np.where(valid_mask, residual_waves, np.nan)
-    
-    im = ax.imshow(
-        residual_masked,
-        extent=extent,
-        origin='lower',
-        cmap='RdBu_r',
-    )
-    
-    rms = wavefront.get_residual_rms_waves()
-    pv = wavefront.get_residual_pv_waves()
-    ax.set_title(f'残差相位 (RMS={rms:.4f}, PV={pv:.4f} waves)')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Residual (waves)')
-    
-    # 5. Pilot Beam 振幅
-    ax = axes[2, 0]
-    pilot_amplitude = _compute_pilot_beam_amplitude(wavefront)
-    im = ax.imshow(
-        pilot_amplitude,
-        extent=extent,
-        origin='lower',
-        cmap='hot',
-    )
-    ax.set_title(f'Pilot Beam 振幅 (w={wavefront.pilot_beam.spot_size_mm:.2f}mm)')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Amplitude')
-    
-    # 6. 振幅残差
-    ax = axes[2, 1]
-    amp_residual = _compute_residual_amplitude(wavefront)
-    amp_residual_masked = np.where(valid_mask, amp_residual, np.nan)
-    
-    # 计算振幅残差统计
-    if np.any(valid_mask):
-        amp_rms = np.sqrt(np.mean(amp_residual[valid_mask]**2))
-        amp_pv = np.max(amp_residual[valid_mask]) - np.min(amp_residual[valid_mask])
-    else:
-        amp_rms = amp_pv = np.nan
-    
-    im = ax.imshow(
-        amp_residual_masked,
-        extent=extent,
-        origin='lower',
-        cmap='RdBu_r',
-    )
-    ax.set_title(f'振幅残差 (RMS={amp_rms:.4f}, PV={amp_pv:.4f})')
-    ax.set_xlabel('X (mm)')
-    ax.set_ylabel('Y (mm)')
-    plt.colorbar(im, ax=ax, label='Residual')
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    
-    if show:
-        plt.show()
-        return None
-    else:
-        plt.close()
-        return fig
 
 
 def plot_surface_3d(

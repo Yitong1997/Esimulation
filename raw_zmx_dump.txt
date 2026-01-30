@@ -1,0 +1,187 @@
+Raw ZMX Surface Data:
+Surface 0: standard
+  Comment: 
+  Thickness: inf
+  Radius: inf
+  Material: air
+----------------------------------------
+Surface 1: standard
+  Comment: dummy
+  Thickness: 10.0
+  Radius: inf
+  Material: air
+----------------------------------------
+Surface 2: standard
+  Comment: 
+  Thickness: 30.0
+  Radius: inf
+  Material: air
+----------------------------------------
+Surface 3: coordinate_break
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 4: standard
+  Comment: M1
+  Thickness: 0.0
+  Radius: inf
+  Material: mirror
+----------------------------------------
+Surface 5: coordinate_break
+  Comment: 
+  Thickness: -40.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 6: coordinate_break
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: -45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 7: standard
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: mirror
+----------------------------------------
+Surface 8: coordinate_break
+  Comment: 
+  Thickness: 40.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: -45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 9: coordinate_break
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 0.0
+  Tilt Y: -45.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 10: standard
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: mirror
+----------------------------------------
+Surface 11: coordinate_break
+  Comment: 
+  Thickness: -60.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 0.0
+  Tilt Y: -45.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 12: coordinate_break
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: -6.0
+  Tilt X: 45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 13: standard
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: mirror
+----------------------------------------
+Surface 14: coordinate_break
+  Comment: 
+  Thickness: 55.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 45.0
+  Tilt Y: 0.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 15: coordinate_break
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 5.0
+  Tilt X: 0.0
+  Tilt Y: -45.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 16: standard
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: mirror
+----------------------------------------
+Surface 17: coordinate_break
+  Comment: 
+  Thickness: -40.0
+  Radius: inf
+  Material: air
+  Decenter X: 0.0
+  Decenter Y: 0.0
+  Tilt X: 0.0
+  Tilt Y: -45.0
+  Tilt Z: 0.0
+  Order: 0
+----------------------------------------
+Surface 18: standard
+  Comment: 
+  Thickness: -5.0
+  Radius: -60.0
+  Material: BK7
+----------------------------------------
+Surface 19: standard
+  Comment: 
+  Thickness: -55.0
+  Radius: 60.0
+  Material: air
+----------------------------------------
+Surface 20: standard
+  Comment: 
+  Thickness: 0.0
+  Radius: inf
+  Material: air
+----------------------------------------

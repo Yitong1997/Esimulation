@@ -185,7 +185,7 @@ class HybridElementPropagator:
         
 
         
-        # 2. 创建单个表面定义并进行光线追迹
+        # 2. 创建单个表面定义并进行光线追迹。这个到底是干嘛的？
         surface_def = self._create_surface_definition(surface, entrance_axis, exit_axis)
         
         raytracer = ElementRaytracer(
@@ -224,7 +224,8 @@ class HybridElementPropagator:
             )
         #核心函数：光学追迹，输入全局坐标的input_rays
         output_rays = raytracer.trace(input_rays)
-        #返回入射面局部坐标的output_rays
+        # 返回出射面局部坐标系 (Exit Surface Local Frame) 下的 output_rays
+        # 坐标原点位于出射面中心 (主光线交点)，Z 轴沿出射法向
         # DEBUG: Output Ray Analysis
         x_out = np.asarray(output_rays.x)
         y_out = np.asarray(output_rays.y)
@@ -1255,6 +1256,7 @@ class HybridElementPropagator:
             conic=surface.conic,
             tilt_x=tilt_x,
             tilt_y=tilt_y,
+            orientation=surface.orientation,
             # ⚠️ 关键：传递表面顶点位置
             # 对于离轴系统（如 OAP），这是表面顶点的实际位置
             # 这个位置结合 tilt=0 (对于 OAP) 确保了正确的几何偏心关系

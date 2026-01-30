@@ -183,6 +183,25 @@ class WavefrontData:
             return np.nan
         
         return np.sqrt(np.mean(residual[valid_mask] ** 2))
+    
+    def plot(
+        self,
+        title: str = "Wavefront Analysis",
+        save_path: Optional[str] = None,
+        show: bool = True,
+    ) -> Optional[plt.Figure]:
+        """绘制波前分析图
+        
+        参数:
+            title: 图表标题
+            save_path: 保存路径（可选）
+            show: 是否显示图表
+        
+        返回:
+            matplotlib Figure 对象（如果 show=False）
+        """
+        from .plotting import plot_wavefront
+        return plot_wavefront(self, title, save_path, show)
 
 
 @dataclass

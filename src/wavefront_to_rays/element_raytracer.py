@@ -14,6 +14,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, Tuple, List
 import numpy as np
+from scipy.spatial.transform import Rotation
 from numpy.typing import NDArray
 
 from optiland.rays import RealRays
@@ -51,10 +52,10 @@ class SurfaceDefinition:
         tilt_y: 绕 Y 轴旋转角度（弧度），默认 0.0
     
     示例:
-        >>> # 创建凹面反射镜（焦距 100mm，曲率半径 200mm）
+        >>> # 创建凹面反射镜（焦距 100mm，曲率半径 -200mm）
         >>> mirror = SurfaceDefinition(
         ...     surface_type='mirror',
-        ...     radius=200.0,
+        ...     radius=-200.0,
         ...     thickness=0.0,
         ...     material='mirror',
         ...     semi_aperture=15.0
@@ -103,6 +104,7 @@ class SurfaceDefinition:
     conic: float = 0.0  # 圆锥常数，默认 0.0（球面）
     tilt_x: float = 0.0  # 绕 X 轴旋转角度（弧度）
     tilt_y: float = 0.0  # 绕 Y 轴旋转角度（弧度）
+    orientation: Optional[NDArray] = field(default=None)  # Global Rotation Matrix (3x3)
     # 表面顶点在全局坐标系中的位置 (x, y, z)，单位：mm
     # 对于离轴系统（如 OAP），这是表面顶点的实际位置
     # 默认为 (0, 0, 0)，即表面顶点在全局原点
@@ -282,38 +284,22 @@ class SurfaceDefinition:
 # 坐标转换辅助函数
 # =============================================================================
 
+def _snap_to_zero(val: float, tol: float = 1e-14) -> float:
+    """如果数值绝对值小于阈值，强制归零
+    
+    用于清洗浮点数噪声，特别是在作为反三角函数输入前。
+    """
+    if abs(val) < tol:
+        return 0.0
+    return val
+
+
 def _avoid_exact_45_degrees(angle: float) -> float:
     """避免精确的 45° 角度
     
-    optiland 在精确的 45° (π/4) 角度时存在数值问题，会导致光线追迹返回 NaN。
-    此函数通过添加极小的偏移量来避免这个问题。
-    
-    参数:
-        angle: 输入角度（弧度）
-    
-    返回:
-        调整后的角度（弧度），如果接近 45° 的整数倍则添加小偏移量
-    
-    说明:
-        - 检查角度是否接近 ±45°, ±135° 等（即 π/4 的奇数倍）
-        - 如果是，添加 1e-10 弧度的偏移量
-        - 这个偏移量足够小，不会影响光学计算精度
+    (已弃用) 之前的版本为了规避 optiland 在精确 45° 时的潜在数值问题引入了 1e-10 偏移。
+    现在为了保证数值精度，移除此偏移，直接返回原值。
     """
-    # 检查是否接近 45° 的奇数倍
-    # 45° = π/4, 135° = 3π/4, 225° = 5π/4, 315° = 7π/4
-    pi_over_4 = np.pi / 4
-    
-    # 计算角度除以 π/4 的商
-    quotient = angle / pi_over_4
-    
-    # 检查是否接近奇数
-    nearest_odd = round(quotient)
-    if nearest_odd % 2 == 1:  # 奇数
-        # 检查是否足够接近
-        if abs(quotient - nearest_odd) < 1e-10:
-            # 添加小偏移量
-            return angle + 1e-10
-    
     return angle
 
 
@@ -416,8 +402,11 @@ def compute_rotation_matrix(
     # 修正：原阈值 0.9 (约 25°) 过宽，导致在 steep angle (如离轴抛物面) 下
     # 坐标系发生 90° 翻转，进而这就导致 tilt_x/tilt_y 作用轴错误。
     # 现改为 0.999999 (约 0.08°)，仅在极接近垂直时切换参考轴。
+    # 修正：当主光线接近全局 Y 轴时，使用全局 Z 轴 [0, 0, 1] 作为参考
+    # 这样可以确保生成的局部坐标系中，Y 轴（Vertical）尽可能指向全局 Z 方向（Up）
+    # 这更符合光学系统的直觉：传播方向为 Y 时，Z 通常被视为垂直/高度方向。
     if abs(z_local[1]) > 0.999999:
-        ref = np.array([1.0, 0.0, 0.0])
+        ref = np.array([0.0, 0.0, 1.0])
     else:
         ref = np.array([0.0, 1.0, 0.0])
     
@@ -651,8 +640,8 @@ def create_mirror_surface(
     
     参数:
         radius: 曲率半径，单位：mm
-            - 正值表示凸面镜（曲率中心在 +Z 方向）
-            - 负值表示凹面镜（曲率中心在 -Z 方向）
+            - 正值表示凸面镜（曲率中心在 +Z 方向，发散）
+            - 负值表示凹面镜（曲率中心在 -Z 方向，聚焦）
             - np.inf 表示平面镜
         semi_aperture: 半口径，单位：mm
             - None 表示无限制
@@ -662,8 +651,8 @@ def create_mirror_surface(
         SurfaceDefinition: 反射镜表面定义对象
     
     示例:
-        >>> # 创建凹面镜（焦距 100mm，曲率半径 200mm）
-        >>> mirror = create_mirror_surface(radius=200.0, semi_aperture=15.0)
+        >>> # 创建凹面镜（焦距 100mm，曲率半径 -200mm）
+        >>> mirror = create_mirror_surface(radius=-200.0, semi_aperture=15.0)
         >>> mirror.focal_length
         100.0
         
@@ -950,6 +939,7 @@ class ElementRaytracer:
         self.entrance_position: Tuple[float, float, float] = tuple(position)
         self._provided_exit_direction: Optional[Tuple[float, float, float]] = exit_direction_validated
         self._provided_exit_position: Optional[Tuple[float, float, float]] = exit_position
+        self.exit_position = exit_position # Support direct access
         self.debug = debug
         
         # 计算坐标转换旋转矩阵
@@ -992,11 +982,11 @@ class ElementRaytracer:
         将输入光线通过光学系统进行追迹，输出出射光线数据。
         
         参数:
-            input_rays: 输入光线（来自 wavefront_sampler，在入射面局部坐标系中）
+            input_rays: 输入光线（在全局坐标系 Global Frame 中）
                        必须是 RealRays 对象
         
         返回:
-            出射光线数据（在出射面局部坐标系中），RealRays 对象
+            出射光线数据（在出射面局部坐标系 Exit Surface Local Frame 中），RealRays 对象
         
         处理流程:
             1. 验证输入光线有效性（方向余弦归一化）
@@ -1126,6 +1116,7 @@ class ElementRaytracer:
         #
         # 这样可以正确处理任意入射方向的情况。
         
+        
         # =====================================================================
         # 复制光线对象，避免修改原始数据
         # optiland 的 trace 方法会原地修改光线对象
@@ -1143,9 +1134,8 @@ class ElementRaytracer:
         )
         traced_rays.opd = np.asarray(input_rays.opd).copy()
         
-        
         # =====================================================================
-        # 调用带符号 OPD 的光线追迹
+        # 调用带符号 OPD 的光线追迹 (Accepts GLOBAL rays)
         # =====================================================================
         
         # 使用带符号 OPD 追迹，正确处理折叠光路中的 OPD 计算
@@ -1170,8 +1160,46 @@ class ElementRaytracer:
         # 重要：OPD 是标量，不受坐标变换影响
         
         # 计算从入射面局部坐标系到出射面局部坐标系的旋转矩阵
-        # R_entrance_to_exit = R_exit.T @ R_entrance
-        R_entrance_to_exit = self.exit_rotation_matrix.T @ self.rotation_matrix
+        # 使用"最小旋转" (Min-Twist / Parallel Transport) 逻辑
+        # 都不依赖 Global 坐标系，也不依赖 Surface Euler 角
+        
+        # 1. 获取出射主光线方向 (在 Entrance Local Frame)
+        # 找到最接近中心的光线作为参考
+        r_sq = np.asarray(traced_rays.x)**2 + np.asarray(traced_rays.y)**2
+        min_r_idx = np.argmin(r_sq)
+        L_c = traced_rays.L[min_r_idx]
+        M_c = traced_rays.M[min_r_idx]
+        N_c = traced_rays.N[min_r_idx]
+        
+        z_in = np.array([0.0, 0.0, 1.0])
+        z_out = np.array([L_c, M_c, N_c])
+        norm_out = np.linalg.norm(z_out)
+        if norm_out > 1e-10:
+            z_out = z_out / norm_out
+            
+        # 2. 计算将 z_in 旋转到 z_out 的旋转矩阵
+        dot_val = np.clip(np.dot(z_in, z_out), -1.0, 1.0)
+        
+        if dot_val > 0.999999: # 平行
+            R_rel = np.eye(3)
+        elif dot_val < -0.999999: # 反平行 (180度)
+            # 简单逻辑：绕 Y 轴旋转 180 度 (x->-x, z->-z, y->y)
+            # 保持 Up-is-Up (在反射意义下)
+            R_rel = Rotation.from_euler('y', 180, degrees=True).as_matrix()
+        else:
+            # 一般情况：计算旋转轴和角度
+            axis = np.cross(z_in, z_out)
+            axis_norm = np.linalg.norm(axis)
+            if axis_norm < 1e-10: 
+                R_rel = np.eye(3) # Should be covered by dot check, but safety
+            else:
+                axis = axis / axis_norm
+                angle = np.arccos(dot_val)
+                R_rel = Rotation.from_rotvec(axis * angle).as_matrix()
+                
+        # 3. R_rel 将 Entrance Basis 映射到 Exit Basis
+        # R_entrance_to_exit = R_rel.T
+        R_entrance_to_exit = R_rel.T
         
         # 获取光线数据
         x_entrance = np.asarray(traced_rays.x)
@@ -1180,6 +1208,9 @@ class ElementRaytracer:
         L_entrance = np.asarray(traced_rays.L)
         M_entrance = np.asarray(traced_rays.M)
         N_entrance = np.asarray(traced_rays.N)
+        
+        print(f"[DEBUG trace] traced_rays centroid (Optic Local): ({np.mean(x_entrance):.4f}, {np.mean(y_entrance):.4f}, {np.mean(z_entrance):.4f})")
+        print(f"[DEBUG trace] chief_intersection_local: {self._chief_intersection_local}")
         
         # =====================================================================
         # 使用主光线交点位置作为出射面原点
@@ -1195,12 +1226,52 @@ class ElementRaytracer:
         z_centered = z_entrance - chief_z
         
         # 位置转换（先平移后旋转）
+        # pos_centered 目前是相对于主光线交点 (ray - chief_intersection)
         pos_centered = np.stack([x_centered, y_centered, z_centered], axis=0)
         pos_exit = R_entrance_to_exit @ pos_centered
         
-        x_exit = pos_exit[0]
-        y_exit = pos_exit[1]
-        z_exit = pos_exit[2]
+        # ⚠️ 关键修复：加入 Exit Position 的平移
+        # 如果指定了 exit_position，则输出光线应该相对于该位置
+        # 目前 pos_exit 是相对于 chief_intersection 的
+        # 我们需要添加 shift = (chief_intersection - exit_position) in Exit Frame
+        
+        shift_x, shift_y, shift_z = 0.0, 0.0, 0.0
+        
+        if self.exit_position is not None:
+            # 计算 Exit Position 在 Entrance Frame (Optiland Global) 中的位置
+            # P_exit_Ent = R_global_to_ent.T @ (P_exit_global - P_ent_global)
+            
+            ent_origin = np.array(self.entrance_position, dtype=np.float64)
+            exit_origin_global = np.array(self.exit_position, dtype=np.float64)
+            
+            # Vector from Ent Origin to Exit Origin (Global)
+            v_ent_to_exit_global = exit_origin_global - ent_origin
+            
+            # Transform to Entrance Frame
+            v_ent_to_exit_ent = self.rotation_matrix.T @ v_ent_to_exit_global
+            
+            # Chief Intersection in Entrance Frame
+            chief_pos_ent = np.array([chief_x, chief_y, chief_z])
+            
+            # Vector from Exit Origin to Chief Intersection (in Entrance Frame)
+            v_exit_to_chief_ent = chief_pos_ent - v_ent_to_exit_ent
+            
+            # Transform to Exit Frame
+            v_shift_exit = R_entrance_to_exit @ v_exit_to_chief_ent
+            
+            shift_x = v_shift_exit[0]
+            shift_y = v_shift_exit[1]
+            shift_z = v_shift_exit[2]
+            
+            print(f"[DEBUG Shift] ent_origin={ent_origin}")
+            print(f"[DEBUG Shift] exit_origin_global={exit_origin_global}")
+            print(f"[DEBUG Shift] v_ent_to_exit_ent={v_ent_to_exit_ent}")
+            print(f"[DEBUG Shift] chief_pos_ent=({chief_x:.4f}, {chief_y:.4f}, {chief_z:.4f})")
+            print(f"[DEBUG Shift] v_shift_exit=({shift_x:.4f}, {shift_y:.4f}, {shift_z:.4f})")
+
+        x_exit = pos_exit[0] + shift_x
+        y_exit = pos_exit[1] + shift_y
+        z_exit = pos_exit[2] + shift_z
         
         # 方向转换
         dir_entrance = np.stack([L_entrance, M_entrance, N_entrance], axis=0)
@@ -1277,7 +1348,7 @@ class ElementRaytracer:
 
         
         self.output_rays = output_rays
-        #注意这里仍然是局部坐标
+        #注意这里仍然是出射面的局部坐标
         return output_rays
     
     def _direction_to_rotation_angles(
@@ -1559,8 +1630,48 @@ class ElementRaytracer:
             # SurfaceDefinition 中的 tilt_x/tilt_y 仅用于计算出射方向，
             # 不应该传递给 optiland 的表面设置
             
-            tilt_x_rad = surface_def.tilt_x if surface_def.tilt_x else 0.0
-            tilt_y_rad = surface_def.tilt_y if surface_def.tilt_y else 0.0
+            if surface_def.orientation is not None:
+                # 优先使用全局方向矩阵计算局部倾角
+                # R_rel = R_beam.T @ R_surf
+                # R_rel 描述了表面相对于入射光轴坐标系的旋转
+                R_rel = self.rotation_matrix.T @ surface_def.orientation
+                
+                # 计算直接从法向向量提取倾斜角度
+                # 能够避免欧拉角分解中的歧义（如 rz=180 度翻转问题）
+                # 同时也修复了之前代码中假设 sin(ry)=Nx 的数学错误
+                
+                # 公式推导：
+                # 法向 N = R @ (0,0,1) = (Nx, Ny, Nz)
+                # 使用 optiland 旋转顺序 (Ry @ Rx):
+                # Nx = cos(rx) * sin(ry)
+                # Ny = -sin(rx)
+                # Nz = cos(rx) * cos(ry)
+                
+                # 1. 提取法向向量 (R_rel 的第三列)
+                normal_local = R_rel[:, 2]
+                L, M, N = normal_local # Nx, Ny, Nz
+                
+                # 2. 计算 rx, ry
+                # rx = -arcsin(Ny)
+                tilt_x_rad = -np.arcsin(np.clip(M, -1.0, 1.0))
+                
+                # ry = arctan2(Nx, Nz)
+                # 处理万向节锁 (Gimbal Lock) 情况：当 rx = +/- 90度 (M = +/- 1)
+                # 此时 cos(rx) = 0, Nx = Nz = 0, ry 不确定
+                if abs(M) > 0.9999:
+                    tilt_y_rad = 0.0
+                else:
+                    tilt_y_rad = np.arctan2(L, N)
+                
+                if getattr(self, 'debug', False):
+                     print(f"[DEBUG ElementRaytracer] Surface {surface_index} Orientation:")
+                     print(f"  Normal: ({L:.4f}, {M:.4f}, {N:.4f})")
+                     print(f"  Calculated Tilt: rx={np.degrees(tilt_x_rad):.2f}°, ry={np.degrees(tilt_y_rad):.2f}°")
+            else:
+                # 回退到使用预计算的 tilt_x/y
+                tilt_x_rad = surface_def.tilt_x if surface_def.tilt_x else 0.0
+                tilt_y_rad = surface_def.tilt_y if surface_def.tilt_y else 0.0
+                
             tilt_x_safe = _avoid_exact_45_degrees(tilt_x_rad)
             tilt_y_safe = _avoid_exact_45_degrees(tilt_y_rad)
             
@@ -1694,9 +1805,11 @@ class ElementRaytracer:
         self._exit_dir_local = exit_dir_local
         
         # DEBUG: Print exit directions
-        print(f"[DEBUG ElementRaytracer] exit_chief_direction (Global): {self.exit_chief_direction}")
-        print(f"[DEBUG ElementRaytracer] _exit_dir_local (Optic Local): {tuple(self._exit_dir_local)}")
-        print(f"[DEBUG ElementRaytracer] rotation_matrix (Entrance->Global):\\n{self.rotation_matrix}")
+        # DEBUG: Print exit directions
+        if getattr(self, 'debug', False):
+            print(f"[DEBUG ElementRaytracer] exit_chief_direction (Global): {self.exit_chief_direction}")
+            print(f"[DEBUG ElementRaytracer] _exit_dir_local (Optic Local): {tuple(self._exit_dir_local)}")
+            print(f"[DEBUG ElementRaytracer] rotation_matrix (Entrance->Global):\\n{self.rotation_matrix}")
         
         # =====================================================================
         # 在 Optiland 中添加出射面
@@ -1706,10 +1819,15 @@ class ElementRaytracer:
         # 注意：使用 -arcsin(ny) 计算 rx，arctan2 计算 ry
         # 确保法向量 = R_y(ry) @ R_x(rx) @ (0,0,1) = exit_dir_local
         
-        L = exit_dir_local[0]
-        M = exit_dir_local[1]
-        N = exit_dir_local[2]
+        L = _snap_to_zero(exit_dir_local[0])
+        M = _snap_to_zero(exit_dir_local[1])
+        N = _snap_to_zero(exit_dir_local[2])
         
+        # 重新归一化 (Sanitization 可能稍微改变模长)
+        norm_sanitized = np.linalg.norm([L, M, N])
+        if norm_sanitized > 1e-10:
+            L, M, N = L / norm_sanitized, M / norm_sanitized, N / norm_sanitized
+
         # 计算 rx, ry
         # 公式推导：
         # n = [sin(ry)cos(rx), -sin(rx), cos(ry)cos(rx)]
@@ -1810,72 +1928,73 @@ class ElementRaytracer:
         surfaces = self.optic.surface_group.surfaces
 
         # [DEBUG] 打印表面参数
-        print(f"\n[DEBUG ElementRaytracer] Inspecting {len(surfaces)} surfaces in Optiland Optic:")
-        print(f"[DEBUG ElementRaytracer] Coordinates are LOCAL to the Optic Entrance Position.")
-        for idx, surf in enumerate(surfaces):
-            print(f"  Surface {idx} [{type(surf).__name__}]:")
-            
-            # 尝试获取 Geometry
-            geo = getattr(surf, 'geometry', None)
-            if geo:
-                # 坐标系
-                cs = getattr(geo, 'cs', None)
-                if cs:
-                    # 使用 getattr 并提供默认值
-                    # 注意：这些通常是 backend array，直接打印即可看到数值
-                    c_x = getattr(cs, 'x', 'N/A')
-                    c_y = getattr(cs, 'y', 'N/A')
-                    c_z = getattr(cs, 'z', 'N/A')
-                    c_rx = getattr(cs, 'rx', 'N/A')
-                    c_ry = getattr(cs, 'ry', 'N/A')
-                    c_rz = getattr(cs, 'rz', 'N/A')
-                    print(f"    Position  (x,y,z) : ({c_x}, {c_y}, {c_z})")
-                    print(f"    Rotation (rx,ry,rz): ({c_rx}, {c_ry}, {c_rz})")
-                    #增加一个检查，如果是idx = 3,则检查表面是否与出射光线方向垂直
-                else:
-                    print(f"    Geometry has no 'cs' attribute (CoordinateSystem).")
+        if getattr(self, 'debug', False):
+            print(f"\n[DEBUG ElementRaytracer] Inspecting {len(surfaces)} surfaces in Optiland Optic:")
+            print(f"[DEBUG ElementRaytracer] Coordinates are LOCAL to the Optic Entrance Position.")
+            for idx, surf in enumerate(surfaces):
+                print(f"  Surface {idx} [{type(surf).__name__}]:")
+                
+                # 尝试获取 Geometry
+                geo = getattr(surf, 'geometry', None)
+                if geo:
+                    # 坐标系
+                    cs = getattr(geo, 'cs', None)
+                    if cs:
+                        # 使用 getattr 并提供默认值
+                        # 注意：这些通常是 backend array，直接打印即可看到数值
+                        c_x = getattr(cs, 'x', 'N/A')
+                        c_y = getattr(cs, 'y', 'N/A')
+                        c_z = getattr(cs, 'z', 'N/A')
+                        c_rx = getattr(cs, 'rx', 'N/A')
+                        c_ry = getattr(cs, 'ry', 'N/A')
+                        c_rz = getattr(cs, 'rz', 'N/A')
+                        print(f"    Position  (x,y,z) : ({c_x}, {c_y}, {c_z})")
+                        print(f"    Rotation (rx,ry,rz): ({c_rx}, {c_ry}, {c_rz})")
+                        #增加一个检查，如果是idx = 3,则检查表面是否与出射光线方向垂直
+                    else:
+                        print(f"    Geometry has no 'cs' attribute (CoordinateSystem).")
 
-                # 用户请求：检查表面是否与出射光线方向垂直 (仅针对 idx=3, 即出射面)
-                if idx == 3 and cs is not None:
-                     try:
-                         # 获取旋转角度
-                         val_rx = float(getattr(cs, 'rx', 0.0))
-                         val_ry = float(getattr(cs, 'ry', 0.0))
-                         
-                         # 计算法向量 (基于 optiland 旋转约定: Ry @ Rx @ z_hat)
-                         # n = [sin(ry)cos(rx), -sin(rx), cos(ry)cos(rx)]
-                         sx, cx = np.sin(val_rx), np.cos(val_rx)
-                         sy, cy = np.sin(val_ry), np.cos(val_ry)
-                         n_vec = np.array([sy*cx, -sx, cy*cx])
-                         
-                         if hasattr(self, '_exit_dir_local'):
-                             exit_dir = self._exit_dir_local
-                             dot = np.dot(n_vec, exit_dir)
-                             print(f"    [CHECK idx=3] Surface Normal: {n_vec}")
-                             print(f"    [CHECK idx=3] Exit Direction: {exit_dir}")
-                             print(f"    [CHECK idx=3] Dot Product: {dot:.8f} (Expected: 1.0)")
+                    # 用户请求：检查表面是否与出射光线方向垂直 (仅针对 idx=3, 即出射面)
+                    if idx == 3 and cs is not None:
+                         try:
+                             # 获取旋转角度
+                             val_rx = float(getattr(cs, 'rx', 0.0))
+                             val_ry = float(getattr(cs, 'ry', 0.0))
                              
-                             if abs(dot - 1.0) > 1e-5:
-                                 print(f"    [WARNING] Surface 3 NOT perpendicular! Dot product deviation: {abs(dot-1.0)}")
+                             # 计算法向量 (基于 optiland 旋转约定: Ry @ Rx @ z_hat)
+                             # n = [sin(ry)cos(rx), -sin(rx), cos(ry)cos(rx)]
+                             sx, cx = np.sin(val_rx), np.cos(val_rx)
+                             sy, cy = np.sin(val_ry), np.cos(val_ry)
+                             n_vec = np.array([sy*cx, -sx, cy*cx])
+                             
+                             if hasattr(self, '_exit_dir_local'):
+                                 exit_dir = self._exit_dir_local
+                                 dot = np.dot(n_vec, exit_dir)
+                                 print(f"    [CHECK idx=3] Surface Normal: {n_vec}")
+                                 print(f"    [CHECK idx=3] Exit Direction: {exit_dir}")
+                                 print(f"    [CHECK idx=3] Dot Product: {dot:.8f} (Expected: 1.0)")
+                                 
+                                 if abs(dot - 1.0) > 1e-5:
+                                     print(f"    [WARNING] Surface 3 NOT perpendicular! Dot product deviation: {abs(dot-1.0)}")
+                                 else:
+                                     print(f"    [pass] Surface 3 is perpendicular to exit direction.")
                              else:
-                                 print(f"    [pass] Surface 3 is perpendicular to exit direction.")
-                         else:
-                             print(f"    [CHECK idx=3] Skipped: _exit_dir_local not found.")
-                     except Exception as e:
-                         print(f"    [CHECK idx=3] Error during check: {e}")
+                                 print(f"    [CHECK idx=3] Skipped: _exit_dir_local not found.")
+                         except Exception as e:
+                             print(f"    [CHECK idx=3] Error during check: {e}")
 
-                # 几何参数 (StandardGeometry)
-                if hasattr(geo, 'radius'):
-                    print(f"    Radius: {geo.radius}")
-                if hasattr(geo, 'k'):  # conic constant
-                     print(f"    Conic (k): {geo.k}")
-            else:
-                print(f"    No 'geometry' attribute found.")
-            
-            # 材料
-            mat = getattr(surf, 'material_post', None)
-            print(f"    Material (Post): {mat}")
-        print("="*60 + "\n") 
+                    # 几何参数 (StandardGeometry)
+                    if hasattr(geo, 'radius'):
+                        print(f"    Radius: {geo.radius}")
+                    if hasattr(geo, 'k'):  # conic constant
+                         print(f"    Conic (k): {geo.k}")
+                else:
+                    print(f"    No 'geometry' attribute found.")
+                
+                # 材料
+                mat = getattr(surf, 'material_post', None)
+                print(f"    Material (Post): {mat}")
+            print("="*60 + "\n") 
 
 
 
@@ -1955,10 +2074,11 @@ class ElementRaytracer:
             # 计算 OPD 增量（optiland 使用 abs(t)）
             opd_increment_abs = opd_after - opd_before
 
-            print(f"[DEBUG TRACE] i={i}, Surface={type(surface).__name__}")
-            print(f"  Pos Before: ({x_before[0]:.4f}, {y_before[0]:.4f}, {z_before[0]:.4f})")
-            print(f"  Pos After : ({x_after[0]:.4f}, {y_after[0]:.4f}, {z_after[0]:.4f})")
-            print(f"  OPD Incr  : {opd_increment_abs[0]:.6f}")
+            if getattr(self, 'debug', False):
+                print(f"[DEBUG TRACE] i={i}, Surface={type(surface).__name__}")
+                print(f"  Pos Before: ({x_before[0]:.4f}, {y_before[0]:.4f}, {z_before[0]:.4f})")
+                print(f"  Pos After : ({x_after[0]:.4f}, {y_after[0]:.4f}, {z_after[0]:.4f})")
+                print(f"  OPD Incr  : {opd_increment_abs[0]:.6f}")
 
             
             # -----------------------------------------------------------------
@@ -2007,7 +2127,20 @@ class ElementRaytracer:
                      L_before, M_before,
                      title=f"{step_name}: Input Rays"
                  )
+                 #此处应当注明比例尺
 
+        # =====================================================================
+        # ⚠️ 关键修复：坐标系归一化
+        # =====================================================================
+        # Optiland 的 trace() 方法会将光线留在最后一个表面的局部坐标系中。
+        # 而后续的 "Dynamic Exit Surface" 是在 Optic 的全局坐标系（即入射面局部坐标系）中定义的。
+        # 因此，必须先将光线转换回 Optic 全局坐标系。
+        
+        if len(surfaces) > 0 and (len(surfaces) > skip):
+            # NOTE: optiland's Surface.trace already calls globalize internally
+            # 光线应该已经在 Optic 全局坐标系中
+            print(f"[DEBUG] After mirror trace (should be in Optic Global): rays at ({np.mean(rays.x):.4f}, {np.mean(rays.y):.4f}, {np.mean(rays.z):.4f}), dir=({np.mean(rays.L):.4f}, {np.mean(rays.M):.4f}, {np.mean(rays.N):.4f})")
+        
         # =====================================================================
         # 动态添加并追迹出射面 (Dynamic Exit Surface Trace)
         # =====================================================================
@@ -2025,6 +2158,7 @@ class ElementRaytracer:
         #   4. 使用带符号的 OPD 更新
         
         if self._chief_intersection_local is not None and self.exit_chief_direction is not None:
+
             from optiland.surfaces.standard_surface import Surface
             from optiland.coordinate_system import CoordinateSystem
             from optiland.geometries.standard import StandardGeometry
@@ -2036,9 +2170,14 @@ class ElementRaytracer:
             exit_dir_local = exit_dir_local / np.linalg.norm(exit_dir_local)
             
             # 2. 计算出射面的旋转角度 (rx, ry) - 与 _finalize_optic 相同的公式
-            L = exit_dir_local[0]
-            M = exit_dir_local[1]
-            N = exit_dir_local[2]
+            L = _snap_to_zero(exit_dir_local[0])
+            M = _snap_to_zero(exit_dir_local[1])
+            N = _snap_to_zero(exit_dir_local[2])
+            
+            # 重新归一化
+            norm_sanitized = np.linalg.norm([L, M, N])
+            if norm_sanitized > 1e-10:
+                L, M, N = L / norm_sanitized, M / norm_sanitized, N / norm_sanitized
             
             rx = -np.arcsin(np.clip(M, -1.0, 1.0))
             ry = np.arctan2(L, N)
@@ -2052,18 +2191,29 @@ class ElementRaytracer:
             cs.x = exit_x
             cs.y = exit_y
             cs.z = exit_z
-            cs.rx = rx
+            cs.rx = rx  #rx = -1.5707963267948966
             cs.ry = ry
             #这里可能也有数值问题
 
             # 平面使用无穷大曲率半径
             exit_geometry = StandardGeometry(cs, radius=np.inf, conic=0.0)
-            exit_material_post = IdealMaterial(n=1.0)  # 空气
+            # 获取最后一个光学表面
+            last_surface = self.optic.surface_group.surfaces[-1]
             
+            # 使用最后一个表面的 material_post 作为出射面的材料
+            # 这样可以确保 n_in = n_out，避免在虚拟出射面上发生折射
+            exit_material_post = last_surface.material_post
+            
+            # [DEBUG]
+            # [DEBUG]
+            if getattr(self, 'debug', False):
+                print(f"[DEBUG ElementRaytracer] Dynamic Exit Surface: Linking to previous surface {type(last_surface).__name__}")
+                print(f"[DEBUG ElementRaytracer] Dynamic Exit Surface: Material = {exit_material_post}")
+
             exit_surface = Surface(
-                previous_surface=None,  # 独立表面，无前序
+                previous_surface=last_surface,  # 链接到前一个表面
                 geometry=exit_geometry,
-                material_post=exit_material_post,
+                material_post=exit_material_post, # 保持材料一致
                 is_stop=False,
                 aperture=None,
             )
@@ -2077,7 +2227,9 @@ class ElementRaytracer:
             M_before = np.asarray(rays.M).copy()
             N_before = np.asarray(rays.N).copy()
             
+            print(f"[DEBUG Exit] Before exit_surface.trace: rays at ({np.mean(rays.x):.4f}, {np.mean(rays.y):.4f}, {np.mean(rays.z):.4f}), dir=({np.mean(rays.L):.4f}, {np.mean(rays.M):.4f}, {np.mean(rays.N):.4f})")
             exit_surface.trace(rays)
+            print(f"[DEBUG Exit] After  exit_surface.trace: rays at ({np.mean(rays.x):.4f}, {np.mean(rays.y):.4f}, {np.mean(rays.z):.4f})")
             
             # 6. 计算带符号的 OPD 增量
             x_after = np.asarray(rays.x)
@@ -2105,7 +2257,8 @@ class ElementRaytracer:
                 f"  rx={np.degrees(rx):.2f}°, ry={np.degrees(ry):.2f}°\n"
                 f"  OPD Incr (signed): mean={np.mean(opd_increment_signed):.6f}, std={np.std(opd_increment_signed):.6f}\n"
             )
-            print(debug_msg)
+            if getattr(self, 'debug', False):
+                print(debug_msg)
             try:
                 with open('d:\\BTS\\debug_log.txt', 'a', encoding='utf-8') as f:
                     f.write(debug_msg + '\n')

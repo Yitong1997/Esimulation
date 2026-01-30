@@ -1450,3 +1450,1647 @@
   rx=5.72°, ry=180.00°
   OPD Incr (signed): mean=-0.069654, std=0.835596
 
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000114, std=3.332411
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.003198, std=3.284844
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000114, std=3.332411
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.003198, std=3.284844
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 100.0000)
+  Exit Dir Local: (0.0000, 0.0000, -1.0000)
+  rx=-0.00°, ry=180.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=116681.844137, std=48405000.007421
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.1980, -0.9802)
+  rx=11.42°, ry=180.00°
+  OPD Incr (signed): mean=0.047978, std=0.989861
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=116681.844137, std=48405000.007421
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391832
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=36490431.964631, std=1073231085.497058
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=116681.844137, std=48405000.007421
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.1980, -0.9802)
+  rx=11.42°, ry=180.00°
+  OPD Incr (signed): mean=0.047978, std=0.989861
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=116681.844137, std=48405000.007421
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-2708519.727960, std=57809144.422064
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-2708519.727960, std=57809144.422064
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-2708519.727960, std=57809144.422064
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, -1.0000)
+  rx=-0.00°, ry=180.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.1736, -0.9848)
+  rx=-10.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=0.432783
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.3420, -0.9397)
+  rx=-20.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=0.872243
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.5000, -0.8660)
+  rx=-30.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=1.325474
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.6428, -0.7660)
+  rx=-40.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=1.800465
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.7071, -0.7071)
+  rx=-45.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=2.049005
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.7660, -0.6428)
+  rx=-50.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=2.306701
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.8660, -0.5000)
+  rx=-60.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=2.855999
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.9397, -0.3420)
+  rx=-70.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=3.463742
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.9848, -0.1736)
+  rx=-80.00°, ry=180.00°
+  OPD Incr (signed): mean=-0.000000, std=4.150804
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000000, std=4.946736
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.9848, 0.1736)
+  rx=-80.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000000, std=5.895290
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.9397, 0.3420)
+  rx=-70.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000000, std=7.064671
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.8660, 0.5000)
+  rx=-60.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=8.567998
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000001, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-57.514719, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.002828, std=3.292656
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-11257567.955420, std=375224366.857615
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.397013, std=0.239025
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.242634, std=0.180282
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000015, std=3.338374
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000090, std=3.316281
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-57.514719, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-57.514719, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.002579, std=3.287800
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.002340, std=3.279072
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=0.295873, std=0.191628
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=-0.234451, std=0.132721
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.002579, std=3.287800
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.002340, std=3.279072
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=0.295873, std=0.191628
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=-0.234451, std=0.132721
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=0.035775, std=0.424521
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.0998, -0.9950)
+  rx=5.72°, ry=180.00°
+  OPD Incr (signed): mean=-0.069654, std=0.835596
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 54.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000000, std=0.000000
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -0.1980, -0.9802)
+  rx=11.42°, ry=180.00°
+  OPD Incr (signed): mean=0.047978, std=0.989861
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000058, std=3.285486
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000078, std=3.274559
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.269836, std=0.165454
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.213177, std=0.176499
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000058, std=3.285486
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000078, std=3.274559
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.269836, std=0.165454
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.213177, std=0.176499
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000058, std=3.285486
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000078, std=3.274559
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.269836, std=0.165454
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.213177, std=0.176499
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000001, std=3.391818
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=0.000003, std=3.338377
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (1.0000, 0.0000, 0.0000)
+  rx=-0.00°, ry=90.00°
+  OPD Incr (signed): mean=-0.000086, std=3.314558
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, -1.0000, 0.0000)
+  rx=90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000058, std=3.285486
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0000, 1.0000, 0.0000)
+  rx=-90.00°, ry=0.00°
+  OPD Incr (signed): mean=-0.000078, std=3.274559
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0057, 0.0000, 1.0000)
+  rx=-0.00°, ry=0.32°
+  OPD Incr (signed): mean=-0.269836, std=0.165454
+
+[DEBUG TRACE] Exit Surface (Dynamic)
+  Exit Pos Local: (0.0000, 0.0000, 0.0000)
+  Exit Dir Local: (0.0113, 0.0000, 0.9999)
+  rx=-0.00°, ry=0.65°
+  OPD Incr (signed): mean=0.213177, std=0.176499
+

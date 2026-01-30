@@ -1,1 +1,1 @@
-{'success': np.True_, 'phase_rms_mwaves': np.float64(8.480953709636491), 'phase_pv_mwaves': np.float64(30.780260791716405), 'amplitude_rms_percent': np.float64(0.012522690036985003), 'amplitude_pv_percent': np.float64(0.07149165318728379), 'phase_pass': np.True_, 'amp_pass': np.True_}
+{'success': np.True_, 'phase_rms_mwaves': np.float64(8.480953709696285), 'phase_pv_mwaves': np.float64(30.7802607919074), 'amplitude_rms_percent': np.float64(0.012522689369971073), 'amplitude_pv_percent': np.float64(0.07149151803316249), 'phase_pass': np.True_, 'amp_pass': np.True_}

@@ -1,25 +1,24 @@
 Traceback (most recent call last):
-  File "d:\BTS\src\bts\simulation.py", line 112, in simulate
-    sim.set_source(
-    ~~~~~~~~~~~~~~^
-        wavelength_um=source.wavelength_um,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ...<4 lines>...
-        beam_diam_fraction=source.beam_diam_fraction,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\BTS\src\hybrid_simulation\simulator.py", line 276, in run
+    propagator = HybridOpticalPropagator(
+        optical_system=self._surfaces,
+    ...<6 lines>...
+        debug=self._debug,
     )
-    ^
-  File "d:\BTS\src\hybrid_simulation\simulator.py", line 228, in set_source
-    from hybrid_optical_propagation import SourceDefinition
-  File "d:\BTS\src\hybrid_optical_propagation\__init__.py", line 50, in <module>
-    from .data_models import (
-    ...<4 lines>...
-    )
-  File "d:\BTS\src\hybrid_optical_propagation\data_models.py", line 739
-    R_sq = X**2 + Y**2
-IndentationError: unexpected indent
+  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 198, in __init__
+    self._precompute_optical_axis()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 219, in _precompute_optical_axis
+    chief_ray_data = self._trace_chief_ray_through_system()
+  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 286, in _trace_chief_ray_through_system
+    return self._trace_chief_ray_optiland()
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "d:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py", line 324, in _trace_chief_ray_optiland
+    optic.trace(rays)
+    ~~~~~~~~~~~^^^^^^
+TypeError: Optic.trace() missing 2 required positional arguments: 'Hy' and 'wavelength'
 
-The above exception was the direct cause of the following exception:
+During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
   File "d:\BTS\tests\integration\离轴抛物面镜传输误差标准测试文件.py", line 159, in run_oap_test
@@ -28,6 +27,8 @@ Traceback (most recent call last):
     ...<3 lines>...
         debug=debug,
     )
-  File "d:\BTS\src\bts\simulation.py", line 137, in simulate
-    raise SimulationError(f"仿真执行失败: {e}") from e
-hybrid_simulation.exceptions.SimulationError: 仿真执行失败: unexpected indent (data_models.py, line 739)
+  File "d:\BTS\src\bts\simulation.py", line 122, in simulate
+    result = sim.run()
+  File "d:\BTS\src\hybrid_simulation\simulator.py", line 302, in run
+    raise SimulationError(f"仿真执行失败: {e}")
+hybrid_simulation.exceptions.SimulationError: 仿真执行失败: Optic.trace() missing 2 required positional arguments: 'Hy' and 'wavelength'

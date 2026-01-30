@@ -45,7 +45,8 @@ from .exceptions import (
 )
 
 if TYPE_CHECKING:
-    from sequential_system.coordinate_system import GlobalSurfaceDefinition
+    from sequential_system.coordinate_system import GlobalSurfaceDefinition, ZemaxToOptilandConverter
+    from optiland.rays import RealRays
     from sequential_system.coordinate_tracking import OpticalAxisState
     from wavefront_to_rays.element_raytracer import ElementRaytracer, SurfaceDefinition
 
@@ -278,141 +279,99 @@ class HybridOpticalPropagator:
         
         使用 ElementRaytracer (Optiland) 追迹主光线，
         获取精确的主光线与每个表面的交点位置和出射方向。
-        这确保了"参考光轴"与物理光线追迹的"实际光轴"完全一致。
         
-        返回:
-            列表，每个元素是字典，包含：
-            - 'intersection': 主光线与表面的交点位置 (mm)，全局坐标系
-            - 'exit_direction': 主光线离开表面的方向（归一化），全局坐标系
+        Delegates to the new robust system-level tracer.
+        Kept for backward internal compatibility.
         """
-        from wavefront_to_rays.element_raytracer import ElementRaytracer
+        return self._trace_chief_ray_optiland()
+
+    def _trace_chief_ray_optiland(self) -> List[Dict[str, np.ndarray]]:
+        """
+        Perform robust system-level tracing using optiland and extract global coordinate data.
         
-        # 如果没有表面，返回空列表
-        if not self._optical_system:
-            return []
+        Returns:
+            List of dictionaries containing 'intersection' (x, y, z) and 
+            'exit_direction' (L, M, N) for each surface (excluding the dummy object surface).
+        """
+        from optiland.optic import Optic
+        from optiland.rays import RealRays
+        from sequential_system.coordinate_system import ZemaxToOptilandConverter
         
+        # 1. Convert to Optic using existing logic
+        # This handles creating the full optiland model from our surfaces
+        converter = ZemaxToOptilandConverter(
+            self._optical_system,
+            wavelength=self._wavelength_um,
+            entrance_pupil_diameter=10.0 # Default/Placeholder, doesn't affect single ray trace
+        )
+        optic = converter.convert()
+        
+        # 2. Define Chief Ray
+        # Start at global origin (0,0,0) pointing along Z (0,0,1) in Pupil/Object space
+        # Optiland handles the object->first surface transfer
+        rays = RealRays(
+            x=[0], y=[0], z=[0], 
+            L=[0], M=[0], N=[1], 
+            intensity=[1.0],
+            wavelength=self._wavelength_um
+        )
+        
+        # 3. Trace
+        # This propagates rays through ALL surfaces.
+        # optiland.surfaces.Surface._record() stores GLOBAL coordinates of:
+        # - Intersection (x, y, z)
+        # - Exit Direction (L, M, N) -> AFTER interaction and globalization
+        optic.surface_group.trace(rays)
+        
+        # 4. Extract Data & Map Indices
         chief_ray_data = []
         
-        # 初始主光线：从原点沿 +Z 方向
-        current_pos = np.array([0.0, 0.0, 0.0])
-        current_dir = np.array([0.0, 0.0, 1.0])
+        # Use optic.surface_group.surfaces
+        # Mapping: self._optical_system[i] corresponds to optic.surface_group.surfaces[i + 1]
+        # (Because ZemaxToOptilandConverter adds a dummy Object Surface at index 0)
         
-        for i, surface in enumerate(self._optical_system):
-            # 1. 创建 SurfaceDefinition
-            # 需要将 GlobalSurfaceDefinition 转换为 ElementRaytracer 可用的格式
-            # 特别是正确处理姿态角
-            # surface从全局坐标系转换到入射面坐标系，但是没有执行平移？只做了旋转，何意味
-            surface_def = self._create_surface_definition_for_tracing(
-                surface, current_dir
-            )
-            
-            # 2. 创建 ElementRaytracer，将全局光线角度转换至入射面坐标系。
-            # 仅包含当前这一个表面，且表面已经位于入射面坐标系。
-            # 注意：ElementRaytracer 会自动处理光线追迹和坐标变换
-            raytracer = ElementRaytracer(
-                surfaces=[surface_def],
-                wavelength=self._wavelength_um,
-                chief_ray_direction=tuple(current_pos * 0 + current_dir), # Ensure copy/type
-                entrance_position=tuple(current_pos),
-            )
+        for i in range(len(self._optical_system)):
+            # Access corresponding optiland surface (skip object surface 0)
+            opt_surface_index = i + 1
+            if opt_surface_index >= len(optic.surface_group.surfaces):
+                 break 
 
-            #这里surface_def，current_pos和current_dir是全局坐标系
+            opt_surface = optic.surface_group.surfaces[opt_surface_index]
             
-            # 3. 追迹主光线
-            # 这会计算出射方向和交点
-            raytracer.trace_chief_ray()
-            
-            # 4. 获取结果
-            # 获取出射方向（全局）
-            exit_dir = np.array(raytracer.exit_chief_direction)
-            
-            # 获取交点（全局）
-            # 新增的 API
-            intersection = np.array(raytracer.get_global_chief_ray_intersection())
-            
+            # Extract Global Intersection (x, y, z)
+            # opt_surface.x is an array (size 1 for 1 ray), take item 0
+            if len(opt_surface.x) > 0:
+                intersection = np.array([
+                    opt_surface.x[0],
+                    opt_surface.y[0],
+                    opt_surface.z[0]
+                ])
+                
+                # Extract Global Exit Direction (L, M, N)
+                exit_direction = np.array([
+                    opt_surface.L[0],
+                    opt_surface.M[0],
+                    opt_surface.N[0]
+                ])
+                
+                print(f"[DEBUG_CHIEF] Map User Surf {i} -> Optiland Surf {opt_surface_index} ({type(opt_surface).__name__})")
+                print(f"    Intersection: {intersection}")
+                print(f"    Exit Dir    : {exit_direction}")
+
+            else:
+                # Fallback if ray was clipped/stopped (shouldn't happen for chief ray usually)
+                print(f"Warning: Chief ray stopped at surface {i}")
+                intersection = np.zeros(3)
+                exit_direction = np.array([0., 0., 1.])
+
             chief_ray_data.append({
                 'intersection': intersection,
-                'exit_direction': exit_dir,
+                'exit_direction': exit_direction,
             })
-            #打印此处光线状态
-            print(f"Surface {i}: Intersection {intersection}, Exit Direction {exit_dir}")
-            # 5. 更新当前位置和方向
-            # 下一个表面的入射点是当前表面的交点
-            current_pos = intersection.copy()
-            current_dir = exit_dir.copy()
-        
+            
         return chief_ray_data
 
-    def _create_surface_definition_for_tracing(
-        self,
-        surface: "GlobalSurfaceDefinition",
-        incident_dir: np.ndarray,
-    ) -> "SurfaceDefinition":
-        """创建用于光线追迹的 SurfaceDefinition
-        
-        参数:
-            surface: 全局表面定义
-            incident_dir: 入射光方向（归一化）
-            
-        返回:
-            SurfaceDefinition 对象
-        """
-        from wavefront_to_rays.element_raytracer import (
-            SurfaceDefinition,
-            compute_rotation_matrix,
-        )
-        from scipy.spatial.transform import Rotation
-        
-        # 确定表面类型
-        if surface.is_mirror:
-            surface_type = 'mirror'
-            material = 'mirror'
-        else:
-            surface_type = 'refract'
-            material = surface.material
-        
-        # 1. 获取入射光坐标系的旋转矩阵 (R_beam)
-        R_beam = compute_rotation_matrix(tuple(incident_dir))
-        
-        # 2. 获取表面全局姿态矩阵 (R_surf)
-        R_surf = surface.orientation
-        
-        # 3. 计算相对旋转矩阵 (R_rel)
-        # R_surf = R_beam @ R_rel  =>  R_rel = R_beam.T @ R_surf
-        R_rel = R_beam.T @ R_surf
-        
-        # 4. 提取欧拉角 (rx, ry)
-        # ⚠️ 关键修正：必须使用 'yxz' 顺序以匹配 optiland 的旋转约定 (Ry @ Rx)
-        # optiland/ElementRaytracer 使用: Direction -> (rx, ry) -> Ry(ry) @ Rx(rx) @ [0,0,1]
-        # 这是 intrinsic rotation sequence: y -> x
-        euler_angles = Rotation.from_matrix(R_rel).as_euler('yxz', degrees=False)
-        tilt_y = euler_angles[0]
-        tilt_x = euler_angles[1]
-        
-        # 针对数值误差进行截断（Clamp）
-        # 当 R_rel 接近对角阵时（如反向传播），euler角度可能出现 3.1415926535... 的细微误差
-        # 这会导致后续计算出现不必要的微小倾斜
-        EPSILON = 1e-8
-        if abs(abs(tilt_y) - np.pi) < EPSILON:
-             tilt_y = np.pi if tilt_y > 0 else -np.pi
-        elif abs(tilt_y) < EPSILON:
-             tilt_y = 0.0
-             
-        if abs(abs(tilt_x) - np.pi) < EPSILON:
-             tilt_x = np.pi if tilt_x > 0 else -np.pi
-        elif abs(tilt_x) < EPSILON:
-             tilt_x = 0.0
-        
-        return SurfaceDefinition(
-            surface_type=surface_type,
-            radius=surface.radius,
-            thickness=surface.thickness,
-            material=material,
-            conic=surface.conic,
-            tilt_x=tilt_x,
-            tilt_y=tilt_y,
-            vertex_position=tuple(surface.vertex_position),
-        )
+
 
     def propagate(self) -> PropagationResult:
         """执行混合传播
@@ -472,6 +431,8 @@ class HybridOpticalPropagator:
             distance = entrance_axis.path_length - current_path_length
             
             # A. 自由空间传播 (如果距离 > 0)
+
+            ##这里很大的不足，需要考虑传播距离负向（反向倒退光束）的情况。
             if distance > 1e-6:
                 current_state = self._free_space_propagator.propagate(
                     state=current_state,
@@ -482,14 +443,31 @@ class HybridOpticalPropagator:
                 total_path_length += distance
                 current_path_length += distance
             
-            # B. 元件传播
-            current_state = self._hybrid_element_propagator.propagate(
-                current_state,
-                surface,
-                entrance_axis,
-                exit_axis,
-                target_surface_index=i,
-            )
+            # B. 元件传播 / 表面交互
+            # 优化：智能检测是否需要执行光线追迹
+            prev_surface = self._optical_system[i-1] if i > 0 else None
+            interaction_type = classify_surface_interaction(surface, prev_surface)
+            
+            # 对于单纯的自由空间传播（如无光焦度的空气面）或坐标断点，跳过光线追迹
+            if interaction_type in ['free_space', 'coordinate_break']:
+                # 直接通过 (Pass-through)
+                # 使用 FreeSpacePropagator 将状态更新到 exit_axis (距离通常为 0)
+                # 这会正确更新 optical_axis_state, position, index 等元数据
+                current_state = self._free_space_propagator.propagate(
+                    state=current_state,
+                    target_axis_state=exit_axis,
+                    target_surface_index=i,
+                    target_position="exit",
+                )
+            else:
+                # 执行混合元件传播 (光线追迹 + 波前调制)
+                current_state = self._hybrid_element_propagator.propagate(
+                    current_state,
+                    surface,
+                    entrance_axis,
+                    exit_axis,
+                    target_surface_index=i,
+                )
             
             # 存储中间状态
             self._surface_states.append(current_state)

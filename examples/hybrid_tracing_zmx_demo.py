@@ -50,7 +50,7 @@ def main():
     # 可以在此处修改为您想要测试的 ZMX 文件
     zmx_dir = project_root / 'optiland-master' / 'tests' / 'zemax_files'
     # zmx_file = zmx_dir / 'complicated_fold_mirrors_setup_v2.zmx'
-    zmx_file = zmx_dir / 'simple_fold_mirror_up.zmx'
+    zmx_file = zmx_dir / 'complicated_fold_mirrors_setup_v2.zmx'
     
     if not zmx_file.exists():
         print(f"错误: 找不到 ZMX 文件: {zmx_file}")
@@ -69,6 +69,18 @@ def main():
         print(f"加载失败: {e}")
         return
 
+    print("  绘制光路布局...")
+    try:
+        # User requested 3D plotting by default
+        layout_fig, _ = system.plot_layout(
+            mode='3d', 
+            save_path='zmx_trace_layout.png',
+            show=False
+        )
+        print("  光路布局已保存: zmx_trace_layout.png")
+    except Exception as e:
+        print(f"  无法绘制光路布局: {e}")
+    
     # ==========================================================================
     # 3. 定义光源 (Define Light Source)
     # ==========================================================================
@@ -85,7 +97,7 @@ def main():
         w0_mm=waist_radius,
         grid_size=grid_size,
         z0_mm=0.0,              # 光束起始位置 (假设从系统入口 z=0 处入射)
-        physical_size_mm=40.0,  # 物理网格尺寸 (需大于光束直径，例如 > 4*w0)
+        physical_size_mm=8*waist_radius,  # 物理网格尺寸 (需大于光束直径，例如 > 4*w0)
         beam_diam_fraction=0.25 # 光束直径占网格的比例
     )
     
@@ -131,19 +143,8 @@ def main():
     rms = final_wf.get_residual_rms_waves()
     print(f"  最终波前 RMS 误差: {rms:.4f} waves")
     
-    # 5.2 绘制 2D 光路布局图
-    print("  绘制光路布局...")
-    try:
-        layout_fig, _ = system.plot_layout(
-            mode='2d', 
-            projection='YZ', 
-            save_path='zmx_trace_layout.png',
-            show=False
-        )
-        print("  光路布局已保存: zmx_trace_layout.png")
-    except Exception as e:
-        print(f"  无法绘制光路布局: {e}")
-    
+    # 5.2 绘制 3D 光路布局图
+
     # 5.3 绘制最终波前 (相位和强度)
     print("  绘制最终波前...")
     try:

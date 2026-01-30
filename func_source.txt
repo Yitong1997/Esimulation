@@ -1,0 +1,112 @@
+Line: 338
+def compute_rotation_matrix(
+    chief_ray_direction: Tuple[float, float, float],
+) -> NDArray:
+    """计算从入射面局部坐标系到全局坐标系的旋转矩阵
+    
+    根据主光线方向计算旋转矩阵。主光线方向定义了入射面的法向量，
+    即局部坐标系的 Z 轴在全局坐标系中的方向。
+    
+    参数:
+        chief_ray_direction: 主光线方向 (L, M, N)，即局部 Z 轴在全局坐标系中的方向。
+                            必须是归一化的方向余弦。
+    
+    返回:
+        3x3 旋转矩阵 R，满足 v_global = R @ v_local
+        矩阵的列向量分别为局部 X、Y、Z 轴在全局坐标系中的表示
+    
+    异常:
+        ValueError: 如果输入方向向量无效（长度为零或未归一化）
+    
+    示例:
+        >>> # 正入射情况：主光线沿全局 Z 轴
+        >>> R = compute_rotation_matrix((0, 0, 1))
+        >>> np.allclose(R, np.eye(3))
+        True
+        
+        >>> # 45度倾斜入射：主光线在 YZ 平面内
+        >>> R = compute_rotation_matrix((0, np.sin(np.pi/4), np.cos(np.pi/4)))
+    
+    算法说明:
+        1. 局部 Z 轴 = 主光线方向（归一化）
+        2. 选择参考向量来定义局部 X 轴：
+           - 如果主光线接近全局 Y 轴，使用全局 X 轴作为参考
+           - 否则使用全局 Y 轴作为参考
+        3. 局部 X 轴 = 参考向量 × 局部 Z 轴（归一化）
+        4. 局部 Y 轴 = 局部 Z 轴 × 局部 X 轴
+        5. 旋转矩阵的列向量为局部坐标轴在全局坐标系中的表示
+    
+    坐标系一致性说明:
+        为了确保入射面和出射面的局部坐标系保持一致的"上下"方向，
+        我们需要确保局部 Y 轴始终与全局 Y 轴的投影方向一致。
+        
+        当主光线方向的 Z 分量为负时（如反射后向 -Z 方向传播），
+        简单地翻转 X 轴会导致 Y 轴也翻转，从而破坏坐标系的一致性。
+        
+        正确的做法是：确保局部 Y 轴在全局 Y 方向上的投影为正。
+    
+    Validates:
+        - Requirements 3.1: 入射面定位于 z=0 位置
+        - Requirements 3.2: 出射面定位于最后一个光学表面的顶点位置
+        - Requirements 3.4: 接受 z 坐标不为零的光线并从其当前位置开始追迹
+    """
+    # 将输入转换为 numpy 数组
+    z_local = np.array(chief_ray_direction, dtype=np.float64)
+    
+    # 验证输入
+    if z_local.shape != (3,):
+        raise ValueError(
+            f"主光线方向必须是长度为 3 的向量，实际形状为 {z_local.shape}"
+        )
+    
+    # 检查向量长度
+    norm = np.linalg.norm(z_local)
+    if norm < 1e-10:
+        raise ValueError("主光线方向不能为零向量")
+    
+    # 检查是否归一化（允许小误差）
+    if not np.isclose(norm, 1.0, rtol=1e-6):
+        raise ValueError(
+            f"主光线方向余弦未归一化：L² + M² + N² = {norm**2:.6f}，期望为 1.0"
+        )
+    
+    # 归一化（处理小的数值误差）
+    z_local = _normalize_vector(z_local)
+    
+    # 选择参考向量来定义局部 X 轴
+    # 如果主光线接近全局 Y 轴（|M| > 0.999999），使用全局 X 轴作为参考
+    # 否则使用全局 Y 轴作为参考
+    # 
+    # 修正：原阈值 0.9 (约 25°) 过宽，导致在 steep angle (如离轴抛物面) 下
+    # 坐标系发生 90° 翻转，进而这就导致 tilt_x/tilt_y 作用轴错误。
+    # 现改为 0.999999 (约 0.08°)，仅在极接近垂直时切换参考轴。
+    if abs(z_local[1]) > 0.999999:
+        ref = np.array([1.0, 0.0, 0.0])
+    else:
+        ref = np.array([0.0, 1.0, 0.0])
+    
+    # 局部 X 轴 = ref × z_local（归一化）
+    x_local = np.cross(ref, z_local)
+    x_local = _normalize_vector(x_local)
+    
+    # 局部 Y 轴 = z_local × x_local（确保右手系）
+    y_local = np.cross(z_local, x_local)
+    # y_local 已经是归一化的（因为 z_local 和 x_local 都是归一化且正交的）
+    
+    # ⚠️ 关键修复：确保局部 Y 轴与全局 Y 轴的投影为正
+    # 这样可以保证入射面和出射面的局部坐标系保持一致的"上下"方向
+    # 
+    # 当主光线方向的 Z 分量为负时（如反射后向 -Z 方向传播），
+    # 叉积的结果可能导致 Y 轴翻转。
+    # 
+    # 通过检查 Y 轴在全局 Y 方向上的投影，如果为负则同时翻转 X 和 Y 轴
+    # （同时翻转 X 和 Y 保持右手系）
+    if y_local[1] < 0:
+        x_local = -x_local
+        y_local = -y_local
+    
+    # 旋转矩阵：列向量为局部坐标轴在全局坐标系中的表示
+    # R = [x_local | y_local | z_local]
+    R = np.column_stack([x_local, y_local, z_local])
+    
+    return R
