@@ -1,0 +1,4 @@
+# file: D:\BTS\src\wavefront_to_rays\element_raytracer.py
+# hypothesis_version: 6.151.4
+
+[-1.0, -0.999999, 0.0, 1e-14, 1e-10, 1e-06, 1e-05, 0.001, 0.9999, 0.999999, 1.0, 2.0, 10000.0, 180, ')', '0', '=', 'EPD', 'N/A', 'None', '_exit_dir_local', 'a', 'air', 'angle', 'conic', 'cs', 'd:\\BTS\\debug_log.txt', 'debug', 'geometry', 'inf', 'k', 'material', 'material_post', 'mirror', 'radius', 'refract', 'rx', 'ry', 'rz', 'semi_aperture', 'surface_type', 'thickness', 'tilt_x', 'tilt_y', 'utf-8', 'vertex_position', 'x', 'y', 'z', '主光线交点未计算', '主光线方向不能为零向量', '无法归一化零向量', '材料名称不能为空字符串']

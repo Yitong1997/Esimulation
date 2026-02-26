@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\materials\material_file.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-08, 0.0034785, 0.028, 1.0, 2.0, 15.0, 6432.8, 146, 25540, 2949810, 'DATA', 'REFERENCE', 'SPECS', 'Schott', 'coefficients', 'data', 'filename', 'formula ', 'formula 1', 'formula 2', 'formula 3', 'formula 4', 'formula 5', 'formula 6', 'formula 7', 'formula 8', 'formula 9', 'pressure', 'tabulated', 'tabulated k', 'tabulated n', 'tabulated nk', 'temperature', 'thermal_dispersion', 'type']

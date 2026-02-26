@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\zernike\fit.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.15, 0.5, 1.0, 5.5, 111, 128, 270, '2d', '3d', 'OPD (waves)', 'Pupil X', 'Pupil Y', 'Residual (waves)', 'canvas', 'fringe', 'noll', 'none', 'o', 'projection', 'standard', 'viridis']

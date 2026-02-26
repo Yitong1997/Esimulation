@@ -1,0 +1,4 @@
+# file: d:\BTS\src\utils\debug_viz.py
+# hypothesis_version: 6.151.4
+
+[1e-10, 0.003, 0.3, 0.4, 0.6, 1.0, 500, 'Astig 0', 'Astig 45', 'Coma X', 'Coma Y', 'Comparison', 'Defocus', 'Difference', 'OPD Increment', 'Phase', 'Phase (rad or waves)', 'Piston', 'Ray Distribution', 'Spherical', 'Tilt X', 'Tilt Y', 'blue', 'coolwarm', 'equal', 'ignore', 'jet', 'lower', 'mid', 'off', 'red', 'seismic', 'x (mm)', 'y (mm)']

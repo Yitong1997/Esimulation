@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\beam_propagation_analyzer.py
+# hypothesis_version: 6.151.4
+
+[0.02, 0.3, 0.5, 0.7, 0.98, 1000.0, 150, 200, 256, ':', 'CircularAperture', '^', 'best', 'blue', 'gray', 'green', 'ideal', 'iso', 'k--', 'o', 'proper.WaveFront', 'red', 'round', 's', 'tight', 'top', 'wheat', '传输位置列表不能为空', '传输位置必须是数值类型', '传输距离 z (mm)', '光束直径 D4σ (mm)', '测量值 (X 方向)', '测量值 (Y 方向)', '测量值 (平均)', '理论曲线']

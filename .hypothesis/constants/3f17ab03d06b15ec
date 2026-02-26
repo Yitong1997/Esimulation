@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\backend\numpy_backend.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.5, 1.0, 'ScalarOrArray', 'bilinear', 'border', 'constant', 'full', 'nearest', 'numpy', 'reflect', 'reflection', 'same', 'valid', 'xyz', 'zeros']

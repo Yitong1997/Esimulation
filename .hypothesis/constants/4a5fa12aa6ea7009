@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\coordinate_system.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.55, 1.0, 10.0, ')', ', is_mirror=True', 'EPD', 'Optic', 'ZmxDataModel', 'ZmxSurfaceData', 'air', 'angle', 'asphere_coeffs', 'axes', 'biconic', 'coefficients', 'conic', 'conic_x', 'conic_y', 'coordinate_break', 'even_asphere', 'flat', 'index', 'is_mirror', 'is_stop', 'material', 'mirror', 'order', 'origin', 'radius', 'radius_x', 'radius_y', 'rx', 'ry', 'rz', 'semi_diameter', 'standard', 'surface_type', 'x', 'xyz', 'y', 'z']

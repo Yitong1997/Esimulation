@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\wavefront\reconstructor.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-10, 1e-06, 1.0, 2.0, 'cubic', 'linear', 'thin_plate_spline']

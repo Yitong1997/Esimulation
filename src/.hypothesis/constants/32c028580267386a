@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_simulation\plotting.py
+# hypothesis_version: 6.150.2
+
+[0.01, 0.5, 0.9, 3.5, 100, 111, 150, '3d', 'Amplitude', 'FangSong', 'Microsoft YaHei', 'Noto Sans SC', 'Phase (waves)', 'RdBu_r', 'Residual', 'Residual (waves)', 'STHeiti', 'SimHei', 'SimSun', 'SimulationResult', 'SurfaceRecord', 'WavefrontData', 'X (mm)', 'Y (mm)', 'amplitude', 'axes.unicode_minus', 'font.family', 'font.sans-serif', 'hot', 'lower', 'phase', 'pilot_amplitude', 'pilot_phase', 'residual_amplitude', 'residual_phase', 'sans-serif', 'tight', 'twilight', 'waves', '振幅', '振幅残差', '无波前数据可绘制', '混合光学仿真结果扩展概览', '混合光学仿真结果概览', '相位']

@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\forbes\qpoly.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-99, 0.25, 0.5, 2.0, 2000, 'shape', 'torch']

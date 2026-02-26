@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\coatings.py
+# hypothesis_version: 6.150.2
+
+['material_post', 'material_pre', 'reflectance', 'transmittance', 'type']

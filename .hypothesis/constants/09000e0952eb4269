@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\__init__.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-12, 0.001, 1.0, 1000, 'GaussianSource', 'PropagationResult', 'SurfaceDebugInfo', 'System', 'air', 'asphere_coeffs', 'check_vendor_imports', 'coord_break', 'coordinate_break', 'coordinates', 'core', 'entrance', 'even_asphere', 'exit', 'exit_direction', 'interaction_info', 'intersection', 'io', 'is_mirror', 'load_zmx', 'material', 'optiland', 'optiland-master', 'orientation', 'paraxial', 'prop_run', 'propagate', 'propagation', 'proper', 'proper_v3.3.4_python', 'radius', 'radius_x', 'source', 'src', 'surface_overrides', 'surface_type', 'trace', 'utils', 'visualization', 'wavefront']

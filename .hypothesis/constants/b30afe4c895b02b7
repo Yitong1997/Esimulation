@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\forbes\geometry.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 0.0, 1e-12, 1e-10, 1.0, 100, 'ForbesQ2d', 'ForbesQbfs', 'a', 'b', 'cs', 'sin', 'solver_config', 'surface_config', 'torch', 'type']

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\visualization.py
+# hypothesis_version: 6.150.2
+
+[1e-06, 0.2, 0.3, 0.5, 0.6, 0.8, 0.9, 1.1, 1.5, 3.0, 100.0, 100, 200, '-', '--', ':', 'Axes', 'Beam Envelope', 'Figure', 'I (a.u.)', 'Intensity', 'No sampling planes', 'Path Length (mm)', 'Phase', 'Phase (rad)', 'SimulationResults', 'X (mm)', 'Y (mm)', 'Y Position (mm)', 'b', 'b--', 'blue', 'brown', 'center', 'datalim', 'equal', 'flat_mirror', 'gray', 'green', 'hot', 'k', 'lower', 'orange', 'parabolic_mirror', 'pink', 'purple', 'r', 'r-', 'red', 'spherical_mirror', 'teal', 'thin_lens', 'top', 'twilight', 'upper left', 'upper right', 'y']

@@ -1,0 +1,43 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "*" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build ZOSPy
+    strategy:
+      matrix:
+        python: [ "3.10", "3.11", "3.12", "3.13" ]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        id: setup-uv
+        uses: astral-sh/setup-uv@v7
+      - name: Build package
+        run: uv build --python ${{ matrix.python }}
+      - name: Install package
+        run: uv venv --python ${{ matrix.python }} && uv pip install --find-links ./dist/ zospy
+
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint ZOSPy
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        id: setup-uv
+        uses: astral-sh/setup-uv@v7
+      - name: Lint code
+        run: |
+          uvx hatch fmt --check
+      - name: Lint docstrings
+        if: always() # Run even if previous step fails
+        run: |
+          uvx pydocstringformatter --exit-code examples scripts tests zospy

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_propagation\propagator.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 1.0, 100, '[DEBUG] 开始混合传播...', '[DEBUG] 混合传播完成', 'analytical', 'inf', 'mirror', 'pilot_phase', 'proper', 'rays_in', 'rays_out', 'residual_phase', 'src', 'tangent_amplitude_in', 'validation_result', '元件定义不能为 None']

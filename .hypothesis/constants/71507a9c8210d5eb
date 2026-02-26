@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\result.py
+# hypothesis_version: 6.151.4
+
+[-60.0, 0.01, 30.0, 200, '3d', 'Amplitude', 'Phase', 'RdBu', 'RdBu_r', 'all', 'basic', 'both', 'comment', 'debug', 'detail', 'entrance', 'exit', 'hot', 'normal', 'residual_phase', 'single', 'surface_type', 'twilight', 'types', 'viridis', 'y']

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_optical_propagation\validators.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 0.01, 1.0, 'energy_after', 'energy_before', 'energy_gain', 'energy_loss', 'expected_max_rad', 'max_error', 'max_error_rad', 'max_error_waves', 'max_phase_diff_rad', 'max_phase_diff_waves', 'phase_grid', 'relative_change', 'rms_error', 'rms_error_rad', 'rms_error_waves', 'threshold_rad', 'tolerance', '波前误差: 无有效数据', '雅可比振幅: 无有效数据']
