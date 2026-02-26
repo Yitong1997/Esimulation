@@ -30,3 +30,6 @@ angular_spectrum_method/
 
 # 输出目录
 output/
+
+# 测试与结果输出
+sandbox/
