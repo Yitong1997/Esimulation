@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.ndimage import zoom
+
 
 from zbf_io import ZBFData, write_zbf, read_zbf
 
@@ -76,6 +76,34 @@ def detect_aperture(
     return mask
 
 
+def _center_pad_to_shape(
+    arr: np.ndarray,
+    target_shape: tuple[int, int],
+) -> np.ndarray:
+    """将二维数组居中零填充到目标形状。
+
+    较小数组被放置在目标网格中心，周围用零填充。
+    这保证了空间位置对齐（假设两者共享同一中心和像素尺寸）。
+
+    参数：
+        arr: 源二维数组
+        target_shape: (target_ny, target_nx)
+
+    返回：
+        零填充后的数组，形状为 target_shape
+    """
+    if arr.shape == target_shape:
+        return arr.copy()
+
+    result = np.zeros(target_shape, dtype=arr.dtype)
+    # 计算居中偏移量
+    pad_y = (target_shape[0] - arr.shape[0]) // 2
+    pad_x = (target_shape[1] - arr.shape[1]) // 2
+    result[pad_y:pad_y + arr.shape[0],
+           pad_x:pad_x + arr.shape[1]] = arr
+    return result
+
+
 def match_apertures(
     irradiance: np.ndarray,
     phase: np.ndarray,
@@ -83,7 +111,8 @@ def match_apertures(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """匹配光强和相位数据的孔径区域。
 
-    若两者网格尺寸不同，将较小数组插值到较大数组的尺寸。
+    若两者网格尺寸不同，将较小数组居中零填充到较大数组的尺寸，
+    保持空间对齐（假设两者共享同一像素尺寸和物理中心）。
     取两者孔径掩膜的交集，将交集外的值设为零。
 
     参数：
@@ -97,26 +126,17 @@ def match_apertures(
         - matched_phase: 匹配后的相位数组
         - unified_mask: 统一孔径布尔掩膜
     """
-    # 复制输入数组，避免修改原始数据
-    irr = irradiance.copy()
-    ph = phase.copy()
-
-    # 若两者网格尺寸不同，将较小数组插值到较大数组尺寸
-    if irr.shape != ph.shape:
+    # 若两者网格尺寸不同，用居中零填充对齐
+    if irradiance.shape != phase.shape:
         # 目标形状：每个维度取两个输入中的最大值
-        target_ny = max(irr.shape[0], ph.shape[0])
-        target_nx = max(irr.shape[1], ph.shape[1])
+        target_ny = max(irradiance.shape[0], phase.shape[0])
+        target_nx = max(irradiance.shape[1], phase.shape[1])
         target_shape = (target_ny, target_nx)
-
-        # 对光强数组插值（若其尺寸小于目标）
-        if irr.shape != target_shape:
-            zoom_factors = (target_ny / irr.shape[0], target_nx / irr.shape[1])
-            irr = zoom(irr, zoom_factors, order=3)
-
-        # 对相位数组插值（若其尺寸小于目标）
-        if ph.shape != target_shape:
-            zoom_factors = (target_ny / ph.shape[0], target_nx / ph.shape[1])
-            ph = zoom(ph, zoom_factors, order=3)
+        irr = _center_pad_to_shape(irradiance, target_shape)
+        ph = _center_pad_to_shape(phase, target_shape)
+    else:
+        irr = irradiance.copy()
+        ph = phase.copy()
 
     # 分别检测光强和相位的孔径掩膜
     irr_mask = detect_aperture(irr, threshold)
@@ -130,6 +150,44 @@ def match_apertures(
     ph[~unified_mask] = 0.0
 
     return irr, ph, unified_mask
+
+
+def _next_power_of_2(n: int) -> int:
+    """返回 >= n 的最小 2 的幂。"""
+    if n <= 0:
+        return 1
+    p = 1
+    while p < n:
+        p <<= 1
+    return p
+
+
+def pad_to_power_of_2(
+    Ex: np.ndarray,
+) -> np.ndarray:
+    """将复数电场数组居中零填充到 2 的幂次尺寸。
+
+    Zemax POP 模块要求 ZBF 网格为 2 的幂（32, 64, 128, ...）。
+    若输入尺寸已是 2 的幂则直接返回副本。
+
+    参数：
+        Ex: 复数电场 (ny, nx)
+
+    返回：
+        填充后的复数电场，形状为 (pow2_ny, pow2_nx)
+    """
+    ny, nx = Ex.shape
+    pow2_ny = _next_power_of_2(ny)
+    pow2_nx = _next_power_of_2(nx)
+
+    if pow2_ny == ny and pow2_nx == nx:
+        return Ex.copy()
+
+    result = np.zeros((pow2_ny, pow2_nx), dtype=Ex.dtype)
+    pad_y = (pow2_ny - ny) // 2
+    pad_x = (pow2_nx - nx) // 2
+    result[pad_y:pad_y + ny, pad_x:pad_x + nx] = Ex
+    return result
 
 
 def convert_csv_to_zbf(
@@ -146,6 +204,7 @@ def convert_csv_to_zbf(
     zx: float = 0.0, zy: float = 0.0,
     threshold: float = None,
     verify: bool = True,
+    force_power_of_2: bool = True,
 ) -> ZBFData:
     """CSV 到 ZBF 的端到端转换。
 
@@ -160,6 +219,7 @@ def convert_csv_to_zbf(
         wx, wy, Rx, Ry, zx, zy: 导引光束参数（默认 0.0）
         threshold: 孔径检测阈值（可选）
         verify: 是否执行往返验证（默认 True）
+        force_power_of_2: 是否将网格补零到 2 的幂次尺寸（默认 True）
 
     返回：
         生成的 ZBFData 对象
@@ -193,6 +253,16 @@ def convert_csv_to_zbf(
 
     # 构造复数电场：振幅 = sqrt(光强)，Ex = 振幅 * exp(j * 相位)
     Ex = np.sqrt(matched_irradiance) * np.exp(1j * matched_phase)
+
+    # 2 的幂次补零
+    if force_power_of_2:
+        ny_orig, nx_orig = Ex.shape
+        Ex = pad_to_power_of_2(Ex)
+        if Ex.shape != (ny_orig, nx_orig):
+            print(
+                f"  2的幂次补零：{nx_orig}×{ny_orig} → "
+                f"{Ex.shape[1]}×{Ex.shape[0]}"
+            )
 
     # 创建并填充 ZBFData 对象
     ny, nx = Ex.shape
