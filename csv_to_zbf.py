@@ -8,12 +8,11 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.ndimage import binary_fill_holes
 
 # 配置 Matplotlib 以支持中文显示
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示为方块的问题
-
-
+plt.rcParams['axes.unicode_minus'] = False
 
 from zbf_io import ZBFData, write_zbf, read_zbf
 
@@ -56,6 +55,7 @@ def read_beam_csv(filepath: str) -> np.ndarray:
 def detect_aperture(
     data: np.ndarray,
     threshold: float = None,
+    fill_holes: bool = False,
 ) -> np.ndarray:
     """检测二维数据中的有效孔径区域。
 
@@ -64,6 +64,9 @@ def detect_aperture(
     参数：
         data: 二维浮点数组（光强或相位）
         threshold: 背景判定阈值。默认为 data 最大绝对值的 1e-6 倍
+        fill_holes: 是否填充内部空洞（从外围识别背景）。
+            为 True 时，仅边缘连通的零值区域被视为背景，
+            内部零值（如相位中心 = 0）保留为有效区域。
 
     返回：
         布尔掩膜数组，True 表示有效孔径区域，False 表示背景
@@ -78,6 +81,11 @@ def detect_aperture(
 
     # 生成布尔掩膜：绝对值大于阈值的像素为有效区域
     mask = np.abs(data) > threshold
+
+    # 填充内部空洞：仅边缘连通的 False 区域为背景，内部 False 填充为 True
+    if fill_holes:
+        mask = binary_fill_holes(mask)
+
     return mask
 
 
@@ -109,43 +117,133 @@ def _center_pad_to_shape(
     return result
 
 
+def _mask_centroid(mask: np.ndarray) -> tuple[float, float]:
+    """计算布尔掩膜的质心（像素坐标）。
+
+    参数：
+        mask: 二维布尔数组
+
+    返回：
+        (cy, cx) 质心像素坐标。若掩膜为空则返回网格几何中心。
+    """
+    ys, xs = np.where(mask)
+    if len(ys) == 0:
+        return mask.shape[0] / 2.0, mask.shape[1] / 2.0
+    return float(np.mean(ys)), float(np.mean(xs))
+
+
+def _centroid_align_arrays(
+    arr1: np.ndarray, centroid1: tuple[float, float],
+    arr2: np.ndarray, centroid2: tuple[float, float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """基于掩膜质心将两个数组对齐到通用网格上。
+
+    计算允许两个数组质心重合的最小网格，
+    将两者分别放置到该网格上，周围用零填充。
+
+    参数：
+        arr1: 第一个数组 (h1, w1)
+        centroid1: arr1 掩膜的质心 (cy1, cx1)
+        arr2: 第二个数组 (h2, w2)
+        centroid2: arr2 掩膜的质心 (cy2, cx2)
+
+    返回：
+        (aligned_arr1, aligned_arr2)，形状相同的对齐后数组
+    """
+    cy1, cx1 = centroid1
+    cy2, cx2 = centroid2
+    h1, w1 = arr1.shape
+    h2, w2 = arr2.shape
+
+    # 将质心取整（像素对齐）
+    icy1, icx1 = int(round(cy1)), int(round(cx1))
+    icy2, icx2 = int(round(cy2)), int(round(cx2))
+
+    # 计算对齐后质心周围所需空间
+    above = max(icy1, icy2)
+    below = max(h1 - icy1, h2 - icy2)
+    left  = max(icx1, icx2)
+    right = max(w1 - icx1, w2 - icx2)
+
+    target_h = above + below
+    target_w = left + right
+
+    out1 = np.zeros((target_h, target_w), dtype=arr1.dtype)
+    out2 = np.zeros((target_h, target_w), dtype=arr2.dtype)
+
+    # arr1 的质心啩入目标网格的 (above, left) 位置
+    y1 = above - icy1
+    x1 = left - icx1
+    out1[y1:y1 + h1, x1:x1 + w1] = arr1
+
+    y2 = above - icy2
+    x2 = left - icx2
+    out2[y2:y2 + h2, x2:x2 + w2] = arr2
+
+    return out1, out2
+
+
 def match_apertures(
     irradiance: np.ndarray,
     phase: np.ndarray,
     threshold: float = None,
+    align_mode: str = 'center',
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """匹配光强和相位数据的孔径区域。
 
-    若两者网格尺寸不同，将较小数组居中零填充到较大数组的尺寸，
-    保持空间对齐（假设两者共享同一像素尺寸和物理中心）。
-    取两者孔径掩膜的交集，将交集外的值设为零。
+    支持两种对齐模式：
+      - 'center'：居中零填充，假设两者共享网格几何中心和像素尺寸。
+      - 'centroid'：基于各自掩膜的质心对齐，从外围识别背景（fill_holes），
+        适用于光斑偏心或相位中心为零的场景。
 
     参数：
         irradiance: 光强二维数组
         phase: 相位二维数组
         threshold: 孔径检测阈值（可选）
+        align_mode: 对齐模式，'center'(默认) 或 'centroid'
 
     返回：
         (matched_irradiance, matched_phase, unified_mask) 元组
-        - matched_irradiance: 匹配后的光强数组
-        - matched_phase: 匹配后的相位数组
-        - unified_mask: 统一孔径布尔掩膜
     """
-    # 若两者网格尺寸不同，用居中零填充对齐
-    if irradiance.shape != phase.shape:
-        # 目标形状：每个维度取两个输入中的最大值
-        target_ny = max(irradiance.shape[0], phase.shape[0])
-        target_nx = max(irradiance.shape[1], phase.shape[1])
-        target_shape = (target_ny, target_nx)
-        irr = _center_pad_to_shape(irradiance, target_shape)
-        ph = _center_pad_to_shape(phase, target_shape)
-    else:
-        irr = irradiance.copy()
-        ph = phase.copy()
+    use_fill_holes = (align_mode == 'centroid')
 
-    # 分别检测光强和相位的孔径掩膜
-    irr_mask = detect_aperture(irr, threshold)
-    phase_mask = detect_aperture(ph, threshold)
+    if align_mode == 'centroid':
+        # 质心模式：先在各自原始网格上检测掩膜（填充内部空洞）
+        irr_mask_raw = detect_aperture(irradiance, threshold, fill_holes=True)
+        ph_mask_raw  = detect_aperture(phase, threshold, fill_holes=True)
+
+        # 计算各自掩膜的质心
+        cy_irr, cx_irr = _mask_centroid(irr_mask_raw)
+        cy_ph, cx_ph   = _mask_centroid(ph_mask_raw)
+
+        # 判断是否需要偏移对齐
+        dy = int(round(cy_irr - cy_ph))
+        dx = int(round(cx_irr - cx_ph))
+        need_align = (irradiance.shape != phase.shape) or (dy != 0) or (dx != 0)
+
+        if need_align:
+            irr, ph = _centroid_align_arrays(
+                irradiance, (cy_irr, cx_irr),
+                phase, (cy_ph, cx_ph),
+            )
+        else:
+            irr = irradiance.copy()
+            ph = phase.copy()
+
+    else:  # 'center'
+        if irradiance.shape != phase.shape:
+            target_ny = max(irradiance.shape[0], phase.shape[0])
+            target_nx = max(irradiance.shape[1], phase.shape[1])
+            target_shape = (target_ny, target_nx)
+            irr = _center_pad_to_shape(irradiance, target_shape)
+            ph  = _center_pad_to_shape(phase, target_shape)
+        else:
+            irr = irradiance.copy()
+            ph = phase.copy()
+
+    # 在对齐后的网格上检测掩膜
+    irr_mask = detect_aperture(irr, threshold, fill_holes=use_fill_holes)
+    phase_mask = detect_aperture(ph, threshold, fill_holes=use_fill_holes)
 
     # 统一掩膜：取两者的逻辑与（交集）
     unified_mask = irr_mask & phase_mask
@@ -210,6 +308,7 @@ def convert_csv_to_zbf(
     threshold: float = None,
     verify: bool = True,
     force_power_of_2: bool = True,
+    align_mode: str = 'center',
     plot: bool = False,
     output_dir: str = None,
 ) -> ZBFData:
@@ -227,8 +326,9 @@ def convert_csv_to_zbf(
         threshold: 孔径检测阈值（可选）
         verify: 是否执行往返验证（默认 True）
         force_power_of_2: 是否将网格补零到 2 的幂次尺寸（默认 True）
+        align_mode: 孔径对齐模式，'center'(默认) 或 'centroid'
         plot: 是否显示可视化图（默认 False）
-        output_dir: 可视化图像输出目录（可选，仅 plot=True 时生效）
+        output_dir: 可视化图像输出目录（可选）
 
     返回：
         生成的 ZBFData 对象
@@ -257,7 +357,7 @@ def convert_csv_to_zbf(
 
     # 执行孔径匹配
     matched_irradiance, matched_phase, unified_mask = match_apertures(
-        irradiance, phase, threshold
+        irradiance, phase, threshold, align_mode=align_mode
     )
 
     # 构造复数电场：振幅 = sqrt(光强)，Ex = 振幅 * exp(j * 相位)
@@ -495,6 +595,11 @@ def main():
         '--output-dir', type=str, default=None,
         help='可视化图像输出目录',
     )
+    parser.add_argument(
+        '--align-mode', type=str, default='center',
+        choices=['center', 'centroid'],
+        help='孔径对齐模式：center=几何中心, centroid=掩膜质心（默认 center）',
+    )
 
     # 可选导引光束参数
     parser.add_argument(
@@ -545,6 +650,7 @@ def main():
         Rx=args.Rx, Ry=args.Ry,
         zx=args.zx, zy=args.zy,
         threshold=args.threshold,
+        align_mode=args.align_mode,
     )
 
     # 可视化
@@ -554,6 +660,7 @@ def main():
         phase_mask = detect_aperture(raw_phase, args.threshold)
         matched_irr, matched_ph, unified_mask = match_apertures(
             raw_irradiance, raw_phase, args.threshold,
+            align_mode=args.align_mode,
         )
         visualize_conversion(
             raw_irradiance, raw_phase,
