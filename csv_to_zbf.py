@@ -9,6 +9,11 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+# 配置 Matplotlib 以支持中文显示
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'Arial Unicode MS']
+plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示为方块的问题
+
+
 
 from zbf_io import ZBFData, write_zbf, read_zbf
 
@@ -419,7 +424,6 @@ def visualize_conversion(
         transform=axes[1, 3].transAxes,
         fontsize=12, verticalalignment='center',
         horizontalalignment='center',
-        family='monospace',
         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
     )
 
