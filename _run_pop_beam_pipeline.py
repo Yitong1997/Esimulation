@@ -183,8 +183,8 @@ def main():
             # POP 报告头（含光束宽度等仿真结果）
             pop_hdr = ext.get("header")
             hdr_dict = parse_pop_header(pop_hdr)
-            bw_x = hdr_dict.get("Beam Width X", "N/A")
-            bw_y = hdr_dict.get("Beam Width Y", "N/A")
+            bw_x = hdr_dict.get("beam_width_x", "N/A")
+            bw_y = hdr_dict.get("beam_width_y", "N/A")
             print(f"  光束宽度: X={bw_x}, Y={bw_y}")
 
             # 收集结果

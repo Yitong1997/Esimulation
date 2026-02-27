@@ -689,29 +689,59 @@ def plot_wavefront(
 # ---------------------------------------------------------------------------
 
 def parse_pop_header(header: list[str] | None) -> dict:
-    """解析 POP 报告头文本，提取键值对。
+    """解析 POP 报告头文本，提取关键信息。
 
-    Zemax POP 报告头通常包含类似以下格式的行：
-      "Peak Irradiance : 1.2345E+000 Watts/mm²"
-      "Total Power     : 9.8765E-001 Watts"
-      "Beam Width X    : 1.2000E+000 mm"
-      "Beam Width Y    : 3.4000E+000 mm"
+    支持中文/英文两种 Zemax POP 报告头格式。
+    光束宽度行的常见格式：
+      中文: "光束宽度 X = 1.2345E-01, Y = 6.7890E-01 毫米"
+      英文: "Beam Width X = 1.2345E-01, Y = 6.7890E-01 Millimeters"
+    其他行的格式（中文或英文）：
+      "峰值辐照度 = 1.2345E+000 瓦/毫米²"  或  "Peak Irradiance : 1.23E+00 Watts/mm²"
+      "总功率     = 9.8765E-001 瓦"         或  "Total Power     : 9.87E-01 Watts"
 
     参数：
         header: POP 分析结果的 header 字段（字符串列表）
 
     返回：
-        字典，键为字段名（如 "Beam Width X"），值为原始字符串
+        字典，始终包含以下标准化键（如能解析到）：
+        - "beam_width_x": 光束宽度 X 值字符串（含单位）
+        - "beam_width_y": 光束宽度 Y 值字符串（含单位）
+        - "raw_lines": 原始 header 行列表
+        - 其他以 "=" 或 ":" 分隔的键值对
     """
+    import re
+
     result = {}
     if not header:
         return result
+    result["raw_lines"] = list(header)
+
     for line in header:
-        if ":" in line:
-            parts = line.split(":", 1)
-            key = parts[0].strip()
-            value = parts[1].strip()
-            result[key] = value
+        # 解析光束宽度行：
+        #   "光束宽度 X = 1.23E-01, Y = 4.56E-01 毫米"
+        #   "Beam Width X = 1.23E-01, Y = 4.56E-01 Millimeters"
+        bw_match = re.match(
+            r'(?:光束宽度|Beam\s*Width)\s*'
+            r'X\s*=\s*([0-9.Ee+\-]+)\s*,\s*'
+            r'Y\s*=\s*([0-9.Ee+\-]+)\s*(.*)',
+            line.strip(), re.IGNORECASE,
+        )
+        if bw_match:
+            unit = bw_match.group(3).strip()
+            result["beam_width_x"] = f"{bw_match.group(1)} {unit}"
+            result["beam_width_y"] = f"{bw_match.group(2)} {unit}"
+            continue
+
+        # 通用 key=value 或 key:value 解析
+        for sep in ("=", ":"):
+            if sep in line:
+                parts = line.split(sep, 1)
+                key = parts[0].strip()
+                value = parts[1].strip()
+                if key:
+                    result[key] = value
+                break
+
     return result
 
 
@@ -786,8 +816,8 @@ def plot_pop_result(
     # (1,1) 物理信息文本
     ax = axes[1, 1]
     ax.axis("off")
-    bw_x = hdr.get("Beam Width X", "N/A")
-    bw_y = hdr.get("Beam Width Y", "N/A")
+    bw_x = hdr.get("beam_width_x", "N/A")
+    bw_y = hdr.get("beam_width_y", "N/A")
     info_text = (
         f"网格: {zbf_data.nx} × {zbf_data.ny}\n"
         f"dx={zbf_data.dx:.4e} {u},  dy={zbf_data.dy:.4e} {u}\n"
@@ -796,8 +826,8 @@ def plot_pop_result(
         f"折射率: {zbf_data.index:.4f}\n"
         f"─────────────────\n"
         f"光束宽度 (POP 仿真结果):\n"
-        f"  Beam Width X: {bw_x}\n"
-        f"  Beam Width Y: {bw_y}\n"
+        f"  X: {bw_x}\n"
+        f"  Y: {bw_y}\n"
         f"─────────────────\n"
     )
     # 附加 POP header 中其他关键项
@@ -862,8 +892,8 @@ def plot_pop_overview(
         units_map = {0: "mm", 1: "cm", 2: "in", 3: "m"}
         u = units_map.get(zbf.units, "?")
 
-        bw_x = hdr.get("Beam Width X", "N/A")
-        bw_y = hdr.get("Beam Width Y", "N/A")
+        bw_x = hdr.get("beam_width_x", "N/A")
+        bw_y = hdr.get("beam_width_y", "N/A")
 
         # 上排：辐照度
         ax = axes[0, i]
@@ -926,8 +956,8 @@ def generate_pop_report(
         lines.append(f"  物理范围:   {zbf.x_width:.4f} × {zbf.y_width:.4f} {u}")
         lines.append(f"  波长:       {zbf.wavelength:.6e} {u}")
         lines.append(f"  折射率:     {zbf.index:.4f}")
-        lines.append(f"  光束宽度 X: {hdr.get('Beam Width X', 'N/A')}")
-        lines.append(f"  光束宽度 Y: {hdr.get('Beam Width Y', 'N/A')}")
+        lines.append(f"  光束宽度 X: {hdr.get('beam_width_x', 'N/A')}")
+        lines.append(f"  光束宽度 Y: {hdr.get('beam_width_y', 'N/A')}")
         # 显示 POP header 中报告的功率
         for key in ("Peak Irradiance", "Total Power"):
             if key in hdr:
@@ -937,13 +967,13 @@ def generate_pop_report(
     lines.append(f"\n{'=' * 70}")
     lines.append("光束宽度汇总")
     lines.append(f"{'=' * 70}")
-    header_line = f"  {'面':>10s}  {'Beam Width X':>20s}  {'Beam Width Y':>20s}"
+    header_line = f"  {'面':>10s}  {'光束宽度 X':>20s}  {'光束宽度 Y':>20s}"
     lines.append(header_line)
     lines.append("  " + "-" * 56)
     for res in results:
         hdr = parse_pop_header(res.get("header"))
-        bw_x = hdr.get("Beam Width X", "N/A")
-        bw_y = hdr.get("Beam Width Y", "N/A")
+        bw_x = hdr.get("beam_width_x", "N/A")
+        bw_y = hdr.get("beam_width_y", "N/A")
         lines.append(
             f"  {res['label']:>10s}"
             f"  {bw_x:>20s}"
