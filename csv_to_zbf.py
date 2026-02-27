@@ -205,6 +205,8 @@ def convert_csv_to_zbf(
     threshold: float = None,
     verify: bool = True,
     force_power_of_2: bool = True,
+    plot: bool = False,
+    output_dir: str = None,
 ) -> ZBFData:
     """CSV 到 ZBF 的端到端转换。
 
@@ -220,6 +222,8 @@ def convert_csv_to_zbf(
         threshold: 孔径检测阈值（可选）
         verify: 是否执行往返验证（默认 True）
         force_power_of_2: 是否将网格补零到 2 的幂次尺寸（默认 True）
+        plot: 是否显示可视化图（默认 False）
+        output_dir: 可视化图像输出目录（可选，仅 plot=True 时生效）
 
     返回：
         生成的 ZBFData 对象
@@ -315,6 +319,17 @@ def convert_csv_to_zbf(
         phase_err = np.max(phase_diff)
         print(f"  往返验证：振幅最大误差={amp_err:.2e}，"
               f"相位最大误差={phase_err:.2e}")
+
+    # 可视化
+    if plot:
+        irr_mask = detect_aperture(irradiance, threshold)
+        phase_mask = detect_aperture(phase, threshold)
+        visualize_conversion(
+            irradiance, phase,
+            irr_mask, phase_mask, unified_mask,
+            matched_irradiance, matched_phase,
+            output_dir=output_dir,
+        )
 
     return zbf_data
 
