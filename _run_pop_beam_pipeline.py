@@ -13,6 +13,7 @@ from pathlib import Path
 from zbf_io import read_zbf, write_zbf, ZBFData, print_zbf_info
 from ao_core import (
     init_system, get_pop_field_with_beam_file, cleanup,
+    parse_pop_header,
     plot_pop_result, plot_pop_overview, generate_pop_report,
 )
 
@@ -179,15 +180,29 @@ def main():
                 print(f"  警告: 未找到 Zemax 输出 ZBF ({out_zbf_path})")
                 output_zbf = None
 
+            # POP 报告头（含光束宽度等仿真结果）
+            pop_hdr = ext.get("header")
+            hdr_dict = parse_pop_header(pop_hdr)
+            bw_x = hdr_dict.get("Beam Width X", "N/A")
+            bw_y = hdr_dict.get("Beam Width Y", "N/A")
+            print(f"  光束宽度: X={bw_x}, Y={bw_y}")
+
             # 收集结果
             surf_label = f"面 {surf}"
             if output_zbf is not None:
-                all_results.append({"label": surf_label, "zbf": output_zbf})
+                all_results.append({
+                    "label": surf_label,
+                    "zbf": output_zbf,
+                    "header": pop_hdr,
+                })
 
             # 单面增强绘图（辐照度 + 相位 + 截面 + 物理参数标注）
             if output_zbf is not None:
                 fig_path = str(Path(OUTPUT_DIR) / f"pop_surf_{surf}.png")
-                plot_pop_result(output_zbf, title=surf_label, save_path=fig_path)
+                plot_pop_result(
+                    output_zbf, title=surf_label,
+                    pop_header=pop_hdr, save_path=fig_path,
+                )
                 print(f"  图已保存: {fig_path}")
 
             # 保存 CSV（数据来源: DataFrame）

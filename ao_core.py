@@ -613,6 +613,7 @@ def get_pop_field_with_beam_file(
         "y": y,
         "x_width": float(x.max() - x.min()),
         "y_width": float(y.max() - y.min()),
+        "header": result_irr.header,  # POP 报告头（含光束宽度等）
     }
 
     return amplitude, phase, extent_info
@@ -684,22 +685,55 @@ def plot_wavefront(
 
 
 # ---------------------------------------------------------------------------
-# 5b. POP 结果增强绘图与报告（可复用工具）
+# 5b. POP 报告头解析
+# ---------------------------------------------------------------------------
+
+def parse_pop_header(header: list[str] | None) -> dict:
+    """解析 POP 报告头文本，提取键值对。
+
+    Zemax POP 报告头通常包含类似以下格式的行：
+      "Peak Irradiance : 1.2345E+000 Watts/mm²"
+      "Total Power     : 9.8765E-001 Watts"
+      "Beam Width X    : 1.2000E+000 mm"
+      "Beam Width Y    : 3.4000E+000 mm"
+
+    参数：
+        header: POP 分析结果的 header 字段（字符串列表）
+
+    返回：
+        字典，键为字段名（如 "Beam Width X"），值为原始字符串
+    """
+    result = {}
+    if not header:
+        return result
+    for line in header:
+        if ":" in line:
+            parts = line.split(":", 1)
+            key = parts[0].strip()
+            value = parts[1].strip()
+            result[key] = value
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 5c. POP 结果增强绘图与报告（可复用工具）
 # ---------------------------------------------------------------------------
 
 def plot_pop_result(
     zbf_data,
     title: str = "POP 结果",
+    pop_header: list[str] | None = None,
     save_path: str | None = None,
 ) -> plt.Figure:
     """增强版单面 POP 结果绘图。
 
-    包含 4 个子图：辐照度热力图、相位热力图、X/Y 截面曲线。
-    自动标注物理网格信息和光束宽度（从 ZBFData header 读取）。
+    包含 4 个子图：辐照度热力图、相位热力图、X/Y 截面曲线、物理参数。
+    光束宽度从 POP 报告头（Zemax 仿真结果）读取，非导引光束参数。
 
     参数：
         zbf_data: ZBFData 对象（Zemax POP 输出）
         title: 图形标题
+        pop_header: POP 分析结果的 header 行列表（含 Beam Width 等）
         save_path: 保存路径（可选，为 None 时不保存）
 
     返回：
@@ -711,6 +745,7 @@ def plot_pop_result(
     y = zbf_data.y_coords
     units_map = {0: "mm", 1: "cm", 2: "in", 3: "m"}
     u = units_map.get(zbf_data.units, "?")
+    hdr = parse_pop_header(pop_header)
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 11))
     fig.suptitle(title, fontsize=14)
@@ -751,8 +786,8 @@ def plot_pop_result(
     # (1,1) 物理信息文本
     ax = axes[1, 1]
     ax.axis("off")
-    total_power = float(np.sum(irr))
-    peak_irr = float(np.max(irr))
+    bw_x = hdr.get("Beam Width X", "N/A")
+    bw_y = hdr.get("Beam Width Y", "N/A")
     info_text = (
         f"网格: {zbf_data.nx} × {zbf_data.ny}\n"
         f"dx={zbf_data.dx:.4e} {u},  dy={zbf_data.dy:.4e} {u}\n"
@@ -760,17 +795,20 @@ def plot_pop_result(
         f"波长: {zbf_data.wavelength:.6e} {u}\n"
         f"折射率: {zbf_data.index:.4f}\n"
         f"─────────────────\n"
-        f"光束宽度 (Guide Beam):\n"
-        f"  wx = {zbf_data.wx:.6e} {u}\n"
-        f"  wy = {zbf_data.wy:.6e} {u}\n"
+        f"光束宽度 (POP 仿真结果):\n"
+        f"  Beam Width X: {bw_x}\n"
+        f"  Beam Width Y: {bw_y}\n"
         f"─────────────────\n"
-        f"总功率: {total_power:.6e} W\n"
-        f"峰值辐照度: {peak_irr:.6e} W"
     )
+    # 附加 POP header 中其他关键项
+    for key in ("Peak Irradiance", "Total Power"):
+        if key in hdr:
+            info_text += f"{key}: {hdr[key]}\n"
+
     ax.text(
         0.05, 0.95, info_text,
         transform=ax.transAxes, fontsize=10,
-        verticalalignment="top", fontfamily="monospace",
+        verticalalignment="top",
         bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow",
                   alpha=0.8),
     )
@@ -790,12 +828,13 @@ def plot_pop_overview(
     """多面 POP 结果汇总绘图。
 
     上排：各面辐照度热力图；下排：各面相位热力图。
-    每个子图标注光束宽度。
+    每个子图标注光束宽度（来自 POP 报告头）。
 
     参数：
         results: 字典列表，每个字典包含：
             - "label": 面标签（如 "面 3"、"Image"）
             - "zbf": ZBFData 对象
+            - "header": POP 报告头行列表（可选）
         title: 总标题
         save_path: 保存路径（可选）
 
@@ -814,6 +853,7 @@ def plot_pop_overview(
     for i, res in enumerate(results):
         zbf = res["zbf"]
         label = res["label"]
+        hdr = parse_pop_header(res.get("header"))
         irr = zbf.irradiance
         ph = zbf.phase
         x = zbf.x_coords
@@ -822,11 +862,14 @@ def plot_pop_overview(
         units_map = {0: "mm", 1: "cm", 2: "in", 3: "m"}
         u = units_map.get(zbf.units, "?")
 
+        bw_x = hdr.get("Beam Width X", "N/A")
+        bw_y = hdr.get("Beam Width Y", "N/A")
+
         # 上排：辐照度
         ax = axes[0, i]
         im = ax.imshow(irr, cmap="hot", extent=extent, aspect="equal")
         fig.colorbar(im, ax=ax, shrink=0.7)
-        ax.set_title(f"{label}\nwx={zbf.wx:.3e} wy={zbf.wy:.3e}",
+        ax.set_title(f"{label}\nBW_X={bw_x}  BW_Y={bw_y}",
                      fontsize=9)
         ax.set_xlabel(f"X ({u})")
         ax.set_ylabel(f"Y ({u})")
@@ -851,12 +894,13 @@ def generate_pop_report(
 ) -> str:
     """生成 POP 仿真文本报告。
 
-    包含每个面的网格参数、光束宽度、功率等信息的汇总表格。
+    包含每个面的网格参数、光束宽度（来自 POP 报告头）、功率等信息。
 
     参数：
         results: 字典列表，每个字典包含：
             - "label": 面标签
             - "zbf": ZBFData 对象
+            - "header": POP 报告头行列表（可选）
         output_path: 报告文件保存路径（可选，为 None 时仅返回字符串）
 
     返回：
@@ -867,13 +911,13 @@ def generate_pop_report(
     lines.append("POP 仿真报告")
     lines.append("=" * 70)
 
+    units_map = {0: "mm", 1: "cm", 2: "in", 3: "m"}
+
     for i, res in enumerate(results):
         zbf = res["zbf"]
         label = res["label"]
-        units_map = {0: "mm", 1: "cm", 2: "in", 3: "m"}
+        hdr = parse_pop_header(res.get("header"))
         u = units_map.get(zbf.units, "?")
-        total_power = float(np.sum(zbf.irradiance))
-        peak_irr = float(np.max(zbf.irradiance))
 
         lines.append(f"\n--- {label} ---")
         lines.append(f"  网格:       {zbf.nx} × {zbf.ny}")
@@ -882,26 +926,28 @@ def generate_pop_report(
         lines.append(f"  物理范围:   {zbf.x_width:.4f} × {zbf.y_width:.4f} {u}")
         lines.append(f"  波长:       {zbf.wavelength:.6e} {u}")
         lines.append(f"  折射率:     {zbf.index:.4f}")
-        lines.append(f"  光束宽度:   wx={zbf.wx:.6e} {u},  wy={zbf.wy:.6e} {u}")
-        lines.append(f"  总功率:     {total_power:.6e} W")
-        lines.append(f"  峰值辐照度: {peak_irr:.6e} W")
+        lines.append(f"  光束宽度 X: {hdr.get('Beam Width X', 'N/A')}")
+        lines.append(f"  光束宽度 Y: {hdr.get('Beam Width Y', 'N/A')}")
+        # 显示 POP header 中报告的功率
+        for key in ("Peak Irradiance", "Total Power"):
+            if key in hdr:
+                lines.append(f"  {key}: {hdr[key]}")
 
     # 汇总表
     lines.append(f"\n{'=' * 70}")
     lines.append("光束宽度汇总")
     lines.append(f"{'=' * 70}")
-    header = f"  {'面':>10s}  {'wx':>14s}  {'wy':>14s}  {'总功率':>14s}"
-    lines.append(header)
-    lines.append("  " + "-" * 60)
+    header_line = f"  {'面':>10s}  {'Beam Width X':>20s}  {'Beam Width Y':>20s}"
+    lines.append(header_line)
+    lines.append("  " + "-" * 56)
     for res in results:
-        zbf = res["zbf"]
-        u = units_map.get(zbf.units, "?")
-        tp = float(np.sum(zbf.irradiance))
+        hdr = parse_pop_header(res.get("header"))
+        bw_x = hdr.get("Beam Width X", "N/A")
+        bw_y = hdr.get("Beam Width Y", "N/A")
         lines.append(
             f"  {res['label']:>10s}"
-            f"  {zbf.wx:>14.6e}"
-            f"  {zbf.wy:>14.6e}"
-            f"  {tp:>14.6e}"
+            f"  {bw_x:>20s}"
+            f"  {bw_y:>20s}"
         )
 
     lines.append("")
