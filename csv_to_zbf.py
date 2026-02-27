@@ -268,28 +268,68 @@ def _next_power_of_2(n: int) -> int:
 def pad_to_power_of_2(
     Ex: np.ndarray,
 ) -> np.ndarray:
-    """将复数电场数组居中零填充到 2 的幂次尺寸。
+    """将复数电场数组居中零填充到 2 的幂次正方形尺寸。
 
+    两个维度取较大的 power-of-2，确保输出始终为正方形。
     Zemax POP 模块要求 ZBF 网格为 2 的幂（32, 64, 128, ...）。
-    若输入尺寸已是 2 的幂则直接返回副本。
 
     参数：
         Ex: 复数电场 (ny, nx)
 
     返回：
-        填充后的复数电场，形状为 (pow2_ny, pow2_nx)
+        填充后的复数电场，形状为 (N, N)，N = max(pow2(ny), pow2(nx))
     """
     ny, nx = Ex.shape
-    pow2_ny = _next_power_of_2(ny)
-    pow2_nx = _next_power_of_2(nx)
+    N = max(_next_power_of_2(ny), _next_power_of_2(nx))
 
-    if pow2_ny == ny and pow2_nx == nx:
+    if N == ny and N == nx:
         return Ex.copy()
 
-    result = np.zeros((pow2_ny, pow2_nx), dtype=Ex.dtype)
-    pad_y = (pow2_ny - ny) // 2
-    pad_x = (pow2_nx - nx) // 2
+    result = np.zeros((N, N), dtype=Ex.dtype)
+    pad_y = (N - ny) // 2
+    pad_x = (N - nx) // 2
     result[pad_y:pad_y + ny, pad_x:pad_x + nx] = Ex
+    return result
+
+
+def _resize_to_square(
+    Ex: np.ndarray,
+    target_size: int,
+) -> np.ndarray:
+    """将复数电场居中裁剪或补零到 target_size × target_size。
+
+    - 若输入尺寸 > target_size：从中心裁剪
+    - 若输入尺寸 < target_size：居中零填充
+    - 混合情况（一维裁剪一维补零）也正确处理
+
+    参数：
+        Ex: 复数电场 (ny, nx)
+        target_size: 目标正方形尺寸
+
+    返回：
+        形状为 (target_size, target_size) 的复数电场
+    """
+    ny, nx = Ex.shape
+    N = target_size
+
+    if ny == N and nx == N:
+        return Ex.copy()
+
+    result = np.zeros((N, N), dtype=Ex.dtype)
+
+    # 源区域（居中裁剪）
+    src_y0 = max(0, (ny - N) // 2)
+    src_x0 = max(0, (nx - N) // 2)
+    src_y1 = src_y0 + min(ny, N)
+    src_x1 = src_x0 + min(nx, N)
+
+    # 目标区域（居中放置）
+    dst_y0 = max(0, (N - ny) // 2)
+    dst_x0 = max(0, (N - nx) // 2)
+    dst_y1 = dst_y0 + (src_y1 - src_y0)
+    dst_x1 = dst_x0 + (src_x1 - src_x0)
+
+    result[dst_y0:dst_y1, dst_x0:dst_x1] = Ex[src_y0:src_y1, src_x0:src_x1]
     return result
 
 
@@ -308,6 +348,7 @@ def convert_csv_to_zbf(
     threshold: float = None,
     verify: bool = True,
     force_power_of_2: bool = True,
+    target_size: int = None,
     align_mode: str = 'center',
     plot: bool = False,
     output_dir: str = None,
@@ -325,7 +366,9 @@ def convert_csv_to_zbf(
         wx, wy, Rx, Ry, zx, zy: 导引光束参数（默认 0.0）
         threshold: 孔径检测阈值（可选）
         verify: 是否执行往返验证（默认 True）
-        force_power_of_2: 是否将网格补零到 2 的幂次尺寸（默认 True）
+        force_power_of_2: 是否将网格补零到 2 的幂次正方形尺寸（默认 True）
+        target_size: 目标像素数（必须为 2 的幂）。指定时覆盖 force_power_of_2，
+            通过居中裁剪或补零调整到 target_size × target_size。
         align_mode: 孔径对齐模式，'center'(默认) 或 'centroid'
         plot: 是否显示可视化图（默认 False）
         output_dir: 可视化图像输出目录（可选）
@@ -334,13 +377,21 @@ def convert_csv_to_zbf(
         生成的 ZBFData 对象
 
     异常：
-        ValueError: dx/dy <= 0
+        ValueError: dx/dy <= 0 或 target_size 非 2 的幂
     """
     # 参数校验：网格间距须为正数
     if dx <= 0 or dy <= 0:
         raise ValueError(
             f"网格间距须为正数，当前 dx={dx}, dy={dy}"
         )
+
+    # 参数校验：target_size 必须为 2 的幂
+    if target_size is not None:
+        if target_size <= 0 or (target_size & (target_size - 1)) != 0:
+            raise ValueError(
+                f"target_size 必须为 2 的幂（如 32, 64, 128, ...)，"
+                f"当前 target_size={target_size}"
+            )
 
     # 读取光强和相位 CSV 文件
     irradiance = read_beam_csv(irradiance_csv)
@@ -352,7 +403,7 @@ def convert_csv_to_zbf(
     if irr_shape_orig != ph_shape_orig:
         print(
             f"注意：光强尺寸 {irr_shape_orig} "
-            f"与相位尺寸 {ph_shape_orig} 不同，将执行插值对齐"
+            f"与相位尺寸 {ph_shape_orig} 不同，将执行对齐"
         )
 
     # 执行孔径匹配
@@ -363,19 +414,30 @@ def convert_csv_to_zbf(
     # 构造复数电场：振幅 = sqrt(光强)，Ex = 振幅 * exp(j * 相位)
     Ex = np.sqrt(matched_irradiance) * np.exp(1j * matched_phase)
 
-    # 2 的幂次补零
-    if force_power_of_2:
-        ny_orig, nx_orig = Ex.shape
+    # 调整网格尺寸
+    ny_orig, nx_orig = Ex.shape
+    if target_size is not None:
+        # 指定目标像素数：居中裁剪或补零到 target_size × target_size
+        Ex = _resize_to_square(Ex, target_size)
+        action = "裁剪" if target_size < max(ny_orig, nx_orig) else "补零"
+        print(
+            f"  目标尺寸{action}：{nx_orig}×{ny_orig} → "
+            f"{target_size}×{target_size}"
+        )
+    elif force_power_of_2:
+        # 自动补零到 2 的幂次正方形
         Ex = pad_to_power_of_2(Ex)
         if Ex.shape != (ny_orig, nx_orig):
             print(
-                f"  2的幂次补零：{nx_orig}×{ny_orig} → "
+                f"  2的幂次正方形补零：{nx_orig}×{ny_orig} → "
                 f"{Ex.shape[1]}×{Ex.shape[0]}"
             )
-            # 同步扩展 unified_mask，保持与 Ex 形状一致（用于往返验证）
-            unified_mask = _center_pad_to_shape(
-                unified_mask.astype(np.uint8), Ex.shape
-            ).astype(bool)
+
+    # 同步调整 unified_mask 形状
+    if Ex.shape != unified_mask.shape:
+        unified_mask = _resize_to_square(
+            unified_mask.astype(np.uint8), Ex.shape[0]
+        ).astype(bool)
 
     # 创建并填充 ZBFData 对象
     ny, nx = Ex.shape

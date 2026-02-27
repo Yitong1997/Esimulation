@@ -12,7 +12,8 @@ from pathlib import Path
 
 from zbf_io import read_zbf, write_zbf, ZBFData, print_zbf_info
 from ao_core import (
-    init_system, get_pop_field_with_beam_file, plot_wavefront, cleanup,
+    init_system, get_pop_field_with_beam_file, cleanup,
+    plot_pop_result, plot_pop_overview, generate_pop_report,
 )
 
 
@@ -80,42 +81,22 @@ def save_pop_result_csv(
 
 
 def save_pop_result_zbf(
-    amplitude: np.ndarray,
-    phase: np.ndarray,
-    extent_info: dict,
-    ref_zbf: ZBFData,
+    zemax_zbf: ZBFData,
     filepath: str,
 ) -> None:
-    """将 POP 仿真结果保存为 ZBF 文件。
+    """将 Zemax POP 输出的 ZBF 数据另存为文件。
 
-    以 ref_zbf 为模板（复用波长、折射率等元数据），
-    将 amplitude 和 phase 构造为复数电场后写入。
+    直接使用 Zemax 原生写出的 ZBFData（含完整复数电场 Ex 及全部
+    物理网格参数 dx, dy, wx, wy, Rx, Ry, zx, zy, wavelength 等），
+    保证数据零损失。
 
     参数：
-        amplitude: 振幅数组
-        phase: 相位数组
-        extent_info: 物理坐标信息
-        ref_zbf: 参考 ZBFData（提供波长等元数据）
+        zemax_zbf: Zemax POP 保存的输出 ZBFData
         filepath: 输出 ZBF 文件路径
     """
-    zbf = ref_zbf.copy()
-    ny, nx = amplitude.shape
-    zbf.nx = nx
-    zbf.ny = ny
-
-    x = extent_info["x"]
-    y = extent_info["y"]
-    zbf.dx = float(x[1] - x[0]) if nx > 1 else ref_zbf.dx
-    zbf.dy = float(y[1] - y[0]) if ny > 1 else ref_zbf.dy
-
-    # 构建复数电场
-    zbf.Ex = amplitude * np.exp(1j * phase)
-    zbf.Ey = None
-    zbf.is_polarized = 0
-
     out_path = Path(filepath)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    write_zbf(out_path, zbf)
+    write_zbf(out_path, zemax_zbf)
     print(f"  ZBF 已保存: {out_path}")
 
 
@@ -132,6 +113,8 @@ BEAM_WIDTH    = 10.0                                        # 采样窗口宽度
 OUTPUT_DIR    = "pop_results"                               # 输出目录
 SAVE_CSV      = True                                        # 是否保存 CSV
 SAVE_ZBF      = True                                        # 是否保存 ZBF
+START_SURFACE = 1                                           # POP 输入起始面序号
+TOTAL_POWER   = None                                        # 输入光束总功率 (W)，None=峰值辐照度归一化
 
 
 # ============================================================
@@ -161,41 +144,73 @@ def main():
 
         # 4. 多面 POP 仿真 + 绘图 + 保存
         print(f"\n[4] 执行 POP 仿真（面: {END_SURFACES}）...")
+        all_results = []  # 收集各面结果用于汇总
         for surf in END_SURFACES:
             print(f"\n  --- 面 {surf} ---")
+
+            # POP 输出 ZBF 文件名（用于 Zemax 保存）
+            out_beam_name = f"_pipeline_surf_{surf}"
+
             amp, phase, ext = get_pop_field_with_beam_file(
                 oss,
                 beam_file=beam_filename,
-                start_surf=1,
+                start_surf=START_SURFACE,
                 end_surf=surf,
                 sampling=SAMPLING,
                 beam_width=BEAM_WIDTH,
+                total_power=TOTAL_POWER,
+                save_output_beam=True,
+                output_beam_file=out_beam_name,
             )
             print(f"  振幅形状: {amp.shape}, 相位形状: {phase.shape}")
 
-            # 绘图
-            fig = plot_wavefront(
-                amp, phase,
-                title=f"POP 仿真 — 面 {surf}",
-                extent_info=ext,
-            )
+            # 从 Zemax 保存的输出 ZBF 读取准确的物理网格参数
+            out_zbf_path = ZEMAX_POP_DIR / f"{out_beam_name}.ZBF"
+            if out_zbf_path.exists():
+                output_zbf = read_zbf(out_zbf_path)
+                print(f"  输出 ZBF: "
+                      f"nx={output_zbf.nx}, ny={output_zbf.ny}, "
+                      f"dx={output_zbf.dx:.6f}, dy={output_zbf.dy:.6f}, "
+                      f"wx={output_zbf.wx:.6e}, wy={output_zbf.wy:.6e}")
+                if amp.shape != (output_zbf.ny, output_zbf.nx):
+                    print(f"  注意: DataFrame 维度 {amp.shape} "
+                          f"≠ ZBF 维度 ({output_zbf.ny}, {output_zbf.nx})")
+            else:
+                print(f"  警告: 未找到 Zemax 输出 ZBF ({out_zbf_path})")
+                output_zbf = None
 
-            # 保存绘图
-            fig_path = Path(OUTPUT_DIR) / f"pop_surf_{surf}.png"
-            fig_path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(fig_path, dpi=150)
-            print(f"  图已保存: {fig_path}")
+            # 收集结果
+            surf_label = f"面 {surf}"
+            if output_zbf is not None:
+                all_results.append({"label": surf_label, "zbf": output_zbf})
 
-            # 保存 CSV
+            # 单面增强绘图（辐照度 + 相位 + 截面 + 物理参数标注）
+            if output_zbf is not None:
+                fig_path = str(Path(OUTPUT_DIR) / f"pop_surf_{surf}.png")
+                plot_pop_result(output_zbf, title=surf_label, save_path=fig_path)
+                print(f"  图已保存: {fig_path}")
+
+            # 保存 CSV（数据来源: DataFrame）
             if SAVE_CSV:
                 save_pop_result_csv(amp, phase, ext, OUTPUT_DIR, f"surf_{surf}")
 
-            # 保存 ZBF
-            if SAVE_ZBF:
+            # 保存 ZBF（数据来源: Zemax 原生输出）
+            if SAVE_ZBF and output_zbf is not None:
                 zbf_out = Path(OUTPUT_DIR) / f"surf_{surf}.zbf"
-                save_pop_result_zbf(amp, phase, ext, zbf_data, str(zbf_out))
+                save_pop_result_zbf(output_zbf, str(zbf_out))
 
-        # 5. 完成
+        # 5. 多面汇总绘图 + 报告
+        if all_results:
+            overview_path = str(Path(OUTPUT_DIR) / "pop_overview.png")
+            plot_pop_overview(all_results, save_path=overview_path)
+            print(f"\n  汇总图已保存: {overview_path}")
+
+            report_path = str(Path(OUTPUT_DIR) / "pop_report.txt")
+            report = generate_pop_report(all_results, output_path=report_path)
+            print(f"  报告已保存: {report_path}")
+            print(f"\n{report}")
+
+        # 6. 完成
         print(f"\n{'=' * 60}")
         print("流水线执行完成！")
         print(f"  输出目录: {os.path.abspath(OUTPUT_DIR)}")
