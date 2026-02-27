@@ -263,6 +263,10 @@ def convert_csv_to_zbf(
                 f"  2的幂次补零：{nx_orig}×{ny_orig} → "
                 f"{Ex.shape[1]}×{Ex.shape[0]}"
             )
+            # 同步扩展 unified_mask，保持与 Ex 形状一致（用于往返验证）
+            unified_mask = _center_pad_to_shape(
+                unified_mask.astype(np.uint8), Ex.shape
+            ).astype(bool)
 
     # 创建并填充 ZBFData 对象
     ny, nx = Ex.shape
