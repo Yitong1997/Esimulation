@@ -33,3 +33,6 @@ output/
 
 # 测试与结果输出
 sandbox/
+
+# Git worktrees
+.worktrees/
