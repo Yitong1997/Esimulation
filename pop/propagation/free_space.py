@@ -58,6 +58,152 @@ def _max_phase_jump(phase_grid: NDArray[np.floating]) -> float:
     return max(jump_x, jump_y)
 
 
+def _phase_jump_stats(
+    phase_grid: NDArray[np.floating],
+    mask: Optional[NDArray[np.bool_]] = None,
+) -> dict[str, float]:
+    """Summarize nearest-neighbor phase jumps, optionally only inside a valid mask."""
+    if phase_grid.size == 0:
+        return {"max": 0.0, "p999": 0.0, "p99": 0.0, "rms": 0.0, "count": 0.0}
+
+    jumps: list[NDArray[np.floating]] = []
+    if phase_grid.shape[0] > 1:
+        jump_y = np.abs(np.diff(phase_grid, axis=0))
+        if mask is not None and mask.shape == phase_grid.shape:
+            jump_y = jump_y[mask[:-1, :] & mask[1:, :]]
+        else:
+            jump_y = jump_y.ravel()
+        jumps.append(np.asarray(jump_y, dtype=float))
+    if phase_grid.shape[1] > 1:
+        jump_x = np.abs(np.diff(phase_grid, axis=1))
+        if mask is not None and mask.shape == phase_grid.shape:
+            jump_x = jump_x[mask[:, :-1] & mask[:, 1:]]
+        else:
+            jump_x = jump_x.ravel()
+        jumps.append(np.asarray(jump_x, dtype=float))
+
+    if not jumps:
+        return {"max": 0.0, "p999": 0.0, "p99": 0.0, "rms": 0.0, "count": 0.0}
+    values = np.concatenate(jumps)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {"max": 0.0, "p999": 0.0, "p99": 0.0, "rms": 0.0, "count": 0.0}
+    return {
+        "max": float(np.max(values)),
+        "p999": float(np.percentile(values, 99.9)),
+        "p99": float(np.percentile(values, 99.0)),
+        "rms": float(np.sqrt(np.mean(values ** 2))),
+        "count": float(values.size),
+    }
+
+
+def _auto_unwarp_debug_path(
+    trace_context: Optional[dict[str, Any]],
+    output_dir: Optional[str | Path],
+    accepted: bool,
+) -> Optional[Path]:
+    if output_dir is None:
+        return None
+    idx = "unknown"
+    pos = "incident"
+    if trace_context:
+        idx = str(trace_context.get("to_surface_index", idx))
+        pos = str(trace_context.get("to_position", pos)).lower()
+    try:
+        surface_idx = int(idx)
+        prefix = f"surface_{surface_idx:02d}_{pos}"
+    except (TypeError, ValueError):
+        prefix = f"surface_{idx}_{pos}"
+    status = "ACCEPTED" if accepted else "REJECTED"
+    return Path(output_dir) / f"{prefix}_auto_unwarp_{status}.png"
+
+
+def _plot_auto_unwarp_debug(
+    *,
+    amplitude: NDArray[np.floating],
+    residual_folded: NDArray[np.floating],
+    residual_unwrapped: NDArray[np.floating],
+    mask: NDArray[np.bool_],
+    stats_before: dict[str, float],
+    stats_after: dict[str, float],
+    accepted: bool,
+    save_path: Optional[str | Path],
+    trace_context: Optional[dict[str, Any]] = None,
+) -> None:
+    if save_path is None:
+        return
+    try:
+        import matplotlib.pyplot as plt
+
+        folded_waves = residual_folded / (2.0 * np.pi)
+        unwrapped_waves = residual_unwrapped / (2.0 * np.pi)
+        delta_waves = unwrapped_waves - folded_waves
+        amp = np.asarray(amplitude, dtype=float)
+        amp_norm = amp / float(np.max(amp)) if amp.size and np.max(amp) > 0 else amp
+
+        before_jumps = []
+        after_jumps = []
+        if residual_folded.shape[0] > 1:
+            pair = mask[:-1, :] & mask[1:, :]
+            before_jumps.append(np.abs(np.diff(residual_folded, axis=0))[pair])
+            after_jumps.append(np.abs(np.diff(residual_unwrapped, axis=0))[pair])
+        if residual_folded.shape[1] > 1:
+            pair = mask[:, :-1] & mask[:, 1:]
+            before_jumps.append(np.abs(np.diff(residual_folded, axis=1))[pair])
+            after_jumps.append(np.abs(np.diff(residual_unwrapped, axis=1))[pair])
+        before_vals = np.concatenate(before_jumps) if before_jumps else np.array([])
+        after_vals = np.concatenate(after_jumps) if after_jumps else np.array([])
+        before_vals = before_vals[np.isfinite(before_vals)] / (2.0 * np.pi)
+        after_vals = after_vals[np.isfinite(after_vals)] / (2.0 * np.pi)
+
+        fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+        vlim = max(
+            0.5,
+            float(np.nanpercentile(np.abs(folded_waves[mask]), 99.0)) if np.any(mask) else 0.5,
+        )
+
+        def _imshow(ax, data, title, cmap="RdBu_r", vmin=None, vmax=None):
+            im = ax.imshow(data, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+            ax.set_title(title)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+        _imshow(axes[0, 0], folded_waves, "Folded residual (waves)", vmin=-vlim, vmax=vlim)
+        _imshow(axes[0, 1], unwrapped_waves, "Unwrapped residual (waves)")
+        _imshow(axes[0, 2], delta_waves, "Unwrap delta (waves)", cmap="viridis")
+        _imshow(axes[1, 0], amp_norm, "Normalized amplitude", cmap="magma", vmin=0.0, vmax=1.0)
+        _imshow(axes[1, 1], mask.astype(float), "Acceptance mask", cmap="gray", vmin=0.0, vmax=1.0)
+
+        ax = axes[1, 2]
+        if before_vals.size:
+            ax.hist(before_vals, bins=80, alpha=0.6, label="folded", color="tab:red")
+        if after_vals.size:
+            ax.hist(after_vals, bins=80, alpha=0.6, label="unwrapped", color="tab:green")
+        ax.set_title("Masked neighbor jumps (waves)")
+        ax.set_xlabel("absolute jump")
+        ax.set_ylabel("count")
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="best")
+
+        context_line = format_trace_context(trace_context)
+        status = "ACCEPTED" if accepted else "REJECTED"
+        fig.suptitle(
+            f"AutoUnwarp@Incident {status}\n"
+            f"masked max: {stats_before['max']:.3f} -> {stats_after['max']:.3f} rad, "
+            f"p99.9: {stats_before['p999']:.3f} -> {stats_after['p999']:.3f} rad\n"
+            f"{context_line}",
+            fontsize=11,
+        )
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"[POP][AutoUnwarp@Incident] debug plot saved: {save_path}")
+    except Exception as exc:
+        print(f"[POP][AutoUnwarp@Incident] debug plot failed: {exc}")
+
+
 def _detect_wrapped_residual_near_one_wave(
     residual_folded: NDArray[np.floating],
     amplitude: NDArray[np.floating],
@@ -612,6 +758,7 @@ def proper_to_amplitude_phase(
     pilot_beam_params: Optional[PilotBeamParams] = None,
     auto_unwarp_at_incident: bool = False,
     trace_context: Optional[dict[str, Any]] = None,
+    auto_unwarp_debug_dir: Optional[str | Path] = None,
 ) -> Tuple[NDArray[np.floating], NDArray[np.floating]]:
     import proper
 
@@ -638,15 +785,20 @@ def proper_to_amplitude_phase(
             residual_folded, amplitude, threshold_ratio=0.10
         )
         if is_folded:
+            mask = _compute_intensity_mask(amplitude, threshold_ratio=0.10)
             jump_before = _max_phase_jump(residual_folded)
+            jump_before_masked = _phase_jump_stats(residual_folded, mask)
             residual_unwrapped = _unwrap_phase_2d(residual_wrapped)
             # Remove global 2π offset ambiguity to stay close to wrapped residual.
-            delta_cycles = np.median((residual_unwrapped - residual_folded) / (2.0 * np.pi))
+            if np.any(mask):
+                delta_cycles = np.median((residual_unwrapped[mask] - residual_folded[mask]) / (2.0 * np.pi))
+            else:
+                delta_cycles = np.median((residual_unwrapped - residual_folded) / (2.0 * np.pi))
             residual_unwrapped = residual_unwrapped - (2.0 * np.pi * np.round(delta_cycles))
             jump_after = _max_phase_jump(residual_unwrapped)
+            jump_after_masked = _phase_jump_stats(residual_unwrapped, mask)
             phase_unwrapped = pilot_phase + residual_unwrapped
             residual_after = phase_unwrapped - pilot_phase
-            mask = _compute_intensity_mask(amplitude, threshold_ratio=0.10)
             if np.any(mask):
                 pv_after = float(np.ptp((residual_after[mask]) / (2.0 * np.pi)))
                 rms_after = float(np.sqrt(np.mean(((residual_after[mask]) / (2.0 * np.pi)) ** 2)))
@@ -654,20 +806,44 @@ def proper_to_amplitude_phase(
                 pv_after = float("nan")
                 rms_after = float("nan")
             context_line = format_trace_context(trace_context)
-            unwrap_accepted = jump_after <= jump_before
+            unwrap_accepted = (
+                jump_after_masked["count"] > 0
+                and jump_after_masked["p999"] <= max(jump_before_masked["p999"], np.pi)
+                and jump_after_masked["max"] <= max(jump_before_masked["max"], 2.0 * np.pi)
+            )
+            debug_path = _auto_unwarp_debug_path(
+                trace_context,
+                auto_unwarp_debug_dir,
+                accepted=unwrap_accepted,
+            )
+            _plot_auto_unwarp_debug(
+                amplitude=amplitude,
+                residual_folded=residual_folded,
+                residual_unwrapped=residual_unwrapped,
+                mask=mask,
+                stats_before=jump_before_masked,
+                stats_after=jump_after_masked,
+                accepted=unwrap_accepted,
+                save_path=debug_path,
+                trace_context=trace_context,
+            )
             if unwrap_accepted:
                 print(
                     "[POP][AutoUnwarp@Incident] 检测到疑似折叠残差，接受 residual unwrap: "
                     f"PV_before={pv_before:.4f} waves (min={min_before:.4f}, max={max_before:.4f}) -> "
                     f"PV_after={pv_after:.4f} waves, RMS_after={rms_after:.4f} waves; "
-                    f"jump_before={jump_before:.4f} rad, jump_after={jump_after:.4f} rad"
+                    f"jump_before={jump_before:.4f} rad, jump_after={jump_after:.4f} rad; "
+                    f"masked_p999={jump_before_masked['p999']:.4f}->{jump_after_masked['p999']:.4f} rad, "
+                    f"masked_max={jump_before_masked['max']:.4f}->{jump_after_masked['max']:.4f} rad"
                 )
                 if context_line:
                     print(f"[POP][AutoUnwarp@Incident] 步骤: {context_line}")
                 return amplitude, phase_unwrapped
             print(
                 "[POP][AutoUnwarp@Incident] 检测到疑似折叠残差，但 unwrap 未改善连续性，回退原策略: "
-                f"jump_before={jump_before:.4f} rad, jump_after={jump_after:.4f} rad"
+                f"jump_before={jump_before:.4f} rad, jump_after={jump_after:.4f} rad; "
+                f"masked_p999={jump_before_masked['p999']:.4f}->{jump_after_masked['p999']:.4f} rad, "
+                f"masked_max={jump_before_masked['max']:.4f}->{jump_after_masked['max']:.4f} rad"
             )
             if context_line:
                 print(f"[POP][AutoUnwarp@Incident] 步骤: {context_line}")
@@ -857,6 +1033,7 @@ def _resample_wavefront(
     resample_beam_pixels_target: Optional[int] = None,
     auto_unwarp_at_incident: bool = False,
     trace_context: Optional[dict[str, Any]] = None,
+    auto_unwarp_debug_dir: Optional[str | Path] = None,
 ) -> Tuple[GridSampling, NDArray[np.floating], NDArray[np.floating], bool, Optional[dict[str, Any]]]:
     """Check if beam is undersampled and resample if needed.
 
@@ -915,6 +1092,7 @@ def _resample_wavefront(
         new_pilot,
         auto_unwarp_at_incident=auto_unwarp_at_incident,
         trace_context=trace_context,
+        auto_unwarp_debug_dir=auto_unwarp_debug_dir,
     )
 
     new_pixels = beam_diameter_mm / new_grid_sampling.sampling_mm
@@ -1018,6 +1196,7 @@ def propagate_state(
         new_pilot,
         auto_unwarp_at_incident=enable_auto_unwarp_here,
         trace_context=trace_context,
+        auto_unwarp_debug_dir=debug_resample_dir,
     )
 
     new_force_asm = effective_force_asm if effective_force_asm is not None else state.force_asm
@@ -1112,7 +1291,10 @@ def _apply_refit_and_resample(
             # 3. Plotting
             from pop.visualization import plot_refit_diagnostics
             status_tag = "ACCEPTED" if is_accepted else "REJECTED"
-            save_path = f"tests/debug_output_refit/surface_{target_surface_index}_refit_{status_tag}.png"
+            save_path = (
+                (Path(debug_resample_dir) if debug_resample_dir is not None else Path("tests/debug_output_refit"))
+                / f"surface_{target_surface_index:02d}_grid_refit_{status_tag}.png"
+            )
 
             print(f"[POP][Grid Refit] 生成诊断图 ({status_tag}): {save_path}")
             plot_refit_diagnostics(
@@ -1174,6 +1356,7 @@ def _apply_refit_and_resample(
                     new_pilot,
                     auto_unwarp_at_incident=auto_unwarp_at_incident,
                     trace_context=trace_context,
+                    auto_unwarp_debug_dir=debug_resample_dir,
                 )
 
                 _refit_messages.append(
@@ -1200,6 +1383,7 @@ def _apply_refit_and_resample(
             resample_beam_pixels_target=resample_beam_pixels_target,
             auto_unwarp_at_incident=auto_unwarp_at_incident,
             trace_context=trace_context,
+            auto_unwarp_debug_dir=debug_resample_dir,
         )
         if did_resample:
             beam_diam_mm = 2.0 * float(new_pilot.spot_size_mm)
@@ -1255,4 +1439,3 @@ def _apply_refit_and_resample(
         propagation_algorithm=state.propagation_algorithm,
         messages=(state.messages or []) + _refit_messages + _resample_messages,
     )
-

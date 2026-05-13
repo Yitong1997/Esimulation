@@ -65,7 +65,7 @@ def check_vendor_imports() -> dict[str, bool]:
 configure_vendor_paths()
 
 from .result import PropagationResult, SurfaceRecord
-from .source import GaussianSource
+from .source import CustomSource, GaussianSource
 from .system import System
 
 
@@ -638,7 +638,7 @@ def _build_trace_context(
 
 def propagate(
     system: System,
-    source: GaussianSource,
+    source: "GaussianSource | CustomSource",
     num_rays: Optional[int] = None,
     coordinate_priority: Optional[str] = None,
     debug: Optional[bool] = None,
@@ -804,7 +804,7 @@ def propagate(
 
     # 解析 resample debug 绘图输出目录（与出入射面信息使用同一文件夹）
     resample_debug_dir: str | Path | None = None
-    if auto_resample:
+    if auto_resample or pilot_refit_surface_indices is not None:
         resample_debug_dir = utils.resolve_output_dir(plot_output_dir)
 
     plot_config = {}
@@ -927,6 +927,7 @@ def propagate(
                 sampling_sigma=sampling_sigma,
                 pilot_refit_surface_indices=pilot_refit_surface_indices,
                 pilot_refit_pv_threshold_waves=pilot_refit_pv_threshold_waves,
+                refit_debug_dir=resample_debug_dir,
                 enable_ideal_planar_mirror=options.enable_ideal_planar_mirror,
             )
         else:
@@ -1011,6 +1012,7 @@ __all__ = [
     "PropagationOptions",
     "PlotOptions",
     "DebugOptions",
+    "CustomSource",
     "check_vendor_imports",
     "configure_vendor_paths",
     "coordinates",

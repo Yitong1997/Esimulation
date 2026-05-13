@@ -921,6 +921,7 @@ def propagate_element(
     sampling_sigma: float = 6.0,
     pilot_refit_surface_indices: Optional[Sequence[int]] = None,
     pilot_refit_pv_threshold_waves: float = 0.5,
+    refit_debug_dir: Optional[str | Path] = None,
     enable_ideal_planar_mirror: bool = True,
 ) -> PropagationState:
     if state.proper_wfo is None:
@@ -1129,7 +1130,13 @@ def propagate_element(
                     # 独立绘图（不依赖 debug 模式）
                     try:
                         from pop.visualization import plot_element_refit_diagnostics
-                        refit_save_path = f"tests/debug_output_refit/surface_{target_surface_index:02d}_element_refit.png"
+                        if refit_debug_dir is not None:
+                            refit_save_dir = Path(refit_debug_dir)
+                        elif debug_plot_3d_dir is not None:
+                            refit_save_dir = Path(debug_plot_3d_dir)
+                        else:
+                            refit_save_dir = Path("tests/debug_output_refit")
+                        refit_save_path = refit_save_dir / f"surface_{target_surface_index:02d}_element_refit.png"
                         raw_intensity = getattr(exit_local_rays, "i", getattr(exit_local_rays, "intensity", None))
                         if raw_intensity is not None:
                             plot_element_refit_diagnostics(
@@ -1237,8 +1244,6 @@ def propagate_element(
 
     if debug_plot_3d:
         try:
-            from pathlib import Path
-
             from pop.visualization import plot_surface_raytrace_3d
 
             save_path = None
