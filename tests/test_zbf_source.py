@@ -93,3 +93,15 @@ def test_zbf_source_rejects_astigmatic_header_by_default(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="astigmatic"):
         ZbfSource(path).create_initial_wavefront()
+
+
+def test_zbf_source_accepts_small_zemax_xy_sampling_roundoff(tmp_path: Path) -> None:
+    zbf = _field(np.ones((2, 2), dtype=np.complex128))
+    zbf.dy = zbf.dx * (1.0 + 5.5e-5)
+    path = tmp_path / "roundoff.ZBF"
+    write_zbf(path, zbf)
+
+    source = ZbfSource(path)
+    amplitude, _phase, _pilot, _wfo = source.create_initial_wavefront()
+
+    np.testing.assert_allclose(amplitude, np.ones((2, 2)))

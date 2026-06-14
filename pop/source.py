@@ -442,7 +442,7 @@ class ZbfSource:
     reference_mode: str = "reference_relative"
     allow_polarized_ex_only: bool = False
     allow_astigmatic_approximation: bool = False
-    radial_rtol: float = 1e-6
+    radial_rtol: float = 1e-4
     radial_atol: float = 1e-9
 
     def __post_init__(self) -> None:
