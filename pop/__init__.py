@@ -64,7 +64,7 @@ configure_vendor_paths()
 from . import coordinates, core, io, propagation, source, utils, visualization, wavefront
 from .options import DebugOptions, PlotOptions, PropagationOptions
 from .result import PropagationResult, SurfaceRecord
-from .source import CustomSource, GaussianSource
+from .source import CustomSource, GaussianSource, ZbfSource
 from .system import System
 
 
@@ -1012,6 +1012,7 @@ __all__ = [
     "PlotOptions",
     "DebugOptions",
     "CustomSource",
+    "ZbfSource",
     "check_vendor_imports",
     "configure_vendor_paths",
     "coordinates",

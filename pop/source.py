@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Tuple, Any
 
 import numpy as np
@@ -426,6 +427,130 @@ class CustomSource:
             )
 
         return self.amplitude.copy(), self.phase.copy(), pilot_beam, wfo
+
+
+@dataclass
+class ZbfSource:
+    """Zemax Beam File source adapter.
+
+    The default mode preserves Zemax's reference-relative Ex samples in the
+    PROPER wavefront while exposing the corresponding physical phase on the
+    returned source arrays.
+    """
+
+    zbf_path: str | Path
+    reference_mode: str = "reference_relative"
+    allow_polarized_ex_only: bool = False
+    allow_astigmatic_approximation: bool = False
+    radial_rtol: float = 1e-6
+    radial_atol: float = 1e-9
+
+    def __post_init__(self) -> None:
+        mode = str(self.reference_mode).strip().lower()
+        if mode not in {"reference_relative", "physical"}:
+            raise ValueError("reference_mode must be 'reference_relative' or 'physical'")
+        self.reference_mode = mode
+        self.zbf_path = Path(self.zbf_path)
+
+    @property
+    def wavelength_um(self) -> float:
+        from .io.zbf import read_zbf
+
+        return read_zbf(self.zbf_path).wavelength * 1e3
+
+    def create_initial_wavefront(
+        self,
+    ) -> Tuple[np.ndarray, np.ndarray, PilotBeamParams, Any]:
+        import proper
+
+        from .io.zbf import read_zbf, zbf_reference_phase
+
+        zbf = read_zbf(self.zbf_path)
+        if zbf.is_polarized and not self.allow_polarized_ex_only:
+            raise ValueError("ZBF polarized input is not supported by default")
+        self._validate_radial_header(zbf)
+
+        pilot_beam = self._pilot_from_zbf(zbf)
+        reference_relative_field = np.asarray(zbf.ex, dtype=np.complex128)
+        reference_phase = zbf_reference_phase(zbf)
+        physical_field = reference_relative_field * np.exp(1j * reference_phase)
+
+        if self.reference_mode == "physical":
+            wfarr_field = physical_field
+        else:
+            wfarr_field = reference_relative_field
+
+        amplitude = np.abs(physical_field)
+        phase = np.angle(physical_field)
+
+        sampling_m = zbf.dx * 1e-3
+        beam_diameter_m = 2.0 * pilot_beam.waist_radius_mm * 1e-3
+        beam_ratio = beam_diameter_m / (zbf.nx * sampling_m)
+        beam_ratio = max(min(float(beam_ratio), 1.0), 1e-6)
+
+        wfo = proper.prop_begin(
+            beam_diameter_m,
+            zbf.wavelength * 1e-3,
+            zbf.nx,
+            beam_ratio,
+        )
+        wfo.w0 = pilot_beam.waist_radius_mm * 1e-3
+        wfo.z_Rayleigh = pilot_beam.rayleigh_length_mm * 1e-3
+        wfo.z = float(zbf.zx) * 1e-3
+        wfo.z_w0 = 0.0
+        wfo._dx = sampling_m
+        if abs(zbf.zx) < proper.rayleigh_factor * max(abs(zbf.rx), 1e-15):
+            wfo.beam_type_old = "INSIDE_"
+            wfo.reference_surface = "PLANAR"
+        else:
+            wfo.beam_type_old = "OUTSIDE"
+            wfo.reference_surface = "SPHERI"
+        wfo.wfarr = proper.prop_shift_center(wfarr_field)
+        return amplitude, phase, pilot_beam, wfo
+
+    def _validate_radial_header(self, zbf: Any) -> None:
+        pairs = (
+            ("dx", zbf.dx, zbf.dy),
+            ("z", zbf.zx, zbf.zy),
+            ("rayleigh", zbf.rx, zbf.ry),
+            ("waist", zbf.wx, zbf.wy),
+        )
+        for name, x_value, y_value in pairs:
+            if not np.isclose(
+                x_value,
+                y_value,
+                rtol=self.radial_rtol,
+                atol=self.radial_atol,
+            ):
+                if not self.allow_astigmatic_approximation:
+                    raise ValueError(
+                        f"ZBF astigmatic header is not supported: {name} differs"
+                    )
+
+    def _pilot_from_zbf(self, zbf: Any) -> PilotBeamParams:
+        wavelength_um = zbf.wavelength * 1e3
+        waist_radius_mm = float(zbf.wx)
+        rayleigh_mm = float(zbf.rx)
+        q = complex(float(zbf.zx), rayleigh_mm)
+        spot_size_mm = waist_radius_mm
+        if abs(rayleigh_mm) > 1e-15:
+            spot_size_mm = waist_radius_mm * np.sqrt(
+                1.0 + (float(zbf.zx) / rayleigh_mm) ** 2
+            )
+        curvature_radius_mm = np.inf
+        if abs(float(zbf.zx)) > 1e-15:
+            curvature_radius_mm = float(zbf.zx) * (
+                1.0 + (rayleigh_mm / float(zbf.zx)) ** 2
+            )
+        return PilotBeamParams(
+            wavelength_um=wavelength_um,
+            waist_radius_mm=waist_radius_mm,
+            waist_position_mm=-float(zbf.zx),
+            curvature_radius_mm=curvature_radius_mm,
+            spot_size_mm=float(spot_size_mm),
+            q_parameter=q,
+            current_refractive_index=float(zbf.index),
+        )
 
 def _plot_custom_source_diagnostics(
     amplitude: np.ndarray,
