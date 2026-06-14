@@ -17,12 +17,28 @@ from .config import BenchmarkConfig, PopSamplingConfig, ZbfInputConfig
 from .popapi_runner import PopApiRunner, PopApiRun
 from .zosapi_runner import ZosPopRunner, ZosPopRun
 
-DEFAULT_ZMX_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "sandbox"
-    / "Zemax_baseline"
-    / "biconic_focus_test_expand_validation.zmx"
-)
+_BICONIC_ZMX_NAME = "biconic_focus_test_expand_validation.zmx"
+
+
+def _resolve_default_zmx_path(module_file: str | Path) -> Path:
+    """Resolve the biconic baseline ZMX across main workspaces and worktrees."""
+
+    module_path = Path(module_file).resolve()
+    for parent in module_path.parents:
+        candidates = [
+            parent / "sandbox" / "Zemax_baseline" / _BICONIC_ZMX_NAME,
+        ]
+        if parent.name == ".worktrees":
+            candidates.append(
+                parent.parent / "sandbox" / "Zemax_baseline" / _BICONIC_ZMX_NAME
+            )
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+    return module_path.parents[3] / "sandbox" / "Zemax_baseline" / _BICONIC_ZMX_NAME
+
+
+DEFAULT_ZMX_PATH = _resolve_default_zmx_path(Path(__file__))
 DEFAULT_OUTPUT_DIR = (
     Path(__file__).resolve().parent / "output" / "biconic_zemax_pop_benchmark"
 )
