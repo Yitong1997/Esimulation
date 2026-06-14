@@ -15,9 +15,6 @@ from typing import Any, Optional, Sequence
 
 import numpy as np
 
-from . import coordinates, core, io, propagation, source, utils, visualization, wavefront
-from .options import DebugOptions, PlotOptions, PropagationOptions
-
 _VENDOR_DIRS = ("src", "optiland-master", "proper_v3.3.4_python")
 
 
@@ -64,6 +61,8 @@ def check_vendor_imports() -> dict[str, bool]:
 
 configure_vendor_paths()
 
+from . import coordinates, core, io, propagation, source, utils, visualization, wavefront
+from .options import DebugOptions, PlotOptions, PropagationOptions
 from .result import PropagationResult, SurfaceRecord
 from .source import CustomSource, GaussianSource
 from .system import System

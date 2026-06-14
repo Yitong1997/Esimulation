@@ -1,0 +1,202 @@
+"""Zemax Beam File (ZBF) read/write helpers."""
+
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+N_HEADER_INTS = 9
+N_HEADER_DBLS = 20
+
+
+@dataclass
+class ZbfField:
+    """ZBF complex field and header metadata."""
+
+    path: Path | None
+    version: int
+    nx: int
+    ny: int
+    is_polarized: int
+    units: int
+    dx: float
+    dy: float
+    zx: float
+    rx: float
+    wx: float
+    zy: float
+    ry: float
+    wy: float
+    wavelength: float
+    index: float
+    receiver_efficiency: float
+    system_efficiency: float
+    ex: np.ndarray
+    ey: np.ndarray | None = None
+
+    @property
+    def x_coords(self) -> np.ndarray:
+        return (np.arange(self.nx) - self.nx / 2.0 + 0.5) * self.dx
+
+    @property
+    def y_coords(self) -> np.ndarray:
+        return (np.arange(self.ny) - self.ny / 2.0 + 0.5) * self.dy
+
+    @property
+    def amplitude(self) -> np.ndarray:
+        amp_sq = np.abs(self.ex) ** 2
+        if self.ey is not None:
+            amp_sq = amp_sq + np.abs(self.ey) ** 2
+        return np.sqrt(amp_sq)
+
+    @property
+    def physical_field(self) -> np.ndarray:
+        return self.ex * np.exp(1j * zbf_reference_phase(self))
+
+
+def read_zbf(path: str | Path) -> ZbfField:
+    """Read a Zemax Beam File from disk."""
+
+    zbf_path = Path(path)
+    with zbf_path.open("rb") as f:
+        ints_raw = f.read(N_HEADER_INTS * 4)
+        if len(ints_raw) != N_HEADER_INTS * 4:
+            raise ValueError(f"Incomplete ZBF integer header: {zbf_path}")
+        ints = struct.unpack("<9i", ints_raw)
+        version, nx, ny, is_polarized, units = ints[:5]
+        if nx <= 0 or ny <= 0:
+            raise ValueError(f"Invalid ZBF dimensions: nx={nx}, ny={ny}")
+
+        dbls_raw = f.read(N_HEADER_DBLS * 8)
+        if len(dbls_raw) != N_HEADER_DBLS * 8:
+            raise ValueError(f"Incomplete ZBF double header: {zbf_path}")
+        dbls = struct.unpack("<20d", dbls_raw)
+
+        ex = _read_complex_grid(f, nx, ny, zbf_path, "Ex")
+        ey = _read_complex_grid(f, nx, ny, zbf_path, "Ey") if is_polarized else None
+
+    return ZbfField(
+        path=zbf_path,
+        version=version,
+        nx=nx,
+        ny=ny,
+        is_polarized=is_polarized,
+        units=units,
+        dx=float(dbls[0]),
+        dy=float(dbls[1]),
+        zx=float(dbls[2]),
+        rx=float(dbls[3]),
+        wx=float(dbls[4]),
+        zy=float(dbls[5]),
+        ry=float(dbls[6]),
+        wy=float(dbls[7]),
+        wavelength=float(dbls[8]),
+        index=float(dbls[9]),
+        receiver_efficiency=float(dbls[10]),
+        system_efficiency=float(dbls[11]),
+        ex=ex,
+        ey=ey,
+    )
+
+
+def write_zbf(path: str | Path, zbf: ZbfField) -> None:
+    """Write a Zemax Beam File to disk."""
+
+    zbf_path = Path(path)
+    zbf_path.parent.mkdir(parents=True, exist_ok=True)
+    if zbf.ex.shape != (zbf.ny, zbf.nx):
+        raise ValueError(f"Ex shape {zbf.ex.shape} does not match {(zbf.ny, zbf.nx)}")
+    with zbf_path.open("wb") as f:
+        f.write(
+            struct.pack(
+                "<9i",
+                zbf.version,
+                zbf.nx,
+                zbf.ny,
+                zbf.is_polarized,
+                zbf.units,
+                0,
+                0,
+                0,
+                0,
+            )
+        )
+        f.write(
+            struct.pack(
+                "<20d",
+                zbf.dx,
+                zbf.dy,
+                zbf.zx,
+                zbf.rx,
+                zbf.wx,
+                zbf.zy,
+                zbf.ry,
+                zbf.wy,
+                zbf.wavelength,
+                zbf.index,
+                zbf.receiver_efficiency,
+                zbf.system_efficiency,
+                *([0.0] * 8),
+            )
+        )
+        _write_complex_grid(f, zbf.ex)
+        if zbf.is_polarized:
+            if zbf.ey is None:
+                raise ValueError("Polarized ZBF requires ey")
+            _write_complex_grid(f, zbf.ey)
+
+
+def zbf_reference_phase(zbf: ZbfField) -> np.ndarray:
+    """Compute the spherical reference phase represented by the ZBF header."""
+
+    x_grid, y_grid = np.meshgrid(zbf.x_coords, zbf.y_coords)
+    phase = np.zeros((zbf.ny, zbf.nx), dtype=np.float64)
+    if zbf.wavelength <= 0:
+        return phase
+
+    rcx = _curvature_radius(zbf.zx, zbf.rx)
+    rcy = _curvature_radius(zbf.zy, zbf.ry)
+    k = 2.0 * np.pi * zbf.index / zbf.wavelength
+    if np.isfinite(rcx) and np.isfinite(rcy) and np.isclose(
+        rcx, rcy, rtol=5e-8, atol=1e-8
+    ):
+        return k * _signed_spherical_opd(x_grid**2 + y_grid**2, 0.5 * (rcx + rcy))
+    if np.isfinite(rcx):
+        phase += k * _signed_spherical_opd(x_grid**2, rcx)
+    if np.isfinite(rcy):
+        phase += k * _signed_spherical_opd(y_grid**2, rcy)
+    return phase
+
+
+def _read_complex_grid(f, nx: int, ny: int, path: Path, label: str) -> np.ndarray:
+    raw = f.read(nx * ny * 2 * 8)
+    if len(raw) != nx * ny * 2 * 8:
+        raise ValueError(f"Incomplete ZBF {label} data: {path}")
+    pairs = np.frombuffer(raw, dtype="<f8")
+    return (pairs[0::2] + 1j * pairs[1::2]).reshape(ny, nx)
+
+
+def _write_complex_grid(f, field: np.ndarray) -> None:
+    flat = np.asarray(field, dtype=np.complex128).reshape(-1)
+    pairs = np.empty(2 * flat.size, dtype="<f8")
+    pairs[0::2] = flat.real
+    pairs[1::2] = flat.imag
+    f.write(pairs.tobytes())
+
+
+def _curvature_radius(waist_position: float, rayleigh_range: float) -> float:
+    z = float(waist_position)
+    if abs(z) < 1e-15:
+        return float("inf")
+    zr = float(rayleigh_range)
+    return z * (1.0 + (zr / z) ** 2)
+
+
+def _signed_spherical_opd(transverse_sq: np.ndarray, radius: float) -> np.ndarray:
+    if not np.isfinite(radius) or abs(radius) < 1e-15:
+        return np.zeros_like(transverse_sq, dtype=np.float64)
+    abs_radius = abs(radius)
+    return np.sign(radius) * (np.sqrt(abs_radius**2 + transverse_sq) - abs_radius)
