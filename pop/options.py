@@ -14,6 +14,8 @@ class PropagationOptions:
     num_rays: int = 1000
     coordinate_priority: str = "x"
     print_status: bool = True
+    free_space_mode: str = "native_proper"
+    element_phase_mode: str = "pilot_only"
     force_asm: Optional[bool] = None
     auto_asm: bool = True
     reconstruction_mask_ratio: Optional[float] = None

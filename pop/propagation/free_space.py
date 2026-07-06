@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import copy
+import io
 from typing import Optional, Tuple, Any
 import warnings
 from pathlib import Path
@@ -433,10 +436,26 @@ def propagate_free_space(
     force_asm: Optional[bool] = None,
     auto_asm: bool = True,
     pilot_beam: Optional[PilotBeamParams] = None,
+    free_space_mode: str = "native_proper",
 ) -> Tuple[GridSampling, str]:
     import proper
 
     distance_m = distance_mm * 1e-3
+
+    if free_space_mode == "native_proper":
+        if pilot_beam is not None:
+            _sync_proper_gaussian_params(wfo, pilot_beam, update_reference_surface=False)
+        proper.prop_propagate(wfo, distance_m / n)
+        sampling_m = proper.prop_get_sampling(wfo)
+        if hasattr(wfo, "dx"):
+            try:
+                wfo.dx = sampling_m
+            except AttributeError:
+                pass
+        return GridSampling.from_proper(wfo), "PROPER native"
+
+    if free_space_mode != "legacy_auto_asm":
+        raise ValueError("free_space_mode must be 'native_proper' or 'legacy_auto_asm'")
     
     # 1. Determine Strategy
     use_asm = False
@@ -639,8 +658,6 @@ def propagate_free_space(
     # Execution
     orig_z_ray = getattr(wfo, "z_Rayleigh", None)
     orig_z_w0 = getattr(wfo, "z_w0", None)
-    with open("debug_trace.log", "a") as f:
-        f.write(f"[DEBUG] Pre-Prop: use_asm={use_asm}, z_ray={orig_z_ray}, z_w0={orig_z_w0}\n")
 
     if use_asm and orig_z_ray is not None:
         # CRITICAL FIX: Handle Entry Transition (SPHERI -> PLANAR)
@@ -723,32 +740,19 @@ def _compute_proper_reference_phase(
     wfo: Any,
     grid_sampling: GridSampling,
 ) -> NDArray[np.floating]:
-    """Compute PROPER's internal reference phase (Parabolic Approximation).
-    
-    CRITICAL PHYSICS NOTE:
-    PROPER uses the paraxial approximation for its reference sphere: phi = k * r^2 / (2*R).
-    Our PilotBeamParams (for fast beams) uses the exact spherical sag: phi = k * (R - sqrt(R^2-r^2)).
-    
-    The difference between these two is Spherical Aberration (scaling as r^4, r^6...).
-    This difference is mathematically carried in the 'residual_phase' array returned by PROPER.
-    
-    When we reconstruct the total wavefront in `proper_to_amplitude_phase`:
-      Total_Phase = PROPER_Residual + PROPER_Ref_Parabolic
-      Final_Residual = Total_Phase - Pilot_Ref_Spherical
-                     = (Spherical_Aberration + Parabolic) - Spherical
-                     ≈ 0 (for a perfect spherical wave)
-                     
-    Therefore, this function MUST remain parabolic to match PROPER's internal logic.
-    """
+    """Return PROPER's reference phase by applying PROPER's own q-phase routine."""
+    import proper
+
     if getattr(wfo, "reference_surface", "PLANAR") == "PLANAR":
         return np.zeros((grid_sampling.grid_size, grid_sampling.grid_size))
     r_ref_m = wfo.z - wfo.z_w0
     if abs(r_ref_m) < 1e-12:
         return np.zeros((grid_sampling.grid_size, grid_sampling.grid_size))
-    x_mm, y_mm = grid_sampling.get_coordinate_arrays()
-    r_sq_m = (x_mm * 1e-3) ** 2 + (y_mm * 1e-3) ** 2
-    k = 2.0 * np.pi / wfo.lamda
-    return k * r_sq_m / (2.0 * r_ref_m)
+    ref_wfo = copy.copy(wfo)
+    ref_wfo.wfarr = np.ones_like(wfo.wfarr, dtype=np.complex128)
+    with contextlib.redirect_stdout(io.StringIO()):
+        proper.prop_qphase(ref_wfo, r_ref_m)
+    return proper.prop_shift_center(np.angle(ref_wfo.wfarr))
 
 
 
@@ -1127,6 +1131,7 @@ def propagate_state(
     trace_context: Optional[dict[str, Any]] = None,
     force_asm: Optional[bool] = None,
     auto_asm: bool = True,
+    free_space_mode: str = "native_proper",
     auto_resample: bool = False,
     resample_min_beam_pixels: int = 10,
     resample_beam_pixels_target: Optional[int] = None,
@@ -1185,7 +1190,8 @@ def propagate_state(
         state.pilot_beam_params.current_refractive_index,
         force_asm=effective_force_asm,
         auto_asm=auto_asm,
-        pilot_beam=state.pilot_beam_params
+        pilot_beam=state.pilot_beam_params,
+        free_space_mode=free_space_mode,
     )
 
     new_pilot = _propagate_pilot_with_compensated_q(state.pilot_beam_params, distance_mm)

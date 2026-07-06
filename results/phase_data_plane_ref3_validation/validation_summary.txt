@@ -1,0 +1,62 @@
+Validation for phase_data_plane_ref3.txt, Reference Phase Radius = 5.1040E-1 mm
+ref3 header lines=15, points=2048, x range=-0.1024..0.1023 mm, step=0.0001 mm
+ref3 phase range=0.2569826..1.558615 rad, span=1.3016324 rad, unwrap jumps=0
+
+Reference formula tested: phi_ref(x;R)=k*(R-sqrt(R^2+x^2)), k=2*pi/0.001 mm^-1.
+R tested = 5.104000000000e-01 mm
+
+[A] original raw phase - ref3 residual, overlap with phase_data_plane_ref.txt
+overlap points=2048, x=-0.0512..0.05115 mm
+model: raw-ref3 = C + T*x + S*phi_ref(x;0.51040)
+free S: C=1.729723180351e+01, T=5.774990481378e-07, S=9.999987472050e-01, stats={'rms': 6.939686930939089e-06, 'pv': 2.9969237228089085e-05, 'maxabs': 2.0569621425936546e-05, 'mean': -1.4635645126381824e-15, 'std': 6.93968693093909e-06}
+fixed S=1: C=1.729723853148e+01, T=1.930991437561e-07, stats={'rms': 9.182868322324252e-06, 'pv': 2.7796585277073405e-05, 'maxabs': 1.5073428880185702e-05, 'mean': 5.5432004472666385e-15, 'std': 9.182868322324252e-06}
+
+[B] ref3 residual - ref2 residual, overlap with phase_data_plane_ref2.txt
+overlap points=2048, x=-0.1024..0.1023 mm
+model: ref3-ref2 = C + T*x + S*(phi_ref(x;0.5)-phi_ref(x;0.51040))
+free S: C=-5.998606313139e-03, T=-3.166691815437e-06, S=1.001518513909e+00, stats={'rms': 7.840226227400904e-05, 'pv': 0.00032300145071528785, 'maxabs': 0.00022104353027341261, 'mean': -4.724377085287695e-16, 'std': 7.840226227400904e-05}
+fixed S=1: C=-6.665854992297e-03, T=1.558085531782e-05, stats={'rms': 0.0005973511350125998, 'pv': 0.001848437524737288, 'maxabs': 0.0010888102150286016, 'mean': -2.4665599424045226e-18, 'std': 0.0005973511350125998}
+best R inferred from ref3-ref2 with fixed S=1: R=5.104161128000e-01 mm, RMS=7.849429351834e-05 rad, delta from 0.51040 = 1.611280000002e-05 mm
+
+[C] ref3 residual alone vs expected difference if raw phase is R=0.5 sphere-wave term
+model: ref3 = C + T*x + S*(phi_ref(0.5)-phi_ref(0.51040))
+free S: C=1.558512067328e+00, T=-3.612546018217e-06, S=9.994826989789e-01, stats={'rms': 8.8399752502114e-05, 'pv': 0.00036660473840016694, 'maxabs': 0.00025216534212685326, 'mean': -1.0096361680728139e-15, 'std': 8.8399752502114e-05}
+fixed S=1: C=1.558739374053e+00, T=-9.999135704180e-06, stats={'rms': 0.0002202532017276323, 'pv': 0.0008507861642433334, 'maxabs': 0.0006979663275062387, 'mean': 4.12457611467798e-16, 'std': 0.00022025320172763233}
+
+Expected even coefficients for phi_ref(0.5)-phi_ref(0.51040), x in mm:
+  x^2: -1.280272868234e+02 rad/mm^2
+  x^4: 3.763088965173e+02 rad/mm^4
+  x^6: -1.229151061117e+03 rad/mm^6
+  x^8: 4.216155823240e+03 rad/mm^8
+  x^10: -1.487728870955e+04 rad/mm^10
+  x^12: 5.347626971030e+04 rad/mm^12
+
+Even polynomial fits of ref3 residual itself, centered at x=0:
+up to x^2: RMS=3.097597568488e-03 rad, PV=1.317203059233e-02 rad
+up to x^4: RMS=2.957860528031e-05 rad, PV=1.488575820089e-04 rad
+up to x^6: RMS=4.551841568867e-07 rad, PV=2.729111441113e-06 rad
+  c0: 1.558615013776e+00
+  c2: -1.280639578674e+02
+  c4: 3.888379406290e+02
+  c6: -1.335306662484e+03
+up to x^8: RMS=2.490904356813e-07 rad, PV=1.108296619590e-06 rad
+  c0: 1.558615443295e+00
+  c2: -1.280654324869e+02
+  c4: 3.896114014217e+02
+  c6: -1.463161245514e+03
+  c8: 6.531993198694e+03
+up to x^10: RMS=2.490868782579e-07 rad, PV=1.108295547114e-06 rad
+  c0: 1.558615443270e+00
+  c2: -1.280654323486e+02
+  c4: 3.896112843680e+02
+  c6: -1.463127187518e+03
+  c8: 6.527998825267e+03
+  c10: 1.624384059132e+02
+up to x^12: RMS=2.490868762620e-07 rad, PV=1.108295544894e-06 rad
+  c0: 1.558615443270e+00
+  c2: -1.280654323485e+02
+  c4: 3.896112843211e+02
+  c6: -1.463127175341e+03
+  c8: 6.527997752183e+03
+  c10: 1.624383798179e+02
+  c12: 2.678380037092e+00

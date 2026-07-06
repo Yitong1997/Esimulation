@@ -110,18 +110,10 @@ class GaussianSource:
             k = 2.0 * np.pi / wavelength_mm
             phase = k * r_sq / (2.0 * r_curv)
 
-        if wfo.reference_surface == "SPHERI":
-            r_sq_m = (x_grid * 1e-3) ** 2 + (y_grid * 1e-3) ** 2
-            r_ref_m = wfo.z - wfo.z_w0
-            if abs(r_ref_m) > 1e-12:
-                k_m = 2.0 * np.pi / wavelength_m
-                ref_phase = k_m * r_sq_m / (2.0 * r_ref_m)
-                residual_phase = phase - ref_phase
-                complex_amplitude = amplitude * np.exp(1j * residual_phase)
-            else:
-                complex_amplitude = amplitude * np.exp(1j * phase)
-        else:
-            complex_amplitude = amplitude * np.exp(1j * phase)
+        from pop.propagation.free_space import _compute_proper_reference_phase
+
+        ref_phase = _compute_proper_reference_phase(wfo, GridSampling.from_proper(wfo))
+        complex_amplitude = amplitude * np.exp(1j * (phase - ref_phase))
 
         wfo.wfarr = proper.prop_shift_center(complex_amplitude)
 
@@ -392,23 +384,12 @@ class CustomSource:
             wfo.reference_surface = "SPHERI"
 
         # 构建 wfarr
-        coords_m = (np.arange(grid_size) - grid_size // 2) * sampling_m
-        x_grid_m, y_grid_m = np.meshgrid(coords_m, coords_m)
-        r_sq_m = x_grid_m ** 2 + y_grid_m ** 2
-
         # 用户输入的 phase 是完整物理相位 (mm 空间 → 需要转换为 m 空间)
         # phase 本身是 rad，与空间单位无关。但参考球面计算需要 m 单位坐标
-        if wfo.reference_surface == "SPHERI":
-            r_ref_m = wfo.z - wfo.z_w0
-            if abs(r_ref_m) > 1e-12:
-                k_m = 2.0 * np.pi / wavelength_m
-                ref_phase = k_m * r_sq_m / (2.0 * r_ref_m)
-                residual_phase = self.phase - ref_phase
-                complex_amplitude = self.amplitude * np.exp(1j * residual_phase)
-            else:
-                complex_amplitude = self.amplitude * np.exp(1j * self.phase)
-        else:
-            complex_amplitude = self.amplitude * np.exp(1j * self.phase)
+        from pop.propagation.free_space import _compute_proper_reference_phase
+
+        ref_phase = _compute_proper_reference_phase(wfo, GridSampling.from_proper(wfo))
+        complex_amplitude = self.amplitude * np.exp(1j * (self.phase - ref_phase))
 
         wfo.wfarr = proper.prop_shift_center(complex_amplitude)
 
@@ -653,14 +634,13 @@ def _plot_custom_source_diagnostics(
     wfarr_shifted = proper.prop_shift_center(wfo.wfarr)
     residual_phase = np.angle(wfarr_shifted)
 
-    # S4: Reference Phase (Analytical Unwrapped)
-    if wfo.reference_surface == "SPHERI":
-        r_ref_m = wfo.z - wfo.z_w0
-        k_m = 2.0 * np.pi / (wavelength_um * 1e-6)
-        r_sq_m = (x_grid * 1e-3)**2 + (y_grid * 1e-3)**2
-        ref_phase_analytical = k_m * r_sq_m / (2.0 * r_ref_m)
-    else:
-        ref_phase_analytical = np.zeros_like(phase)
+    # S4: PROPER reference phase generated through PROPER's own q-phase routine.
+    from pop.propagation.free_space import _compute_proper_reference_phase
+
+    ref_phase_analytical = _compute_proper_reference_phase(
+        wfo,
+        GridSampling.from_proper(wfo),
+    )
 
     ax = axes[1, 0]
     # S4 (理论参考球面): 必须显示其本来的物理尺度（绝对是不包裹的连续面）

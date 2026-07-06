@@ -1,0 +1,66 @@
+phase_data_plane_ref3 verification
+ref2: R=0.5 mm, points=2048, x=[-0.256,0.25575] mm
+ref3: R=0.48998 mm, points=2048, x=[-0.1024,0.1023] mm
+ref3 wrapped/unwrapped phase range: 1.570406 to 2.8767 rad, span=1.306294 rad, jumps=0
+
+Test A: compare residual difference y3 - y2 against reference-radius change over ref3 aperture.
+Expected for spherical wave reference: y3-y2 = C + T*x + [phi_ref(R=0.5)-phi_ref(R=0.48998)]
+with phi_ref(R)=k*(R-sqrt(R^2+x^2)), k=2*pi/0.001.
+spherical model free scale: C=5.892331083768e-03, T=7.792794420869e-08, scale=9.985237167038e-01, RMS=5.147088064008e-06 rad, PV=1.640744964751e-05 rad
+spherical model fixed scale=1: C=5.241780687421e-03, T=1.834278903972e-05, RMS=5.772034755849e-04 rad, PV=1.923387588561e-03 rad
+
+Conflict check: compare same data to geometric sag form R-sqrt(R^2-x^2).
+sag model free scale: C=1.316030552765e-02, T=2.735524921609e-04, scale=-9.449028100530e-01, RMS=6.413656743590e-03 rad, PV=2.737559804734e-02 rad
+sag model fixed scale=1: C=9.038922618399e-01, T=-2.571755444899e-02, RMS=8.034638323093e-01 rad, PV=2.693163286632e+00 rad
+
+Test B: compare original no-reference phase minus ref3 residual over original-file overlap.
+overlap points=2048, x=[-0.0512,0.05115] mm
+old-ref3 vs spherical R=0.48998 free scale: C=1.728543286874e+01, T=-1.949283490177e-08, scale=1.000011030878e+00, RMS=3.749843031193e-07 rad, PV=2.299605824430e-06 rad
+old-ref3 vs spherical R=0.48998 fixed scale=1: C=1.728537116796e+01, T=3.505310829139e-06, RMS=5.514960356614e-05 rad, PV=1.852596914380e-04 rad
+
+Even polynomial fits for ref3 residual y3(x), x in mm, centered at x=0:
+max_power, RMS(rad), PV(rad)
+ 0, 3.911860960959e-01, 1.306294000000e+00
+ 2, 3.137746882740e-03, 1.334105979571e-02
+ 4, 3.026617039022e-05, 1.534507064700e-04
+ 6, 4.685508327659e-07, 2.638323495230e-06
+ 8, 2.844257719415e-07, 1.016753887972e-06
+10, 2.844269636222e-07, 1.016791337349e-06
+12, 2.844269642000e-07, 1.016791356001e-06
+
+even poly up to x^6:
+  c0: 1.570406491428e+00
+  c2: 1.285598906215e+02
+  c4: -3.940735635450e+02
+  c6: 1.366343629267e+03
+  RMS=4.685508327659e-07, PV=2.638323495230e-06
+even poly up to x^8:
+  c0: 1.570406071643e+00
+  c2: 1.285613318201e+02
+  c4: -3.948294944779e+02
+  c6: 1.491300483222e+03
+  c8: -6.383949789083e+03
+  RMS=2.844257719415e-07, PV=1.016753887972e-06
+even poly up to x^10:
+  c0: 1.570406071672e+00
+  c2: 1.285613316725e+02
+  c4: -3.948293736168e+02
+  c6: 1.491266128165e+03
+  c8: -6.379991169434e+03
+  c10: -1.587686401709e+02
+  RMS=2.844269636222e-07, PV=1.016791337349e-06
+even poly up to x^12:
+  c0: 1.570406071672e+00
+  c2: 1.285613316725e+02
+  c4: -3.948293735674e+02
+  c6: 1.491266115687e+03
+  c8: -6.379990091182e+03
+  c10: -1.587686139347e+02
+  c12: -2.617942906394e+00
+  RMS=2.844269642000e-07, PV=1.016791356001e-06
+
+Reference expression under test:
+phi_ref(x,y;R)=2*pi/lambda * (R - sqrt(R^2 + x^2 + y^2)), modulo arbitrary piston/tilt/display wrapping.
+For ref3: phi_ref(x;0.48998)= 6.283185307180e+03 * (0.48998 - sqrt(0.48998^2 + x^2)) rad, x in mm.
+Predicted R-change term over ref3 aperture range: 0.000000000000e+00 to 1.305547073815e+00 rad, PV=1.305547073815e+00 rad
+Observed y3-y2 range after removing mean only: -4.400261198242e-01 to 8.635964801758e-01 rad, PV=1.303622600000e+00 rad

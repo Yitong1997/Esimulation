@@ -173,6 +173,17 @@ class PilotBeamParams:
     def rayleigh_length_mm(self) -> float:
         return float(abs(np.imag(self.q_parameter)))
 
+    def compute_phase_from_radius_squared(
+        self,
+        r_sq_mm: NDArray[np.floating],
+    ) -> NDArray[np.floating]:
+        r_sq = np.asarray(r_sq_mm, dtype=float)
+        if np.isinf(self.curvature_radius_mm):
+            return np.zeros_like(r_sq)
+        wavelength_mm = self.wavelength_um * 1e-3
+        k = 2 * np.pi * self.current_refractive_index / wavelength_mm
+        return k * r_sq / (2.0 * self.curvature_radius_mm)
+
     def compute_phase_grid(
         self,
         grid_size: int,
@@ -182,25 +193,7 @@ class PilotBeamParams:
         coords = (np.arange(grid_size) - grid_size // 2) * dx
         x_grid, y_grid = np.meshgrid(coords, coords)
         r_sq = x_grid**2 + y_grid**2
-        if np.isinf(self.curvature_radius_mm):
-            return np.zeros((grid_size, grid_size))
-        wavelength_mm = self.wavelength_um * 1e-3
-        k = 2 * np.pi * self.current_refractive_index / wavelength_mm
-        
-        # Exact Spherical Sag (numerically stable form)
-        # z = r^2 / (R * (1 + sqrt(1 - (r/R)^2)))
-        R = self.curvature_radius_mm
-        R_sq = R**2
-        
-        # Avoid invalid sqrt for points outside the sphere (should not happen for reasonable beams)
-        valid_mask = r_sq < R_sq
-        sag = np.zeros_like(r_sq)
-        
-        if np.any(valid_mask):
-            sqrt_term = np.sqrt(1.0 - r_sq[valid_mask] / R_sq)
-            sag[valid_mask] = r_sq[valid_mask] / (R * (1.0 + sqrt_term))
-            
-        return k * sag
+        return self.compute_phase_from_radius_squared(r_sq)
 
     def compute_amplitude_grid(
         self,

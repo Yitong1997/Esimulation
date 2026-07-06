@@ -453,22 +453,11 @@ def _compute_pilot_opd_waves(
     pilot_params: PilotBeamParams,
     wavelength_mm: float,
 ) -> NDArray[np.floating]:
+    del wavelength_mm  # Kept for the existing call signature.
     r_sq = np.asarray(rays_local.x) ** 2 + np.asarray(rays_local.y) ** 2
-    if np.isinf(pilot_params.curvature_radius_mm):
-        pilot_opd_mm = np.zeros_like(r_sq)
-    else:
-        # Exact Spherical Sag (numerically stable form)
-        R = pilot_params.curvature_radius_mm
-        R_sq = R**2
-        valid_mask = r_sq < R_sq
-        pilot_opd_mm = np.zeros_like(r_sq)
-        
-        if np.any(valid_mask):
-            sqrt_term = np.sqrt(1.0 - r_sq[valid_mask] / R_sq)
-            # OPD = n * sag
-            pilot_opd_mm[valid_mask] = pilot_params.current_refractive_index * r_sq[valid_mask] / (R * (1.0 + sqrt_term))
+    pilot_opd_waves = pilot_params.compute_phase_from_radius_squared(r_sq) / (2.0 * np.pi)
     chief_idx = int(np.argmin(r_sq))
-    return (pilot_opd_mm - pilot_opd_mm[chief_idx]) / wavelength_mm
+    return pilot_opd_waves - pilot_opd_waves[chief_idx]
 
 
 def _amplitude_phase_to_proper(
@@ -923,6 +912,7 @@ def propagate_element(
     pilot_refit_pv_threshold_waves: float = 0.5,
     refit_debug_dir: Optional[str | Path] = None,
     enable_ideal_planar_mirror: bool = True,
+    element_phase_mode: str = "pilot_only",
 ) -> PropagationState:
     if state.proper_wfo is None:
         raise ValueError("PropagationState.proper_wfo is required for element propagation")
@@ -964,6 +954,7 @@ def propagate_element(
         pilot_beam_params=state.pilot_beam_params,
         num_rays=num_rays,
         sampling_sigma=sampling_sigma,
+        element_phase_mode=element_phase_mode,
     )
     capture_debug = debug or debug_plot_3d
     entrance_local_rays = _rays_to_dict(local_rays) if debug else None

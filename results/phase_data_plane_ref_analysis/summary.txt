@@ -1,0 +1,59 @@
+Input: D:\BTS\phase_data_plane_ref.txt
+Header lines: 15
+Data points: 2048
+X range: -0.0512 to 0.05115 mm; step median 5e-05 mm
+Wrapped phase range: -3.131004 to 3.138398 rad
+1D unwrap jumps detected: 6
+Unwrapped phase range: 2.427794 to 18.855839 rad; span 16.428045 rad
+
+Polynomial fits on centered x = X - mid(X), including piston/tilt:
+degree, RMS(rad), PV(rad), AIC, BIC
+ 2, 3.266007e-03, 1.397731e-02, -23440.270, -23423.397
+ 3, 3.265983e-03, 1.393472e-02, -23438.301, -23415.803
+ 4, 4.292487e-06, 2.198299e-05, -50611.007, -50582.884
+ 5, 4.292417e-06, 2.198451e-05, -50609.074, -50575.326
+ 6, 2.226082e-07, 1.026487e-06, -62727.925, -62688.553
+ 7, 2.226072e-07, 1.027186e-06, -62725.943, -62680.946
+ 8, 2.223844e-07, 1.032864e-06, -62728.045, -62677.423
+
+Quadratic coefficients phi = a2*u^2 + a1*u + a0, u=X-mid(X) in mm:
+a2=-6.269130312672e+03 rad/mm^2, a1=3.131766260298e-01 rad/mm, a0=1.885215620027e+01 rad
+If interpreted as spherical/paraxial phase with lambda=1.000 um: R_eff = k/(2*a2) = -0.501120968 mm
+Quadratic residual RMS=3.266007e-03 rad = 5.198012e-04 waves = 5.198012e-04 um OPD
+Quadratic residual PV =1.397731e-02 rad = 2.224557e-03 waves = 2.224557e-03 um OPD
+
+Spherical fit failed: ValueError('Initial guess is outside of provided bounds')
+
+Deg 4 residual RMS=4.292487e-06 rad, PV=2.198299e-05 rad
+Deg 6 residual RMS=2.226082e-07 rad, PV=1.026487e-06 rad
+Deg 8 residual RMS=2.223844e-07 rad, PV=1.032864e-06 rad
+
+Even polynomial coefficients of degree 8, centered coordinate u in mm, descending np.polyfit order:
+u^8: 4.370672112617e+04
+u^7: -7.514435899473e+01
+u^6: -1.260085926231e+04
+u^5: 2.133828516100e+00
+u^4: 6.282447154323e+03
+u^3: -6.284904316340e-01
+u^2: -6.283185259327e+03
+u^1: 3.141593223069e-01
+u^0: 1.885583527311e+01
+
+Signed spherical fit update
+sign=-1, fitted R=-4.707292711046e+00 mm, xc=-1.480028069416e-03 mm, A=5.901975733483e+04 rad/mm
+sphere RMS=3.303020046199e-03 rad, PV=1.410708792021e-02 rad
+sphere RMS OPD=5.256919674843e-04 um, PV OPD=2.245212775133e-03 um
+poly2: RMS=3.266007110381e-03 rad, PV=1.397730504955e-02 rad, AIC=-23440.270, BIC=-23423.397
+poly4: RMS=4.292486644968e-06 rad, PV=2.198299457534e-05 rad, AIC=-50611.007, BIC=-50582.884
+poly6: RMS=2.226081519427e-07 rad, PV=1.026487376876e-06 rad, AIC=-62727.925, BIC=-62688.553
+poly8: RMS=2.223843504898e-07 rad, PV=1.032864143991e-06 rad, AIC=-62728.045, BIC=-62677.423
+poly8 coeff descending:
+u^8: 4.370672112617e+04
+u^7: -7.514435899473e+01
+u^6: -1.260085926231e+04
+u^5: 2.133828516100e+00
+u^4: 6.282447154323e+03
+u^3: -6.284904316340e-01
+u^2: -6.283185259327e+03
+u^1: 3.141593223069e-01
+u^0: 1.885583527311e+01

@@ -1,0 +1,63 @@
+phase_data_plane_ref2 quick analysis / Reference Phase inference
+File: D:\BTS\phase_data_plane_ref2.txt
+Header lines: 15; data points: 2048
+X range: -0.256 to 0.25575 mm, step=0.00025 mm
+Phase range after unwrap: 1.564522 to 1.580755 rad, span=0.016233 rad
+
+Even polynomial fits for remaining phase, centered at x=0:
+max_power, RMS(rad), PV(rad), AIC, BIC
+ 0, 5.364434380531e-03, 1.623300000000e-02, -21411.742, -21406.117
+ 2, 2.978389230119e-04, 2.183754604994e-03, -33251.251, -33240.002
+ 4, 2.840222368015e-04, 1.911300524051e-03, -33443.812, -33426.938
+ 6, 1.148469183510e-04, 6.580367897637e-04, -37150.545, -37128.047
+ 8, 1.414506099299e-05, 4.774219934700e-05, -45726.530, -45698.407
+10, 1.049717200158e-05, 9.609276223377e-05, -46946.202, -46912.454
+12, 4.033074707325e-06, 2.861855114622e-05, -50862.340, -50822.968
+14, 3.999266833929e-06, 2.826607892681e-05, -50894.820, -50849.823
+
+even poly up to x^8: y=sum c_p*x^p, x in mm
+  c0: 1.564503970557e+00
+  c2: 2.663130121587e-01
+  c4: -1.904274490781e+00
+  c6: 1.086258742585e+02
+  c8: -1.280625938655e+03
+  RMS=1.414506099299e-05 rad, PV=4.774219934700e-05 rad
+even poly up to x^10: y=sum c_p*x^p, x in mm
+  c0: 1.564514662715e+00
+  c2: 2.573399484078e-01
+  c4: -7.176704904301e-01
+  c6: 5.430830831456e+01
+  c8: -2.742165043076e+02
+  c10: -6.483799486822e+03
+  RMS=1.049717200158e-05 rad, PV=9.609276223377e-05 rad
+even poly up to x^12: y=sum c_p*x^p, x in mm
+  c0: 1.564525593829e+00
+  c2: 2.443302113495e-01
+  c4: 1.763681200834e+00
+  c6: -1.173307182484e+02
+  c8: 5.057207328743e+03
+  c10: -8.240981394125e+04
+  c12: 4.037247711176e+05
+  RMS=4.033074707325e-06 rad, PV=2.861855114622e-05 rad
+
+Reference phase inferred by old raw phase minus new residual over overlap:
+model: old(x)-new(x)=C+T*x+S*[k*(R-sqrt(R^2+x^2))]
+R=0.5 mm, lambda=0.001 mm, k=2*pi/lambda=6.283185307180e+03 rad/mm
+free scale fit: C=1.729131835843e+01, T=6.069724323154e-08, S=1.000040319055e+00, RMS=7.882322680390e-07 rad, PV=4.104522694170e-06 rad
+fixed S=1 fit: C=1.729109734056e+01, T=1.268767872550e-05, RMS=1.975533895777e-04 rad, PV=6.627063714904e-04 rad
+
+Original phase itself on overlap fits the same expression:
+old(x)=C+T*x+S*ref(x): C=1.885583964102e+01, T=2.288225275926e-08, S=1.000000265849e+00, RMS=4.453161044023e-07 rad, PV=2.424234936793e-06 rad
+
+Exact coordinate-dependent Reference Phase term (piston arbitrary):
+phi_ref(x,y) = (2*pi/lambda_m) * ( R - sqrt(R^2 + (x-x0)^2 + (y-y0)^2) )
+For this X cross-section, x0=y0=0, y=0, R=0.5 mm, lambda_m=0.001 mm:
+phi_ref(x) = 6283.185307179586 * (0.5 - sqrt(0.25 + x^2)) rad, x in mm
+Series around x=0:
+  x^2: -6.283185307180e+03 rad/mm^2
+  x^4: 6.283185307180e+03 rad/mm^4
+  x^6: -1.256637061436e+04 rad/mm^6
+  x^8: 3.141592653590e+04 rad/mm^8
+  x^10: -8.796459430051e+04 rad/mm^10
+  x^12: 2.638937829015e+05 rad/mm^12
+Reference term over ref2 aperture spans -3.878353421637e+02 to 0.000000000000e+00 rad; PV=3.878353421637e+02 rad

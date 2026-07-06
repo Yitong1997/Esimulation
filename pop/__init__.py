@@ -675,6 +675,12 @@ def propagate(
 
     force_asm = options.force_asm
     auto_asm = options.auto_asm
+    free_space_mode = options.free_space_mode
+    element_phase_mode = options.element_phase_mode
+    if free_space_mode not in {"native_proper", "legacy_auto_asm"}:
+        raise ValueError("free_space_mode must be 'native_proper' or 'legacy_auto_asm'")
+    if element_phase_mode not in {"pilot_only", "full_wavefront"}:
+        raise ValueError("element_phase_mode must be 'pilot_only' or 'full_wavefront'")
     reconstruction_mask_ratio = options.reconstruction_mask_ratio
     phase_method = options.phase_method
     zernike_terms = options.zernike_terms
@@ -860,6 +866,7 @@ def propagate(
             trace_context=entrance_trace,
             force_asm=force_asm,
             auto_asm=auto_asm,
+            free_space_mode=free_space_mode,
             auto_resample=auto_resample,
             resample_min_beam_pixels=resample_min_beam_pixels,
             resample_beam_pixels_target=resample_beam_pixels_target,
@@ -928,6 +935,7 @@ def propagate(
                 pilot_refit_pv_threshold_waves=pilot_refit_pv_threshold_waves,
                 refit_debug_dir=resample_debug_dir,
                 enable_ideal_planar_mirror=options.enable_ideal_planar_mirror,
+                element_phase_mode=element_phase_mode,
             )
         else:
             distance_to_exit = propagation.free_space._compute_signed_distance(
@@ -951,6 +959,7 @@ def propagate(
                 trace_context=exit_trace,
                 force_asm=force_asm,
                 auto_asm=auto_asm,
+                free_space_mode=free_space_mode,
                 auto_resample=auto_resample,
                 resample_min_beam_pixels=resample_min_beam_pixels,
                 resample_beam_pixels_target=resample_beam_pixels_target,

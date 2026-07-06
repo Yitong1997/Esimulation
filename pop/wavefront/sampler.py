@@ -82,6 +82,7 @@ def sample_rays_from_wavefront(
     pilot_beam_params: Optional[PilotBeamParams],
     num_rays: int = 1000,
     sampling_sigma: float = 6.0,
+    element_phase_mode: str = "pilot_only",
 ) -> Tuple["RealRays", "RealRays"]:
 
     # ... (skipping unchanged code) ...
@@ -97,10 +98,13 @@ def sample_rays_from_wavefront(
 
     if pilot_beam_params is None:
         raise ValueError("pilot_beam_params is required for sampling")
+    if element_phase_mode not in {"pilot_only", "full_wavefront"}:
+        raise ValueError("element_phase_mode must be 'pilot_only' or 'full_wavefront'")
     pilot_phase = pilot_beam_params.compute_phase_grid(
         grid_sampling.grid_size, grid_sampling.physical_size_mm
     )
-    sampling_phase = phase - pilot_phase
+    ray_phase = pilot_phase if element_phase_mode == "pilot_only" else phase
+    sampling_phase = ray_phase - pilot_phase
 
     # --- 提前计算有效光束半径，用于确定采样 stride ---
     effective_radius_mm = _compute_effective_beam_radius(
@@ -204,7 +208,7 @@ def sample_rays_from_wavefront(
     global_rays = copy.deepcopy(local_rays)
     global_rays = transform_rays_to_global(global_rays, entrance_axis)
 
-    full_phase = phase[iy_flat, ix_flat][valid_mask]
+    full_phase = ray_phase[iy_flat, ix_flat][valid_mask]
     initial_opd_mm = full_phase * wavelength_mm / (2.0 * np.pi)
     global_rays.opd = initial_opd_mm
     global_rays.i = sampled_amp[valid_mask] ** 2
