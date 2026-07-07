@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\surfaces\factories\geometry_configs.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-06, 1.0, 100, 'biconic', 'chebyshev', 'even_asphere', 'forbes_q2d', 'forbes_qbfs', 'fringe', 'grating', 'grid_sag', 'nurbs', 'odd_asphere', 'paraxial', 'plane', 'polynomial', 'standard', 'surface_type', 'toroidal', 'zernike']

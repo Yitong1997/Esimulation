@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\grid_sag.py
+# hypothesis_version: 6.150.2
+
+[1e-06, 100, 'cs', 'max_iter', 'right', 'sag_values', 'tol', 'x_coordinates', 'y_coordinates']

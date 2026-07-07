@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\comparison_module.py
+# hypothesis_version: 6.151.4
+
+['ignore', '传输位置数组不能为空', '测量直径数组不能为空']

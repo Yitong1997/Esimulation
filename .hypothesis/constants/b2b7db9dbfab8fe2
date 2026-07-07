@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\visualization\themes.py
+# hypothesis_version: 6.150.2
+
+[0.25, 100, 'axes.edgecolor', 'axes.facecolor', 'axes.labelcolor', 'axis', 'background', 'dark', 'description', 'edges', 'figure.dpi', 'figure.facecolor', 'figure.figsize', 'font.family', 'font.size', 'font.weight', 'grid', 'grid.alpha', 'grid.color', 'lens', 'lens.color', 'light', 'midnight', 'name', 'normal', 'palette', 'parameters', 'ray_cycle', 'sans-serif', 'solarized_dark', 'solarized_light', 'text', 'text.color', 'xtick.color', 'ytick.color']

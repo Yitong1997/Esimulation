@@ -1,0 +1,1119 @@
+redact_patterns:
+  # Simple Windows path (only local)
+  - '(?:[a-z]:)?(?:\\\\[\w\s.]+)+'
+tests:
+  - model: simple_system
+    analysis: wavefront.ZernikeStandardCoefficients
+    file: test_wavefront.py
+    test: test_zernike_standard_coefficients_returns_correct_result
+    parametrized: [ sampling, maximum_term ]
+    parameters:
+      - sampling: 64x64
+        maximum_term: 37
+      - sampling: 128x128
+        maximum_term: 64
+  - model: decentered_system
+    analysis: wavefront.ZernikeStandardCoefficients
+    file: test_wavefront.py
+    test: test_zernike_standard_coefficients_decentered_returns_correct_result
+    parametrized: [ sampling, maximum_term ]
+    parameters:
+      - sampling: 64x64
+        maximum_term: 37
+      - sampling: 128x128
+        maximum_term: 64
+  - model: object_height_system
+    analysis: wavefront.ZernikeStandardCoefficients
+    file: test_wavefront.py
+    test: test_zernike_standard_coefficients_object_height_returns_correct_result
+    parametrized: [ sampling, maximum_term ]
+    parameters:
+      - sampling: 64x64
+        maximum_term: 37
+      - sampling: 128x128
+        maximum_term: 64
+  - model: simple_system
+    analysis: mtf.FFTMTF
+    file: test_mtf.py
+    test: test_fft_mtf_returns_correct_result
+    parametrized: [ sampling, surface, field, mtf_type, maximum_frequency, use_polarization, use_dashes, show_diffraction_limit ]
+    parameters:
+      - sampling: 32x32
+        surface: Image
+        field: All
+        mtf_type: Modulation
+        maximum_frequency: 0.0
+        use_polarization: false
+        use_dashes: false
+        show_diffraction_limit: false
+      - sampling: 64x64
+        surface: Image
+        field: 1
+        mtf_type: Modulation
+        maximum_frequency: 0.0
+        use_polarization: true
+        use_dashes: true
+        show_diffraction_limit: true
+      - sampling: 128x128
+        surface: 3
+        field: All
+        mtf_type: Real
+        maximum_frequency: 1.5
+        use_polarization: true
+        use_dashes: false
+        show_diffraction_limit: false
+      - sampling: 32x32
+        surface: 3
+        field: 1
+        mtf_type: Imaginary
+        maximum_frequency: 0.0
+        use_polarization: false
+        use_dashes: true
+        show_diffraction_limit: false
+      - sampling: 256x256
+        surface: Image
+        field: All
+        mtf_type: Phase
+        maximum_frequency: 3.0
+        use_polarization: true
+        use_dashes: false
+        show_diffraction_limit: true
+      - sampling: 32x32
+        surface: Image
+        field: All
+        mtf_type: SquareWave
+        maximum_frequency: 0.0
+        use_polarization: false
+        use_dashes: false
+        show_diffraction_limit: true
+  - model: simple_system
+    analysis: mtf.FFTThroughFocusMTF
+    file: test_mtf.py
+    test: test_fft_through_focus_mtf_returns_correct_result
+    parametrized: [ sampling, delta_focus, frequency, number_of_steps, mtf_type ]
+    parameters:
+      - sampling: 64x64
+        delta_focus: 0.1
+        frequency: 0
+        number_of_steps: 5
+        mtf_type: Modulation
+      - sampling: 128x128
+        delta_focus: 0.3
+        frequency: 3
+        number_of_steps: 10
+        mtf_type: Imaginary
+  - model: simple_system
+    analysis: mtf.HuygensMTF
+    file: test_mtf.py
+    test: test_huygens_mtf_returns_correct_result
+    parametrized: [ pupil_sampling, image_sampling, image_delta, mtf_type, maximum_frequency ]
+    parameters:
+      - pupil_sampling: 64x64
+        image_sampling: 64x64
+        image_delta: 0.0
+        mtf_type: Modulation
+        maximum_frequency: 150.0
+      - pupil_sampling: 32x32
+        image_sampling: 64x64
+        image_delta: 1.0
+        mtf_type: Modulation
+        maximum_frequency: 450.0
+      - pupil_sampling: 128x128
+        image_sampling: 128x128
+        image_delta: 0.0
+        mtf_type: Modulation
+        maximum_frequency: 314.5
+      - pupil_sampling: 32x32
+        image_sampling: 32x32
+        image_delta: 0.0
+        mtf_type: Modulation
+        maximum_frequency: 150.0
+  - model: polarized_system
+    analysis: polarization.PolarizationPupilMap
+    file: test_polarization.py
+    test: test_polarization_pupil_map_returns_correct_result
+    parametrized: [ jx, jy, x_phase, y_phase, surface, sampling ]
+    parameters:
+      - jx: 1
+        jy: 0
+        x_phase: 0
+        y_phase: 0
+        surface: Image
+        sampling: 11x11
+      - jx: 1
+        jy: 1
+        x_phase: 0
+        y_phase: 0
+        surface: 2
+        sampling: 11x11
+      - jx: 0
+        jy: 1
+        x_phase: 0
+        y_phase: 0
+        surface: Image
+        sampling: 11x11
+      - jx: 1
+        jy: 1
+        x_phase: 45
+        y_phase: 90
+        surface: Image
+        sampling: 17x17
+  - model: polarized_system
+    analysis: polarization.PolarizationTransmission
+    file: test_polarization.py
+    test: test_transmission_returns_correct_result
+    parametrized: [ sampling, unpolarized, jx, jy, x_phase, y_phase ]
+    parameters:
+      - sampling: 32x32
+        unpolarized: false
+        jx: 1
+        jy: 0
+        x_phase: 0
+        y_phase: 0
+      - sampling: 32x32
+        unpolarized: false
+        jx: 0
+        jy: 1
+        x_phase: 0
+        y_phase: 0
+      - sampling: 32x32
+        unpolarized: false
+        jx: 1
+        jy: 1
+        x_phase: 0
+        y_phase: 0
+      - sampling: 32x32
+        unpolarized: false
+        jx: 0.001
+        jy: 1
+        x_phase: 0
+        y_phase: 0
+      - sampling: 64x64
+        unpolarized: false
+        jx: 1
+        jy: 1
+        x_phase: 45
+        y_phase: 90
+      - sampling: 64x64
+        unpolarized: true
+        jx: 1
+        jy: 0
+        x_phase: 0
+        y_phase: 0
+  - model: simple_system
+    analysis: psf.HuygensPSF
+    file: test_psf.py
+    test: test_huygens_psf_returns_correct_result
+    parametrized: [ pupil_sampling, image_sampling, image_delta, psf_type, normalize ]
+    parameters:
+      - pupil_sampling: 64x64
+        image_sampling: 64x64
+        image_delta: 0.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 32x32
+        image_sampling: 64x64
+        image_delta: 1.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 128x128
+        image_sampling: 128x128
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+      - pupil_sampling: 32x32
+        image_sampling: 32x32
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+  - model: decentered_system
+    analysis: psf.HuygensPSF
+    file: test_psf.py
+    test: test_huygens_psf_asymmetric_returns_correct_result
+    parametrized: [ pupil_sampling, image_sampling, image_delta, psf_type, normalize ]
+    parameters:
+      - pupil_sampling: 64x64
+        image_sampling: 64x64
+        image_delta: 0.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 32x32
+        image_sampling: 64x64
+        image_delta: 1.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 128x128
+        image_sampling: 128x128
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+      - pupil_sampling: 32x32
+        image_sampling: 32x32
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+  - model: simple_system
+    analysis: psf.HuygensPSFAndStrehlRatio
+    file: test_psf.py
+    test: test_huygens_psf_and_strehl_ratio_returns_correct_result
+    parametrized: [ pupil_sampling, image_sampling, image_delta, psf_type, normalize ]
+    parameters:
+      - pupil_sampling: 64x64
+        image_sampling: 64x64
+        image_delta: 0.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 32x32
+        image_sampling: 64x64
+        image_delta: 1.0
+        psf_type: Linear
+        normalize: false
+      - pupil_sampling: 128x128
+        image_sampling: 128x128
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+      - pupil_sampling: 32x32
+        image_sampling: 32x32
+        image_delta: 0.0
+        psf_type: Real
+        normalize: true
+  - model: simple_system
+    analysis: psf.FFTPSF
+    file: test_psf.py
+    test: test_fft_psf_returns_correct_result
+    parametrized: [ sampling, display, rotation, psf_type, use_polarization, image_delta, normalize, surface ]
+    parameters:
+      - sampling: 32x32
+        display: 32x32
+        rotation: 0
+        psf_type: Linear
+        use_polarization: false
+        image_delta: 0.0
+        normalize: false
+        surface: Image
+      - sampling: 64x64
+        display: 32x32
+        rotation: 90
+        psf_type: Log
+        use_polarization: true
+        image_delta: 0.0
+        normalize: false
+        surface: Image
+      - sampling: 64x64
+        display: 64x64
+        rotation: 180
+        psf_type: Phase
+        use_polarization: true
+        image_delta: 0.5
+        normalize: true
+        surface: Image
+      - sampling: 128x128
+        display: 32x32
+        rotation: 270
+        psf_type: Real
+        use_polarization: false
+        image_delta: 0.0
+        normalize: true
+        surface: Image
+      - sampling: 32x32
+        display: 32x32
+        rotation: 0
+        psf_type: Imaginary
+        use_polarization: false
+        image_delta: 1.0
+        normalize: false
+        surface: 3
+  - model: decentered_system
+    analysis: psf.FFTPSF
+    file: test_psf.py
+    test: test_fft_psf_asymmetric_returns_correct_result
+    parametrized: [ sampling, display, rotation, psf_type, use_polarization, image_delta, normalize, surface ]
+    parameters:
+      - sampling: 128x128
+        display: 32x32
+        rotation: 0
+        psf_type: Linear
+        use_polarization: false
+        image_delta: 0.0
+        normalize: false
+        surface: Image
+      - sampling: 128x128
+        display: 128x128
+        rotation: 90
+        psf_type: Log
+        use_polarization: true
+        image_delta: 0.0
+        normalize: false
+        surface: Image
+      - sampling: 256x256
+        display: 64x64
+        rotation: 180
+        psf_type: Phase
+        use_polarization: true
+        image_delta: 0.5
+        normalize: true
+        surface: Image
+      - sampling: 128x128
+        display: 32x32
+        rotation: 270
+        psf_type: Real
+        use_polarization: false
+        image_delta: 0.0
+        normalize: true
+        surface: Image
+      - sampling: 1024x1024
+        display: 512x512
+        rotation: 0
+        psf_type: Imaginary
+        use_polarization: false
+        image_delta: 1.0
+        normalize: false
+        surface: 3
+  - model: simple_system
+    analysis: raysandspots.SingleRayTrace
+    file: test_raysandspots.py
+    test: test_single_ray_trace_returns_correct_result
+    parametrized: [ hx, hy, px, py, raytrace_type, global_coordinates ]
+    parameters:
+      - hx: 1
+        hy: 1
+        px: 0
+        py: 0
+        raytrace_type: DirectionCosines
+        global_coordinates: false
+      - hx: 0
+        hy: 0
+        px: 1
+        py: 1
+        raytrace_type: DirectionCosines
+        global_coordinates: true
+      - hx: 1
+        hy: 1
+        px: 0
+        py: 0
+        raytrace_type: TangentAngle
+        global_coordinates: true
+  - model: simple_system
+    analysis: raysandspots.RayFan
+    file: test_raysandspots.py
+    test: test_ray_fan_returns_correct_result
+    parametrized: [ plot_scale, number_of_rays, tangential, sagittal ]
+    parameters:
+      - plot_scale: 0
+        number_of_rays: 20
+        tangential: Aberration_Y
+        sagittal: Aberration_X
+      - plot_scale: 1
+        number_of_rays: 40
+        tangential: Aberration_Y
+        sagittal: Aberration_X
+      - plot_scale: 0
+        number_of_rays: 20
+        tangential: Aberration_X
+        sagittal: Aberration_Y
+  - model: simple_system
+    analysis: reports.SurfaceData
+    file: test_reports.py
+    test: test_surface_data_returns_correct_result
+    parameters:
+      - surface: 2
+  - model: simple_system
+    analysis: reports.SystemData
+    file: test_reports.py
+    test: test_system_data_returns_correct_result
+  - model: simple_system
+    analysis: reports.CardinalPoints
+    file: test_reports.py
+    test: test_cardinal_points_returns_correct_result
+    parameters:
+      - surface_1: 2
+        surface_2: 3
+  - model: simple_system
+    analysis: surface.Curvature
+    file: test_surface.py
+    test: test_curvature_returns_correct_result
+    parametrized: [ sampling, data, remove, surface, show_as, contour_format, bfs_criterion, bfs_reverse_direction ]
+    parameters:
+      - sampling: 65x65
+        data: TangentialCurvature
+        remove: null
+        surface: 2
+        show_as: Surface
+        contour_format: ""
+        bfs_criterion: MinimumVolume
+        bfs_reverse_direction: false
+      - opticstudio: "<24.1.2"
+        parameters:
+          sampling: 129x129
+          data: SagitalCurvature
+          remove: null
+          surface: 2
+          show_as: Contour
+          contour_format: ""
+          bfs_criterion: MinimumVolume
+          bfs_reverse_direction: false
+      - opticstudio: "<24.1.2"
+        parameters:
+          sampling: 129x129
+          data: SagitalCurvature
+          remove: BaseROC
+          surface: 2
+          show_as: Contour
+          contour_format: "0.1"
+          bfs_criterion: MinimumVolume
+          bfs_reverse_direction: false
+      - opticstudio: ">=24.1.2"
+        parameters:
+          sampling: 129x129
+          data: SagittalCurvature
+          remove: null
+          surface: 2
+          show_as: Contour
+          contour_format: ""
+          bfs_criterion: MinimumVolume
+          bfs_reverse_direction: false
+      - opticstudio: ">=24.1.2"
+        parameters:
+          sampling: 129x129
+          data: SagittalCurvature
+          remove: BaseROC
+          surface: 2
+          show_as: Contour
+          contour_format: "0.1"
+          bfs_criterion: MinimumVolume
+          bfs_reverse_direction: false
+      - sampling: 33x33
+        data: X_Curvature
+        remove: BestFitSphere
+        surface: 3
+        show_as: Contour
+        contour_format: ""
+        bfs_criterion: MinimumRMS
+        bfs_reverse_direction: false
+      - sampling: 33x33
+        data: X_Curvature
+        remove: BestFitSphere
+        surface: 3
+        show_as: Contour
+        contour_format: ""
+        bfs_criterion: MinimumVolume
+        bfs_reverse_direction: false
+      - sampling: 33x33
+        data: X_Curvature
+        remove: BestFitSphere
+        surface: 3
+        show_as: Contour
+        contour_format: "0.2"
+        bfs_criterion: MinimumVolume
+        bfs_reverse_direction: true
+  - model: simple_system
+    analysis: wavefront.WavefrontMap
+    file: test_wavefront.py
+    test: test_wavefront_map_returns_correct_result
+    parametrized: [ sampling, use_exit_pupil ]
+    parameters:
+      - sampling: 64x64
+        use_exit_pupil: true
+      - sampling: 64x64
+        use_exit_pupil: false
+      - sampling: 128x128
+        use_exit_pupil: true
+      - sampling: 128x128
+        use_exit_pupil: false
+  - model: simple_system
+    analysis: extendedscene.GeometricImageAnalysis
+    file: test_extendedscene.py
+    test: test_geometric_image_analysis_returns_correct_result
+    parametrized: [ show_as, field_size, total_watts, rays_x_1000 ]
+    parameters:
+      - show_as: Surface
+        field_size: 0
+        total_watts: 1
+        rays_x_1000: 100000
+      - show_as: Surface
+        field_size: 10
+        total_watts: 1
+        rays_x_1000: 100000
+      - show_as: Surface
+        field_size: 10
+        total_watts: 100
+        rays_x_1000: 100000
+      - show_as: Surface
+        field_size: 0
+        total_watts: 100
+        rays_x_1000: 100000
+      - show_as: CrossX
+        field_size: 0
+        total_watts: 1
+        rays_x_1000: 100000
+      - show_as: CrossX
+        field_size: 10
+        total_watts: 1
+        rays_x_1000: 100000
+      - show_as: CrossX
+        field_size: 10
+        total_watts: 100
+        rays_x_1000: 100000
+      - show_as: CrossX
+        field_size: 0
+        total_watts: 100
+        rays_x_1000: 100000
+  - model: simple_system
+    analysis: wavefront.ZernikeCoefficientsVsField
+    file: test_wavefront.py
+    test: test_zernike_coefficients_vs_field_returns_correct_result
+    parametrized: [ coefficients, coefficients_type, field_scan, field_density, sampling, obscuration, minimum_plot_scale, maximum_plot_scale ]
+    parameters:
+      - coefficients: 1-8
+        coefficients_type: Standard
+        field_scan: +y
+        field_density: 20
+        sampling: 64x64
+        obscuration: 0.5
+        minimum_plot_scale: 0
+        maximum_plot_scale: 0
+      - coefficients: "2"
+        coefficients_type: Standard
+        field_scan: -y
+        field_density: 10
+        sampling: 32x32
+        obscuration: 0.5
+        minimum_plot_scale: 0
+        maximum_plot_scale: 0
+      - coefficients: 1,3,5
+        coefficients_type: Standard
+        field_scan: +x
+        field_density: 5
+        sampling: 32x32
+        obscuration: 0.5
+        minimum_plot_scale: 0
+        maximum_plot_scale: 1
+      - coefficients: 1-15
+        coefficients_type: Fringe
+        field_scan: -x
+        field_density: 15
+        sampling: 128x128
+        obscuration: 0.5
+        minimum_plot_scale: 1
+        maximum_plot_scale: 5
+      - coefficients: 1-2,3,5-7
+        coefficients_type: Annular
+        field_scan: Plus_Y
+        field_density: 1
+        sampling: 32x32
+        obscuration: 0.5
+        minimum_plot_scale: 0
+        maximum_plot_scale: 0
+      - coefficients: 1-2,3,5-7
+        coefficients_type: Annular
+        field_scan: Minus_Y
+        field_density: 1
+        sampling: 32x32
+        obscuration: 0.1
+        minimum_plot_scale: 0
+        maximum_plot_scale: 0
+      - coefficients: 1-2,3,5-7
+        coefficients_type: Standard
+        field_scan: Plus_X
+        field_density: 1
+        sampling: 32x32
+        obscuration: 0.5
+        minimum_plot_scale: 1
+        maximum_plot_scale: 5
+      - coefficients: 1-2,3,5-7
+        coefficients_type: Standard
+        field_scan: Minus_X
+        field_density: 1
+        sampling: 32x32
+        obscuration: 0.5
+        minimum_plot_scale: 0
+        maximum_plot_scale: 0
+
+  - model: simple_system
+    analysis: physicaloptics.PhysicalOpticsPropagation
+    file: test_physicaloptics.py
+    test: test_physical_optics_propagation_returns_correct_result
+    parametrized: [ surface_to_beam, data_type, use_total_power, use_peak_irradiance,beam_type,beam_parameters,auto_calculate_beam_sampling,compute_fiber_coupling_integral,fiber_type,fiber_parameters ]
+    parameters:
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 1.0
+        data_type: Irradiance
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Irradiance
+        use_total_power: false
+        use_peak_irradiance: true
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: null
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: GaussianWaist
+        beam_parameters: { 'Waist X': 1.5, 'Waist Y': 1.5, 'Decenter X': 0.1, 'Decenter Y': 0.1, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: false
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: false
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: TopHat
+        fiber_parameters: null
+      - surface_to_beam: 0.0
+        data_type: Phase
+        use_total_power: true
+        use_peak_irradiance: false
+        beam_type: TopHat
+        beam_parameters: { 'Waist X': 0.5, 'Waist Y': 0.5, 'Decenter X': 0.0, 'Decenter Y': 0.0 }
+        auto_calculate_beam_sampling: true
+        compute_fiber_coupling_integral: true
+        fiber_type: GaussianWaist
+        fiber_parameters: { 'Waist X': 0.03, 'Waist Y': 0.03, 'Decenter X': 0.0, 'Decenter Y': 0.0, 'Aperture X': 0.0, 'Aperture Y': 0.0, 'Order X': 0.0, 'Order Y': 0.0 }
+        

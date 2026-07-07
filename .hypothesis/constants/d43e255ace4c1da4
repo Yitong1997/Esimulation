@@ -1,0 +1,4 @@
+# file: D:\BTS\src\sequential_system\sampling.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-15, 0.01, 0.633, 1.0, 2.0, 'GaussianBeamSource', 'OpticalAxisState', 'OpticalElement', 'SamplingResult', 'unnamed', '无结果', '有结果']

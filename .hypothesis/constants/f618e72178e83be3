@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_optical_propagation\hybrid_element_propagator.py
+# hypothesis_version: 6.151.4
+
+[-1.0, 0.0, 1e-10, 1e-08, 1e-06, 1e-05, 0.001, 0.02, 0.05, 0.1, 0.3, 0.5, 0.8, 0.9, 0.99, 1.0, 1.4585, 1.5, 1.5168, 1.744, 1.7847, 179.9, 100, 180, 4096, '#f0f0f0', '--', '5%', 'ElementRaytracer', 'OpticalAxisState', 'Pilot (Ref)', 'PilotBeamParams', 'RdBu', 'RdBu_r', 'RealRays', 'Sim', 'Sim (Norm)', 'Sim Amplitude (Zero)', 'Singular matrix', 'SurfaceDefinition', 'air', 'bk7', 'blue', 'center', 'entrance', 'exit', 'fs', 'fused_silica', 'inferno', 'laf2', 'linear', 'local_raytracing', 'lower', 'mirror', 'n-bk7', 'orange', 'refract', 'right', 'sf11', 'singular', 'thin_plate_spline', 'viridis', 'x (mm)', 'y (mm)', 'yxz']

@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\propagation\element.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-12, 1e-10, 1e-06, 0.001, 1.0, 1.4585, 1.5, 1.5168, 1.744, 1.7847, 2.0, 1000, 'L', 'M', 'N', 'air', 'aperture', 'asphere_coeffs', 'biconic', 'bk7', 'coefficients', 'conic', 'conic_x', 'conic_y', 'even_asphere', 'exit', 'f', 'focal_length', 'fs', 'fused_silica', 'i', 'index', 'intensity', 'laf2', 'material', 'mirror', 'n-bk7', 'opd', 'orientation', 'paraxial', 'radius', 'radius_x', 'radius_y', 'rx', 'ry', 'rz', 'sf11', 'standard', 'surface_type', 'x', 'y', 'z']

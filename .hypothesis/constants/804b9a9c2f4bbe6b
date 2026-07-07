@@ -1,0 +1,4 @@
+# file: D:\BTS\src\gaussian_beam_simulation\abcd_calculator.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 0.001, 1.0, 100, 10000]

@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\wavefront\sampler.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-10, 1e-05, 0.001, 0.99, 1.0, 2.0, 1000, 'RealRays']

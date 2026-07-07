@@ -1,0 +1,4 @@
+# file: D:\BTS\src\wavefront_to_rays\reconstructor.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-10, 1e-06, 1e-05, 0.1, 1.0, '%Y%m%d_%H%M%S', 'Amplitude', 'Pilot Beam Phase', 'Pilot Phase (rad)', 'Residual Phase', 'Residual Phase (rad)', 'cubic', 'lower', 'thin_plate_spline', 'utf-8', 'w', 'zernike_analysis.txt']

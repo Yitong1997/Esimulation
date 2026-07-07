@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_optical_propagation\hybrid_propagator.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1e-06, 1.0, 10.0, 512, 1000, 'OpticalAxisState', 'air', 'coordinate_break', 'entrance', 'exit', 'exit_direction', 'free_space', 'intersection', 'local_raytracing', 'source']

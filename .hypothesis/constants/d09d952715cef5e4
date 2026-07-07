@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\interactions\base.py
+# hypothesis_version: 6.150.2
+
+['bsdf', 'coating', 'is_reflective', 'material_pre', 'type']

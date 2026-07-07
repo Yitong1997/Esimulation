@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\utils.py
+# hypothesis_version: 6.150.2
+
+[-1.0, 1.0, 10000.0, '(\\w+)\\[(\\d+)\\]', '.', 'all', 'primary']

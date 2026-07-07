@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\data_models.py
+# hypothesis_version: 6.151.4
+
+['eighth_order', 'gaussian', 'hard_edge', 'super_gaussian']

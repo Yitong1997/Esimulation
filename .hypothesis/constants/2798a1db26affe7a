@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_propagation\direct_propagator.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 1.0, 100, '  [2] 光线追迹经过元件...', '  [3] 计算总 OPD...', '  [5] 在出射面重建复振幅...', '[DEBUG] 开始直接传播...', '[DEBUG] 直接传播完成', 'analytical', 'corrected_opd_waves', 'element_opd_waves', 'exit_direction', 'inf', 'input_opd_waves', 'mirror', 'output_amplitude', 'ray_amplitudes', 'ray_positions', 'rays_in', 'rays_out', 'reference_phase', 'residual_phase', 'src', 'total_opd_waves', 'valid_mask', '元件定义不能为 None']

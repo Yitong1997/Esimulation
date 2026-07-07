@@ -1,0 +1,4 @@
+# file: D:\BTS\src\hybrid_simulation\result.py
+# hypothesis_version: 6.151.4
+
+[0.01, '-', '=', 'ChiefRayData', 'CoordinateSystemData', 'GridSampling', 'PilotBeamParams', 'RayData', 'SimulationResult', 'Wavefront Analysis', 'entrance', 'exit', 'residual_phase', '仿真结果中没有表面数据', '混合光学仿真结果摘要']

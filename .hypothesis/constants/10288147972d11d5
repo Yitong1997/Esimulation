@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\standard_grating.py
+# hypothesis_version: 6.150.2
+
+[0.0, 'StandardGrating', 'alpha', 'angle', 'conic', 'cs', 'ignore', 'order', 'period', 'radius']

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\aperture_effect_analyzer.py
+# hypothesis_version: 6.151.4
+
+[-2.0, 0.0, 0.5, 0.95, 1.0, 10.0, 256, '  软边光阑可减少衍射效应，保持光束质量', '=', 'diameter_changes', 'divergence_changes', 'inf', 'proper.WaveFront', 'ratios', 'transmissions', '【光阑比例建议】', '【各类型光阑特点】', '【平衡需求（透过率与光束质量兼顾）】', '【高光束质量需求】', '【高功率透过率需求】', '光阑比例列表不能为空', '光阑类型列表不能为空', '光阑选型建议', '无数据，无法生成建议。']

@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\source.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 0.001, 4.0, 256]

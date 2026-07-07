@@ -1,0 +1,4 @@
+# file: D:\BTS\src\gaussian_beam_simulation\gaussian_beam.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 0.001, 1.0, 2.0, 'R', 'distance_from_waist', 'gouy_phase', 'normalized_distance', 'w', 'z']

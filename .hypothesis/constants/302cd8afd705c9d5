@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\geometries\nurbs\nurbs_geometry.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 1.0, 100, 'B-Spline', 'Bezier', 'NURBS', 'R-Bezier', 'ijk,ki->ji', 'p must be an scalar', 'q must be an scalar', 'torch']

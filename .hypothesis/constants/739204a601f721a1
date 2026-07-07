@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\materials\material_utils.py
+# hypothesis_version: 6.150.2
+
+[0.15, 0.5, 1.0, 800, 1234, '$V_d$', '$\\lambda$ (nm)', '$_{', '$k$', '$n$', '$n_d$', '+', ',', '/', ':', '</sub>', '<sub>', 'Glass map', 'Glasses', 'Highlighted', 'Map', 'Out of bounds', 'SPECS', 'Vd', 'bold', 'bottom', 'catalog_nk.csv', 'category_name_full', 'filename', 'filename_no_ext', 'glass', 'gray', 'group', 'k', 'left', 'lightblue', 'max_wavelength', 'min_wavelength', 'n', 'nd', 'optiland.database', 'points', 'r', 'red', 'reference', 'right', 'top', 'torch', 'utf-8', 'y', '}$']

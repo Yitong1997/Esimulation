@@ -1,0 +1,4 @@
+# file: D:\BTS\pop\utils.py
+# hypothesis_version: 6.151.4
+
+['-c', '<stdin>', 'ipykernel_launcher', 'output', 'pop_output', 'resolve_output_dir']

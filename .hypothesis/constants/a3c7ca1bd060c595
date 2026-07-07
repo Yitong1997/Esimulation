@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\api.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.001, 0.01, 1.0, 3.0, 256, '.', 'SimulationResult', 'apply_aperture', 'center_x', 'center_y', 'eighth_order', 'gaussian', 'gaussian_sigma', 'get_surface', 'hard_edge', 'ideal', 'iso', 'max_iterations', 'max_transmission', 'measure_m2', 'min_transmission', 'proper.WaveFront', 'roi_factor', 'super_gaussian', 'super_gaussian_order', 'surfaces', 'wfarr', '光阑影响分析报告']

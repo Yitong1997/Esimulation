@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 虚拟环境
+.venv/
+
+# 第三方库（本地副本）
+ZOSPy-main/
+hcipy-master/
+angular_spectrum_method/
+
+# IDE / 编辑器
+.cursor/
+.vscode/
+.agent/
+
+# DVC 临时文件
+.dvc/tmp/
+
+# Hypothesis 测试缓存
+.hypothesis/
+
+# Pytest 缓存
+.pytest_cache/
+
+# 输出目录
+output/
+
+# 测试与结果输出
+sandbox/
+
+# Git worktrees
+.worktrees/

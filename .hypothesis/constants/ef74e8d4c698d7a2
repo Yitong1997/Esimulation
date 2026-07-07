@@ -1,0 +1,4 @@
+# file: D:\BTS\optiland-master\optiland\coordinate_system.py
+# hypothesis_version: 6.150.2
+
+['reference_cs', 'rx', 'ry', 'rz', 'x', 'xyz', 'y', 'z']

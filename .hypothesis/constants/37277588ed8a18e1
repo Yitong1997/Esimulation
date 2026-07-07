@@ -1,0 +1,4 @@
+# file: D:\BTS\src\bts\beam_measurement\d4sigma_calculator.py
+# hypothesis_version: 6.151.4
+
+['proper.WaveFront', 'wfarr', '输入数组为空', '输入数组包含 Inf 值', '输入数组包含 NaN 值']

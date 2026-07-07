@@ -1,0 +1,4 @@
+# file: D:\BTS\src\gaussian_beam_simulation\hybrid_simulator.py
+# hypothesis_version: 6.150.2
+
+[0.0, 1e-10, 1e-06, 0.001, 0.1, 0.3, 1000.0, 200, 512, '..', 'element', 'linear', 'propagate', 'rectangular']
