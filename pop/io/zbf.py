@@ -150,15 +150,15 @@ def write_zbf(path: str | Path, zbf: ZbfField) -> None:
 
 
 def zbf_reference_phase(zbf: ZbfField) -> np.ndarray:
-    """Compute the spherical reference phase represented by the ZBF header."""
+    """Compute the Zemax reference phase represented by the ZBF header."""
 
     x_grid, y_grid = np.meshgrid(zbf.x_coords, zbf.y_coords)
     phase = np.zeros((zbf.ny, zbf.nx), dtype=np.float64)
     if zbf.wavelength <= 0:
         return phase
 
-    rcx = _curvature_radius(zbf.zx, zbf.rx)
-    rcy = _curvature_radius(zbf.zy, zbf.ry)
+    rcx = _zbf_reference_radius(zbf.zx, zbf.rx)
+    rcy = _zbf_reference_radius(zbf.zy, zbf.ry)
     k = 2.0 * np.pi * zbf.index / zbf.wavelength
     if np.isfinite(rcx) and np.isfinite(rcy) and np.isclose(
         rcx, rcy, rtol=5e-8, atol=1e-8
@@ -187,12 +187,12 @@ def _write_complex_grid(f, field: np.ndarray) -> None:
     f.write(pairs.tobytes())
 
 
-def _curvature_radius(waist_position: float, rayleigh_range: float) -> float:
+def _zbf_reference_radius(waist_position: float, rayleigh_range: float) -> float:
     z = float(waist_position)
-    if abs(z) < 1e-15:
+    zr = abs(float(rayleigh_range))
+    if abs(z) < 1e-15 or abs(z) < zr:
         return float("inf")
-    zr = float(rayleigh_range)
-    return z * (1.0 + (zr / z) ** 2)
+    return z
 
 
 def _signed_spherical_opd(transverse_sq: np.ndarray, radius: float) -> np.ndarray:
