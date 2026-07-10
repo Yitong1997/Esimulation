@@ -18,6 +18,7 @@ SamplingPurpose = Literal[
     "output_resolution",
     "combined_resolution",
     "window_control",
+    "interpolation_sensitivity",
 ]
 SourceKind = Literal["native_zbf", "derived_zbf", "chained_zemax_output"]
 SampleValueConvention = Literal["point_value", "cell_energy"]
@@ -165,3 +166,10 @@ class SamplingCase:
     expected_output_dy_mm: float
     depends_on_case: str | None = None
     repeat_count: int = 1
+    establishes_physical_convergence: bool = True
+
+    @property
+    def sequence(self) -> str:
+        """Return the predeclared sequence label without inventing a path."""
+
+        return self.case_id.rsplit(":", 1)[-1]
