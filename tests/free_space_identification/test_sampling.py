@@ -11,6 +11,7 @@ from sandbox.free_space_algorithm_identification.models import (
     UniformGrid2D,
 )
 from sandbox.free_space_algorithm_identification.sampling import (
+    build_asm_convergence_cases,
     build_segment_sampling_cases,
     outside_to_outside_output_sampling_mm,
     stw_output_sampling_mm,
@@ -233,3 +234,30 @@ def test_native_s13_interpolation_is_not_labeled_physical_convergence(
         for item in payload["cases"]
         if item["case_id"] == "S13_S14:interp_sensitivity_R4"
     )["establishes_physical_convergence"] is False
+
+    asm_cases = build_asm_convergence_cases()
+    indexed = {
+        (case.segment_key, case.axis, case.level): case for case in asm_cases
+    }
+    assert len(indexed) == 18
+    assert [
+        indexed["S07_S08", "step", level].nx
+        for level in ("low", "middle", "high")
+    ] == [8192, 10240, 12288]
+    assert [
+        indexed["S12_S13", "window", level].nx
+        for level in ("low", "middle", "high")
+    ] == [7680, 8960, 10240]
+    s13_window = [
+        indexed["S13_S14", "window", level]
+        for level in ("low", "middle", "high")
+    ]
+    assert [case.nx for case in s13_window] == [4096, 6144, 8192]
+    assert [case.dx_mm for case in s13_window] == pytest.approx(
+        [4.234 / 4096] * 3
+    )
+    assert [case.lx_mm for case in s13_window] == pytest.approx(
+        [4.234, 6.351, 8.468]
+    )
+    assert all(case.nx == case.ny for case in asm_cases)
+    assert all(case.dx_mm == case.dy_mm for case in asm_cases)

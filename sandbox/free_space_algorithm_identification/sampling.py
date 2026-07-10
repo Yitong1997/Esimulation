@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Literal, Mapping
 
 import numpy as np
 
@@ -26,6 +27,88 @@ S7_WAIST_DISTANCE_MM = 239.982966226840
 S8_WAIST_DISTANCE_MM = 608.582967581705
 S12_STW_WAIST_DISTANCE_MM = 608.615263635412
 S14_WTS_WAIST_DISTANCE_MM = 1.984736370234
+
+
+@dataclass(frozen=True)
+class AsmConvergenceCase:
+    """One immutable level on a predeclared ASM convergence axis."""
+
+    segment_key: Literal["S07_S08", "S12_S13", "S13_S14"]
+    axis: Literal["step", "window"]
+    level: Literal["low", "middle", "high"]
+    nx: int
+    ny: int
+    dx_mm: float
+    dy_mm: float
+
+    def __post_init__(self) -> None:
+        if self.segment_key not in {"S07_S08", "S12_S13", "S13_S14"}:
+            raise ValueError("unknown ASM convergence segment")
+        if self.axis not in {"step", "window"}:
+            raise ValueError("unknown ASM convergence axis")
+        if self.level not in {"low", "middle", "high"}:
+            raise ValueError("unknown ASM convergence level")
+        nx = _require_sample_count(self.nx)
+        ny = _require_sample_count(self.ny)
+        _require_positive_finite(dx_mm=self.dx_mm, dy_mm=self.dy_mm)
+        object.__setattr__(self, "nx", nx)
+        object.__setattr__(self, "ny", ny)
+        object.__setattr__(self, "dx_mm", float(self.dx_mm))
+        object.__setattr__(self, "dy_mm", float(self.dy_mm))
+
+    @property
+    def lx_mm(self) -> float:
+        return self.nx * self.dx_mm
+
+    @property
+    def ly_mm(self) -> float:
+        return self.ny * self.dy_mm
+
+
+def build_asm_convergence_cases() -> tuple[AsmConvergenceCase, ...]:
+    """Return the frozen low/middle/high step and window matrices."""
+
+    cases: list[AsmConvergenceCase] = []
+    levels = ("low", "middle", "high")
+
+    def add_fixed_window(segment_key: str, length_mm: float, counts: tuple[int, ...]):
+        for level, count in zip(levels, counts, strict=True):
+            step_mm = length_mm / count
+            cases.append(
+                AsmConvergenceCase(
+                    segment_key=segment_key,
+                    axis="step",
+                    level=level,
+                    nx=count,
+                    ny=count,
+                    dx_mm=step_mm,
+                    dy_mm=step_mm,
+                )
+            )
+
+    def add_fixed_step(
+        segment_key: str, step_mm: float, counts: tuple[int, ...]
+    ) -> None:
+        for level, count in zip(levels, counts, strict=True):
+            cases.append(
+                AsmConvergenceCase(
+                    segment_key=segment_key,
+                    axis="window",
+                    level=level,
+                    nx=count,
+                    ny=count,
+                    dx_mm=step_mm,
+                    dy_mm=step_mm,
+                )
+            )
+
+    add_fixed_window("S07_S08", 256.0, (8192, 10240, 12288))
+    add_fixed_step("S07_S08", 0.025, (7680, 10240, 12800))
+    add_fixed_window("S12_S13", 256.0, (8192, 10240, 12288))
+    add_fixed_step("S12_S13", 0.025, (7680, 8960, 10240))
+    add_fixed_window("S13_S14", 4.234, (2048, 4096, 8192))
+    add_fixed_step("S13_S14", 4.234 / 4096, (4096, 6144, 8192))
+    return tuple(cases)
 
 
 def _require_positive_finite(**values: float) -> None:
@@ -510,10 +593,12 @@ def write_sampling_manifest(
 
 
 __all__ = [
+    "AsmConvergenceCase",
     "S12_STW_WAIST_DISTANCE_MM",
     "S14_WTS_WAIST_DISTANCE_MM",
     "S7_WAIST_DISTANCE_MM",
     "S8_WAIST_DISTANCE_MM",
+    "build_asm_convergence_cases",
     "build_segment_sampling_cases",
     "outside_to_outside_output_sampling_mm",
     "stw_output_sampling_mm",

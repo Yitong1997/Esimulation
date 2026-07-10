@@ -220,6 +220,129 @@ def _apply_inverse_zoom(
     return transformed * phase.reshape(shape) * df
 
 
+def _evaluate_spectrum_czt_owned_normalized(
+    values: np.ndarray,
+    fx_cpm: np.ndarray,
+    fy_cpm: np.ndarray,
+    output_grid: UniformGrid2D,
+    *,
+    batch_size: int,
+) -> tuple[np.ndarray, UniformGrid2D]:
+    """Evaluate validated raw spectrum storage without constructing Spectrum2D.
+
+    The frequency axes must already be canonical axes used to evaluate
+    ``values``.  The returned complex array is C-contiguous, writeable, and
+    owned by the caller.  This lower-level adapter lets the large ASM path
+    retain one mutable spectrum while the immutable public wrapper preserves
+    its existing copy semantics.
+    """
+
+    if (
+        not isinstance(values, np.ndarray)
+        or values.dtype != np.complex128
+        or values.ndim != 2
+        or values.shape != (fy_cpm.size, fx_cpm.size)
+        or not np.all(np.isfinite(values))
+    ):
+        raise ValueError("raw spectrum must be a finite complex128 [fy, fx] array")
+    if (
+        not isinstance(fx_cpm, np.ndarray)
+        or not isinstance(fy_cpm, np.ndarray)
+        or fx_cpm.dtype != np.float64
+        or fy_cpm.dtype != np.float64
+        or fx_cpm.ndim != 1
+        or fy_cpm.ndim != 1
+        or fx_cpm.size < 2
+        or fy_cpm.size < 2
+    ):
+        raise ValueError("raw spectrum axes must be canonical float64 vectors")
+    batch_size = _require_batch_size(batch_size)
+    output = _canonical_grid(output_grid)
+
+    xzoom, xphase, dfx = _build_inverse_zoom_normalized(fx_cpm, output.x_mm)
+    after_x = np.empty((fy_cpm.size, output.nx), dtype=np.complex128)
+    for y0 in range(0, fy_cpm.size, batch_size):
+        ys = slice(y0, min(y0 + batch_size, fy_cpm.size))
+        after_x[ys, :] = _apply_inverse_zoom(
+            values[ys, :], xzoom, xphase, dfx, axis=1
+        )
+
+    yzoom, yphase, dfy = _build_inverse_zoom_normalized(fy_cpm, output.y_mm)
+    result = np.empty((output.ny, output.nx), dtype=np.complex128)
+    for x0 in range(0, output.nx, batch_size):
+        xs = slice(x0, min(x0 + batch_size, output.nx))
+        result[:, xs] = _apply_inverse_zoom(
+            after_x[:, xs], yzoom, yphase, dfy, axis=0
+        )
+    if not np.all(np.isfinite(result)):
+        raise ValueError("inverse CZT result must remain finite")
+    return result, output
+
+
+def _fftshift_even_inplace(workspace: np.ndarray, *, batch_rows: int) -> None:
+    """Apply a bounded-temporary two-axis FFT shift on an even 2-D array."""
+
+    batch_rows = _require_batch_size(batch_rows)
+    ny, nx = workspace.shape
+    if ny % 2 or nx % 2:
+        raise ValueError("owned ASM FFT workspace requires even dimensions")
+    half_y = ny // 2
+    half_x = nx // 2
+    for row0 in range(0, half_y, batch_rows):
+        rows = min(batch_rows, half_y - row0)
+        top = slice(row0, row0 + rows)
+        bottom = slice(row0 + half_y, row0 + half_y + rows)
+        temporary = workspace[top, :].copy(order="C")
+        workspace[top, :] = workspace[bottom, :]
+        workspace[bottom, :] = temporary
+    for row0 in range(0, ny, batch_rows):
+        rows = slice(row0, min(row0 + batch_rows, ny))
+        temporary = workspace[rows, :half_x].copy(order="C")
+        workspace[rows, :half_x] = workspace[rows, half_x:]
+        workspace[rows, half_x:] = temporary
+
+
+def _forward_continuous_spectrum_owned_inplace(
+    workspace: np.ndarray,
+    grid: UniformGrid2D,
+    *,
+    shift_batch_rows: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Overwrite one owned physical-field workspace with its natural spectrum."""
+
+    if (
+        not isinstance(workspace, np.ndarray)
+        or workspace.dtype != np.complex128
+        or workspace.shape != (grid.ny, grid.nx)
+        or not workspace.flags.c_contiguous
+        or not workspace.flags.writeable
+        or not workspace.flags.owndata
+        or not np.all(np.isfinite(workspace))
+    ):
+        raise ValueError(
+            "FFT workspace must be owned, C-contiguous, writeable complex128 storage"
+        )
+    shift_batch_rows = _require_batch_size(shift_batch_rows)
+    fx = _normalize_uniform_axis(
+        scipy.fft.fftshift(scipy.fft.fftfreq(grid.nx, grid.dx_mm)),
+        name="fx_cpm",
+    )
+    fy = _normalize_uniform_axis(
+        scipy.fft.fftshift(scipy.fft.fftfreq(grid.ny, grid.dy_mm)),
+        name="fy_cpm",
+    )
+    np.fft.fft2(workspace, out=workspace)
+    unshifted_fx = scipy.fft.ifftshift(fx)
+    unshifted_fy = scipy.fft.ifftshift(fy)
+    workspace *= np.exp(-2j * np.pi * unshifted_fy * grid.y_mm[0])[:, None]
+    workspace *= np.exp(-2j * np.pi * unshifted_fx * grid.x_mm[0])[None, :]
+    workspace *= grid.pixel_area_mm2
+    _fftshift_even_inplace(workspace, batch_rows=shift_batch_rows)
+    if not np.all(np.isfinite(workspace)):
+        raise ValueError("owned forward FFT result must remain finite")
+    return fx, fy
+
+
 def _build_forward_zoom_normalized(
     coordinates: np.ndarray, frequencies: np.ndarray
 ) -> tuple[scipy.signal.ZoomFFT, np.ndarray, float]:
@@ -269,29 +392,13 @@ def evaluate_spectrum_czt(
 
     if not isinstance(spectrum, Spectrum2D):
         raise ValueError("spectrum must be a Spectrum2D")
-    batch_size = _require_batch_size(batch_size)
-    output = _canonical_grid(output_grid)
-    # Spectrum2D has already validated and canonicalized these immutable axes.
-    # Re-normalizing can move legal large-offset nodes by an ULP and would make
-    # the returned spectrum coordinates differ from the nodes evaluated here.
-    fx = spectrum.fx_cpm
-    fy = spectrum.fy_cpm
-
-    xzoom, xphase, dfx = _build_inverse_zoom_normalized(fx, output.x_mm)
-    after_x = np.empty((fy.size, output.nx), dtype=np.complex128)
-    for y0 in range(0, fy.size, batch_size):
-        ys = slice(y0, min(y0 + batch_size, fy.size))
-        after_x[ys, :] = _apply_inverse_zoom(
-            spectrum.values[ys, :], xzoom, xphase, dfx, axis=1
-        )
-
-    yzoom, yphase, dfy = _build_inverse_zoom_normalized(fy, output.y_mm)
-    result = np.empty((output.ny, output.nx), dtype=np.complex128)
-    for x0 in range(0, output.nx, batch_size):
-        xs = slice(x0, min(x0 + batch_size, output.nx))
-        result[:, xs] = _apply_inverse_zoom(
-            after_x[:, xs], yzoom, yphase, dfy, axis=0
-        )
+    result, output = _evaluate_spectrum_czt_owned_normalized(
+        spectrum.values,
+        spectrum.fx_cpm,
+        spectrum.fy_cpm,
+        output_grid,
+        batch_size=batch_size,
+    )
     return PointField2D(result, output)
 
 
