@@ -765,6 +765,7 @@ This short corrective task closes two dependency risks found while implementing 
 - Modify: `sandbox/free_space_algorithm_identification/zbf_binary.py`
 - Modify: `tests/free_space_identification/test_models.py`
 - Modify: `tests/free_space_identification/test_zbf_binary.py`
+- Modify: `tests/free_space_identification/test_field_contract.py` only to move existing invalid-object expectations to construction time; add no test item.
 
 - [ ] **Step 1: Write three focused failing regressions**
 
@@ -785,7 +786,7 @@ python -m pytest tests/free_space_identification/test_models.py tests/free_space
 - [ ] **Step 4: Commit Task 3A**
 
 ```powershell
-git add -f sandbox/free_space_algorithm_identification/models.py sandbox/free_space_algorithm_identification/zbf_binary.py tests/free_space_identification/test_models.py tests/free_space_identification/test_zbf_binary.py
+git add -f sandbox/free_space_algorithm_identification/models.py sandbox/free_space_algorithm_identification/zbf_binary.py tests/free_space_identification/test_models.py tests/free_space_identification/test_zbf_binary.py tests/free_space_identification/test_field_contract.py
 git commit -m "fix: harden diagnostic field provenance"
 ```
 
