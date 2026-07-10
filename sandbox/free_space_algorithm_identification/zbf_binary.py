@@ -187,14 +187,31 @@ class LosslessZbf:
             else np.array(self.ey, dtype=np.complex128, order="C", copy=True)
         )
         trailing_bytes = bytes(self.trailing_bytes)
+        expected_shape = (self.header.ny, self.header.nx)
+        if ex.shape != expected_shape:
+            raise ValueError("Ex shape does not match ZBF header")
+        if self.header.is_polarized and ey is None:
+            raise ValueError("polarized ZBF requires Ey")
+        if not self.header.is_polarized and ey is not None:
+            raise ValueError("unpolarized ZBF cannot contain Ey")
+        if ey is not None and ey.shape != expected_shape:
+            raise ValueError("Ey shape does not match ZBF header")
+
+        ex = _immutable_complex128_array(ex)
+        ey = None if ey is None else _immutable_complex128_array(ey)
+        digest = _exact_serialization_sha256(
+            self.header, ex, ey, trailing_bytes
+        )
+        if path is not None and self.source_sha256 != digest:
+            raise ValueError(
+                "LosslessZbf source SHA-256 does not match exact serialization"
+            )
+
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "ex", ex)
         object.__setattr__(self, "ey", ey)
         object.__setattr__(self, "trailing_bytes", trailing_bytes)
         if path is None:
-            digest = hashlib.sha256(
-                _serialize_exact_bytes(self.header, ex, ey, trailing_bytes)
-            ).hexdigest()
             object.__setattr__(self, "source_sha256", digest)
 
     @property
@@ -384,22 +401,36 @@ def _complex_payload_bytes(field: np.ndarray) -> bytes:
     return native.astype("<c16", copy=False).tobytes(order="C")
 
 
-def _write_complex_payload(stream: BinaryIO, field: np.ndarray) -> None:
-    stream.write(_complex_payload_bytes(field))
+def _immutable_complex128_array(field: np.ndarray) -> np.ndarray:
+    shape = field.shape
+    backing = field.tobytes(order="C")
+    return np.frombuffer(backing, dtype=np.complex128).reshape(shape)
 
 
-def _serialize_exact_bytes(
+def _exact_serialization_sha256(
     header: RawZbfHeader,
     ex: np.ndarray,
     ey: np.ndarray | None,
     trailing_bytes: bytes,
-) -> bytes:
-    payload = bytearray(header.raw_bytes)
-    payload.extend(_complex_payload_bytes(ex))
+) -> str:
+    digest = hashlib.sha256()
+    digest.update(header.raw_bytes)
+    _update_complex_payload_digest(digest, ex)
     if ey is not None:
-        payload.extend(_complex_payload_bytes(ey))
-    payload.extend(trailing_bytes)
-    return bytes(payload)
+        _update_complex_payload_digest(digest, ey)
+    digest.update(trailing_bytes)
+    return digest.hexdigest()
+
+
+def _update_complex_payload_digest(digest: object, field: np.ndarray) -> None:
+    if sys.byteorder == "little":
+        digest.update(memoryview(field).cast("B"))
+    else:
+        digest.update(_complex_payload_bytes(field))
+
+
+def _write_complex_payload(stream: BinaryIO, field: np.ndarray) -> None:
+    stream.write(_complex_payload_bytes(field))
 
 
 __all__ = [

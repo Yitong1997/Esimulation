@@ -116,6 +116,34 @@ def test_roundtrip_preserves_all_unmodified_header_bits_and_trailing_bytes(
     assert beam.ey.dtype.isnative
 
 
+def test_lossless_fields_have_immutable_backing_storage(tmp_path: Path) -> None:
+    beam = read_lossless_zbf(
+        write_synthetic_lossless_fixture(
+            tmp_path / "polarized.ZBF", polarized=True
+        )
+    )
+    assert beam.ey is not None
+
+    for field in (beam.ex, beam.ey):
+        with pytest.raises(ValueError):
+            field[0, 0] = 1.0 + 2.0j
+        with pytest.raises(ValueError):
+            field.setflags(write=True)
+
+
+def test_disk_origin_rejects_stale_exact_serialization_hash(tmp_path: Path) -> None:
+    beam = read_lossless_zbf(
+        write_synthetic_lossless_fixture(
+            tmp_path / "source.ZBF", polarized=True, trailing=b"TAIL"
+        )
+    )
+    changed_ex = beam.ex.copy()
+    changed_ex[0, 0] = 10.0 + 20.0j
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        replace(beam, ex=changed_ex)
+
+
 def test_header_exposes_exact_semantic_mapping_and_registered_grid(tmp_path: Path) -> None:
     beam = read_lossless_zbf(write_synthetic_lossless_fixture(tmp_path / "source.ZBF"))
     header = beam.header

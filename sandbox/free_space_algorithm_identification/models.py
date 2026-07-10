@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
@@ -27,11 +27,14 @@ SampleValueConvention = Literal["point_value", "cell_energy"]
 class UniformGrid2D:
     x_mm: np.ndarray
     y_mm: np.ndarray
+    _dx_mm: float = field(init=False, repr=False)
+    _dy_mm: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         x = np.array(self.x_mm, dtype=np.float64, copy=True)
         y = np.array(self.y_mm, dtype=np.float64, copy=True)
 
+        nominal_steps: dict[str, float] = {}
         for name, axis in (("x_mm", x), ("y_mm", y)):
             if axis.ndim != 1 or axis.size < 2:
                 raise ValueError(f"{name} must be a one-dimensional array with at least two samples")
@@ -39,10 +42,17 @@ class UniformGrid2D:
                 raise ValueError(f"{name} must contain only finite values")
 
             steps = np.diff(axis)
-            if steps[0] <= 0.0 or not np.allclose(
-                steps, steps[0], rtol=1e-12, atol=0.0
+            center = axis.size // 2
+            nominal_step = (
+                axis[center + 1] - axis[center]
+                if center + 1 < axis.size
+                else axis[center] - axis[center - 1]
+            )
+            if nominal_step <= 0.0 or not np.allclose(
+                steps, nominal_step, rtol=1e-12, atol=0.0
             ):
                 raise ValueError(f"{name} must be uniformly spaced in increasing order")
+            nominal_steps[name] = float(nominal_step)
 
         x = np.frombuffer(x.tobytes(order="C"), dtype=x.dtype)
         y = np.frombuffer(y.tobytes(order="C"), dtype=y.dtype)
@@ -50,6 +60,8 @@ class UniformGrid2D:
         y.setflags(write=False)
         object.__setattr__(self, "x_mm", x)
         object.__setattr__(self, "y_mm", y)
+        object.__setattr__(self, "_dx_mm", nominal_steps["x_mm"])
+        object.__setattr__(self, "_dy_mm", nominal_steps["y_mm"])
 
     @classmethod
     def centered(
@@ -73,11 +85,11 @@ class UniformGrid2D:
 
     @property
     def dx_mm(self) -> float:
-        return float(self.x_mm[1] - self.x_mm[0])
+        return self._dx_mm
 
     @property
     def dy_mm(self) -> float:
-        return float(self.y_mm[1] - self.y_mm[0])
+        return self._dy_mm
 
     @property
     def pixel_area_mm2(self) -> float:

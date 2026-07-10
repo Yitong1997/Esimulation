@@ -26,6 +26,20 @@ def test_even_grid_uses_the_prevalidated_sample_at_zero_convention() -> None:
         field.values.setflags(write=True)
 
 
+def test_large_centered_s12_grid_preserves_supplied_nominal_spacing() -> None:
+    native_s12_interval_mm = 0.6339798584
+
+    grid = UniformGrid2D.centered(
+        nx=4096,
+        ny=4096,
+        dx_mm=native_s12_interval_mm,
+        dy_mm=native_s12_interval_mm,
+    )
+
+    assert grid.dx_mm == native_s12_interval_mm
+    assert grid.dy_mm == native_s12_interval_mm
+
+
 def test_segment_side_and_axis_conventions_are_fixed_without_phasor_switch() -> None:
     conventions = [
         convention

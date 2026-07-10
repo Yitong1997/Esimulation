@@ -96,6 +96,7 @@ def make_small_unpolarized_lossless_zbf(
     raw_z_mm: float = -2.0,
     rayleigh_mm: float = 1.0,
     ex: np.ndarray | None = None,
+    ey: np.ndarray | None = None,
     **header_overrides: object,
 ) -> LosslessZbf:
     header = _raw_header(
@@ -116,7 +117,7 @@ def make_small_unpolarized_lossless_zbf(
         source_sha256="",
         header=header,
         ex=np.asarray(ex, dtype=np.complex128),
-        ey=None,
+        ey=None if ey is None else np.asarray(ey, dtype=np.complex128),
         trailing_bytes=b"independent-test-oracle",
     )
 
@@ -344,46 +345,44 @@ def test_physical_mapping_copies_and_defensively_validates_lossless_payload() ->
         convention_validation=validation,
         sample_value_convention="point_value",
     )
-    frozen_reference = mapped.reference_relative.copy()
-    beam.ex[...] = 99.0 - 101.0j
-    np.testing.assert_array_equal(mapped.reference_relative, frozen_reference)
     assert not np.shares_memory(mapped.reference_relative, beam.ex)
 
     original = make_small_unpolarized_lossless_zbf()
-    stale = LosslessZbf(
-        path=Path("synthetic-stale-hash.ZBF"),
-        source_sha256="0" * 64,
-        header=original.header,
-        ex=original.ex,
-        ey=None,
-        trailing_bytes=original.trailing_bytes,
-    )
-    invalid_beams = (
-        replace(
+    invalid_beam_builders = (
+        lambda: replace(
             make_small_unpolarized_lossless_zbf(),
             ex=np.ones((2, 2), dtype=np.complex128),
         ),
-        replace(
+        lambda: replace(
             make_small_unpolarized_lossless_zbf(),
             ey=np.ones((4, 4), dtype=np.complex128),
         ),
-        replace(make_small_unpolarized_lossless_zbf(is_polarized=1), ey=None),
-        replace(
+        lambda: replace(
+            make_small_unpolarized_lossless_zbf(is_polarized=1), ey=None
+        ),
+        lambda: replace(
             make_small_unpolarized_lossless_zbf(),
             ex=np.full((4, 4), np.nan + 1j, dtype=np.complex128),
         ),
-        stale,
+        lambda: LosslessZbf(
+            path=Path("synthetic-stale-hash.ZBF"),
+            source_sha256="0" * 64,
+            header=original.header,
+            ex=original.ex,
+            ey=None,
+            trailing_bytes=original.trailing_bytes,
+        ),
     )
-    for invalid in invalid_beams:
+    for build_invalid_beam in invalid_beam_builders:
         with pytest.raises(ValueError):
             physical_field_from_zbf(
-                invalid,
+                build_invalid_beam(),
                 convention=S7,
                 convention_validation=validation,
                 sample_value_convention="point_value",
             )
-    polarized = replace(
-        make_small_unpolarized_lossless_zbf(is_polarized=1),
+    polarized = make_small_unpolarized_lossless_zbf(
+        is_polarized=1,
         ey=np.ones((4, 4), dtype=np.complex128),
     )
     with pytest.raises(NotImplementedError):
