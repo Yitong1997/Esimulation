@@ -265,7 +265,29 @@ z_{\mathrm{Rayleigh}}=r_x=r_y,
 w_0=w_x=w_y.
 \]
 
-起点 `reference_surface` 由原生报告固定为区外球面或区内平面，`wfarr=M_{-Q_s}u_s`。传播模型物理距离 \(d_{\mathrm{model}}\) 后，预测导引光束位置为
+起点 `reference_surface` 由原生报告固定为区外球面或区内平面。ZBF 慢场 \(\chi_s\) 与物理总场、PROPER 二次参考约化点值之间满足
+
+\[
+U_s=\chi_s e^{i\Phi_s},
+\qquad
+\psi_s=e^{-iQ_s}U_s
+=\chi_s e^{i(\Phi_s-Q_s)}.
+\]
+
+PROPER 的单位化二维 DFT 保存的是离散和 \(\sum|a|^2\)，因此 `wfarr` 必须表示单元能量样本，而不是点值。对偶数阶中心数组，严格入口和出口为
+
+\[
+\mathrm{wfarr}_{\mathrm{in}}
+=\operatorname{Shift}\!\left[\sqrt{\Delta A_s}\,\psi_s\right],
+\]
+
+\[
+\widetilde\psi_t
+=\frac{\operatorname{Shift}(\mathrm{wfarr}_{\mathrm{out}})}
+{\sqrt{\Delta A_t}}.
+\]
+
+中心移动在入口、出口各执行一次。禁止调用 `prop_define_entrance`，因为它会改变绝对物理功率。传播模型物理距离 \(d_{\mathrm{model}}\) 后，预测导引光束位置为
 
 \[
 \zeta_t^{\mathrm{pred}}=\zeta_s+d_{\mathrm{model}}.
@@ -278,6 +300,19 @@ w_0=w_x=w_y.
 不得从终点 ZBF、POP API 状态或终点误差拟合重新估计 \(z_{w0},z_R,w_0\)。如果 X/Y 导引光束参数未通过轴对称一致性门，则原生单轴 PROPER 不能代表该输入，必须改用独立 X/Y 缩放菲涅耳实现并把 PROPER 标记为不适用。
 
 ZBF 的 \(\Delta x\) 与 \(\Delta y\) 可以略有不同，而原生 PROPER 只维护单一方形采样。物理候选 \(F_Q\) 因而以保留实际 X/Y 采样的独立菲涅耳实现为准；原生 PROPER 分别按预先固定的 X 优先和 Y 优先方形网格运行，二者差异计入 PROPER 实现不确定度。不得在观察结果后选择误差较小的坐标优先级。
+
+矩形慢场到方形输入网格的变换必须把原有限窗口之外定义为严格零：较大窗口中心零延拓，较小窗口中心裁剪。裁剪门定义为 \(\eta_{\mathrm{crop}}=\sum_{\mathrm{cropped}}|\chi_{\Phi,s}|^2\Delta A/\sum_{\mathrm{source}}|\chi_{\Phi,s}|^2\Delta A\le10^{-10}\)，分母非有限或为零时停止；新增样点必须为精确复零。充分零填充后的傅里叶求值可用于窗口内连续化，但禁止直接使用原窗口的周期三角插值。
+
+输出要求所有共同比较节点位于已经计算的方形输出窗口内；外边缘带固定为外侧 \(\lceil0.05N\rceil\) 行与列的并集，并要求 Q 约化慢场的边缘相对能量不超过 \(10^{-10}\)。只能在该支撑内裁剪或对 \(\widetilde\psi_t\) 进行防回卷求值。若目标超出已计算输出或边缘门失败，必须扩大方形运行，禁止以补零冒充未计算的物理场。有效映射后再乘 \(e^{iQ_t^{\mathrm{pred}}}\)；禁止先乘欠采样的 \(Q_t\) 再插值。
+
+`proper.phase_offset=False` 给出去轴向载波场。所有对外称为物理总场的候选必须在末端只恢复一次
+
+\[
+e^{ikd_{\mathrm{model}}},
+\qquad k=2\pi n/\lambda_{\mathrm{vac}},
+\]
+
+并记录模 \(2\pi\) 的约化值；不得把这一已知因子交给比较活塞。
 
 该路径必须与独立缩放菲涅耳实现交叉验证。若两种实现不闭合，首先判定为 PROPER 实现或离散采样问题，不能用 PROPER 输出代表菲涅耳理论。
 
@@ -302,7 +337,23 @@ U_t^{R_{\Phi|Q}}
 \Delta y'=\frac{\lambda|d|}{N\Delta y}.
 \]
 
-按中心化 DFT 约定，\(d>0\) 时 \(\mathcal D_d[u]=\operatorname{DFT2}(u)/N\)，\(d<0\) 时 \(\mathcal D_d[u]=N\operatorname{IDFT2}(u)\)。FFT 方向、中心移动和归一化在观察结果前固定。
+按中心化 DFT 约定，\(\mathcal D_d\) 作用于单元能量样本：\(d>0\) 时 \(\mathcal D_d[a]=\operatorname{DFT2}(a)/N\)，\(d<0\) 时 \(\mathcal D_d[a]=N\operatorname{IDFT2}(a)\)。它保存 \(\sum|a|^2\)。点值进入前乘 \(\sqrt{\Delta A_{\mathrm{in}}}\)，输出点值在变换后除以 \(\sqrt{\Delta A_{\mathrm{out}}}\)。FFT 方向、中心移动和归一化在观察结果前固定。
+
+自然缩放网格上的完整去载波菲涅耳积分与单位化 DFT 之间还存在唯一解析常数
+
+\[
+c(d)=-i\,\operatorname{sgn}(d).
+\]
+
+该常数不是可拟合活塞。令 \(a=-\zeta_s\)、\(b=\zeta_s+d_{\mathrm{model}}\)，则
+
+\[
+C_{\mathrm{OO}}=c(a)c(b)=1,\qquad
+C_{\mathrm{OI}}=c(a)=-i,\qquad
+C_{\mathrm{IO}}=c(b)=-i.
+\]
+
+所有三类候选的复合分支必须显式乘相应 \(C_{\mathrm{branch}}\)，并在恢复 \(e^{ikd_{\mathrm{model}}}\) 后形成物理总场。PROPER 与独立菲涅耳的内部核验在这些解析因子全部施加后比较原始绝对复场，不再去活塞或拟合振幅。
 
 定义
 
@@ -341,17 +392,17 @@ T_F(p)u=\mathcal F_N^{-1}\left\{
 
 \[
 U_t^{R_{\Phi|\Phi},\mathrm{OO}}
-=M_{\Phi_t}W_\Phi(b)S_\Phi(a)M_{-\Phi_s}U_s,
+=C_{\mathrm{OO}}M_{\Phi_t}W_\Phi(b)S_\Phi(a)M_{-\Phi_s}U_s,
 \]
 
 \[
 U_t^{R_{\Phi|\Phi},\mathrm{OI}}
-=T_F(b)S_\Phi(a)M_{-\Phi_s}U_s,
+=C_{\mathrm{OI}}T_F(b)S_\Phi(a)M_{-\Phi_s}U_s,
 \]
 
 \[
 U_t^{R_{\Phi|\Phi},\mathrm{IO}}
-=M_{\Phi_t}W_\Phi(b)T_F(a)U_s.
+=C_{\mathrm{IO}}M_{\Phi_t}W_\Phi(b)T_F(a)U_s.
 \]
 
 这一候选与 \(R_{\Phi|Q}\) 不同，并可能改变传播后的强度。第一轮若需启用，STW 和 WTS 中所有适用的内部相位必须同时按上述固定定义替换；不得根据结果只替换其中一个相位因子。
@@ -370,11 +421,11 @@ Zemax 结果是观测对象，不是预设算法。定义：
 记
 
 \[
-A_{\mathrm{OO}}=W_QS_Q,
+A_{\mathrm{OO}}=C_{\mathrm{OO}}W_QS_Q,
 \qquad
-A_{\mathrm{OI}}=T_FS_Q,
+A_{\mathrm{OI}}=C_{\mathrm{OI}}T_FS_Q,
 \qquad
-A_{\mathrm{IO}}=W_QT_F,
+A_{\mathrm{IO}}=C_{\mathrm{IO}}W_QT_F,
 \]
 
 其中 \(S_Q,W_Q,T_F\) 分别表示原生 STW、WTS 和 PTP。

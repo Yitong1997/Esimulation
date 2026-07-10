@@ -1612,24 +1612,17 @@ git commit -m "feat: add sparse RS-I verification"
 
 - [ ] **Step 1: Write failing direct-integral, normalization, ordering, and structural tests**
 
+Keep exactly five high-information parameterized items:
+
 ```text
-test_scaled_fresnel_czt_matches_dense_complex_direct_integral
-test_ptp_fresnel_mode_matches_explicit_discrete_periodic_fft_kernel
-test_zero_padded_ptp_converges_to_scaled_finite_domain_fresnel
-test_scaled_dft_roundtrip_and_power_for_rectangular_grid
-test_scaled_dft_output_sampling_uses_x_and_y_separately
-test_stw_phase_is_after_dft_and_wts_phase_is_before_dft
-test_candidate_target_q_uses_predicted_pilot_not_target_fit
-test_candidate_phi_target_hash_matches_the_same_captured_case
-test_all_candidates_receive_the_same_physical_input_hash
-test_stock_proper_fq_matches_independent_fresnel_on_each_branch
-test_stock_proper_restores_globals_and_sets_beam_type_old
-test_s13_s14_r_phi_given_q_has_fq_intensity_exactly
-test_s13_s14_r_phi_given_q_phase_is_phi14_minus_q14
-test_r_phi_given_phi_replaces_every_applicable_internal_phase
+test_scaled_fresnel_matches_dense_integral_and_analytic_gaussian
+test_cell_energy_dft_power_sampling_and_signed_constant
+test_all_branches_stock_proper_match_square_fresnel_without_fit
+test_square_variants_use_finite_support_and_resample_q_slow_field
+test_fixed_candidates_bind_input_q_phi_and_structural_identities
 ```
 
-The dense direct-integral oracle must compare absolute complex amplitude; it may not normalize the endpoint or compare phase alone.
+The dense direct-integral oracle compares absolute physical complex amplitude including the analytic axial carrier; it may not normalize the endpoint or compare phase alone. The second item covers positive/negative distance, rectangular X/Y sampling, PTP, STW/WTS ordering, and \(c(d)=-i\,\operatorname{sgn}(d)\). The third covers OO/OI/IO, polluted PROPER globals, exactly one center shift each way, no entrance normalization, and the raw no-fit absolute-field gate. The fourth covers zero extension, crop rejection, and output slow-field ordering. The fifth contains the hash/pilot/reference and S13→S14 identity checks.
 
 - [ ] **Step 2: Run the candidate tests and verify import failure**
 
@@ -1657,16 +1650,23 @@ class CandidateResult:
 
 The pipeline rejects a segment matrix unless all candidate `input_sha256` and `input_grid_sha256` values are identical.
 
-With the common axial factor `exp(ikd)` removed consistently, implement
+With `lambda = wavelength_vacuum / refractive_index`, `k=2*pi/lambda`, positive physical model distance, and the common axial factor `exp(ikd)` removed internally, implement
 
 \[
-U_t(x_t,y_t)=\frac{1}{i\lambda d}
+\bar U_t(x_t,y_t)=\frac{1}{i\lambda d}
 e^{ik(x_t^2+y_t^2)/(2d)}
 \iint U_s(x_s,y_s)e^{ik(x_s^2+y_s^2)/(2d)}
 e^{-i2\pi(x_sx_t+y_sy_t)/(\lambda d)}dx_sdy_s.
 \]
 
-Use `evaluate_field_fourier_czt()` at `fx=x_t/(lambda*d)` and `fy=y_t/(lambda*d)`. Retain `1/(i lambda d)`, both chirps, and the physical integration area. This scaled finite-domain operator must close in absolute complex amplitude against the dense small-grid integral oracle.
+Use `evaluate_field_fourier_czt()` at `fx=x_t/(lambda*d)` and `fy=y_t/(lambda*d)`. Retain `1/(i lambda d)`, both chirps, and the physical integration area. Restore exactly once
+
+\[
+U_t^{\mathrm{phys}}
+=\exp[i\,\operatorname{remainder}(kd_{\mathrm{model}},2\pi)]\bar U_t
+\]
+
+before constructing a public physical `PointField2D`; persist the nominal and reduced axial phase. This scaled finite-domain operator must close in absolute physical complex amplitude against the dense small-grid integral oracle. The known axial factor is not a fitted comparison piston.
 
 Test the same-grid paraxial transfer function `exp[-i d(kx²+ky²)/(2k)]` separately against periodic FFT-bin modes and an explicit discrete FFT kernel. It is a periodic convolution and is not required to equal an unpadded finite-domain integral on a small grid. Demonstrate their continuous equivalence only after zero-padding and independent step/window convergence.
 
@@ -1679,9 +1679,28 @@ For signed distance `d`, natural output sampling is
 \qquad \Delta y'=\frac{\lambda|d|}{N_y\Delta y}.
 \]
 
-Convert point values to cell-energy samples before the centered transform. For `d>0`, use centered `fft2/sqrt(Nx Ny)`; for `d<0`, use centered `sqrt(Nx Ny)*ifft2`. Divide by the output cell-area square root afterward. This normalization is physical and may not be replaced by endpoint amplitude fitting.
+Convert point values to cell-energy samples before the centered transform:
 
-`D_d` is the PROPER unitary DFT convention. Relative to the complete carrier-removed scaled Fresnel integral on its natural grid it has the predeclared unit-modulus factor `-i*sgn(d)`; record and remove only that known factor when cross-checking the two definitions. `propagate_scaled_fresnel()` always retains `1/(i lambda d)` and absolute amplitude. Never add or omit the factor case-by-case after seeing an endpoint.
+\[
+a_{\mathrm{in}}=\sqrt{\Delta x_{\mathrm{in}}\Delta y_{\mathrm{in}}}\,u_{\mathrm{in}}.
+\]
+
+For `d>0`, use centered `fft2/sqrt(Nx Ny)`; for `d<0`, use centered `sqrt(Nx Ny)*ifft2`. Divide by the output cell-area square root afterward:
+
+\[
+u_{\mathrm{out}}=a_{\mathrm{out}}/
+\sqrt{\Delta x_{\mathrm{out}}\Delta y_{\mathrm{out}}}.
+\]
+
+This normalization is physical, preserves the cell-energy sum, and may not be replaced by endpoint amplitude fitting or `prop_define_entrance`.
+
+`D_d` is the PROPER unitary DFT convention. Relative to the complete carrier-removed scaled Fresnel integral on its natural grid, the required analytic multiplier is
+
+\[
+c(d)=-i\,\operatorname{sgn}(d).
+\]
+
+Apply that factor explicitly rather than estimating or removing it with a comparison piston. `propagate_scaled_fresnel()` always retains `1/(i lambda d)`, the axial carrier restoration, and absolute amplitude. Never add or omit the factor case-by-case after seeing an endpoint.
 
 Define
 
@@ -1699,28 +1718,48 @@ Then implement `S_Q=M_q(output) D_d`, `W_Q=D_d M_q(input)`, `S_Phi=M_phi(output)
 Let `a=-zeta_s` and `b=zeta_s+d_model`. `b` is predicted from the start pilot and model distance; it is never overwritten with the observed target pilot. For each sampling case, boundary `Phi_t` comes from the corresponding current-run captured target ZBF header paired with that endpoint field and grid; validate and store that target hash. It is never borrowed from a historical or different-resolution target.
 
 ```text
-F_Q,OO       = M_Qt   W_Q(b)   S_Q(a)   M_-Qs   Us
-F_Q,OI       =         T_F(b)   S_Q(a)   M_-Qs   Us
-F_Q,IO       = M_Qt   W_Q(b)   T_F(a)             Us
+F_Q,OO       = C_OO M_Qt   W_Q(b)   S_Q(a)   M_-Qs   Us
+F_Q,OI       = C_OI        T_F(b)   S_Q(a)   M_-Qs   Us
+F_Q,IO       = C_IO M_Qt   W_Q(b)   T_F(a)             Us
 
-R_Phi|Q,OO   = M_Phit W_Q(b)   S_Q(a)   M_-Phis Us
-R_Phi|Q,OI   =         T_F(b)   S_Q(a)   M_-Phis Us
-R_Phi|Q,IO   = M_Phit W_Q(b)   T_F(a)             Us
+R_Phi|Q,OO   = C_OO M_Phit W_Q(b)   S_Q(a)   M_-Phis Us
+R_Phi|Q,OI   = C_OI        T_F(b)   S_Q(a)   M_-Phis Us
+R_Phi|Q,IO   = C_IO M_Phit W_Q(b)   T_F(a)             Us
 
-R_Phi|Phi,OO = M_Phit W_Phi(b) S_Phi(a) M_-Phis Us
-R_Phi|Phi,OI =         T_F(b)   S_Phi(a) M_-Phis Us
-R_Phi|Phi,IO = M_Phit W_Phi(b) T_F(a)             Us
+R_Phi|Phi,OO = C_OO M_Phit W_Phi(b) S_Phi(a) M_-Phis Us
+R_Phi|Phi,OI = C_OI        T_F(b)   S_Phi(a) M_-Phis Us
+R_Phi|Phi,IO = C_IO M_Phit W_Phi(b) T_F(a)             Us
 ```
 
-Do not create a result-tunable generic phase-family function. These nine paths are explicit audited functions. Never lift a PROPER `wfarr` with a ZBF reference; stock PROPER is lifted only with its paired `Q` reference.
+where `C_OO=1` is specific to the present S7→S8 signs `a<0,b>0`, while `C_OI=-1j` and `C_IO=-1j` follow the present S12→S13 and S13→S14 signs. Assert the actual signs of `a,b` against the segment registry before assigning any constant; do not generalize `C_OO=1` to an arbitrary outside-to-outside geometry. These factors are analytic, not fitted pistons. Do not create a result-tunable generic phase-family function. The nine paths are explicit audited functions. Never lift a PROPER `wfarr` with a ZBF reference; stock PROPER is lifted only with its paired `Q` reference. Restore the common physical axial carrier once after the complete branch.
 
 - [ ] **Step 6: Add the stock-PROPER cross-check without endpoint information leakage**
 
-Initialize a fresh stock PROPER wavefront with start-plane `z=0`, `z_w0=-zeta_s`, `z_Rayleigh=rx=ry`, `w0=wx=wy`, explicit `dx`, and asserted `ngrid`. Set both `reference_surface="SPHERI"/"PLANAR"` and `beam_type_old="OUTSIDE"/"INSIDE_"` from the prevalidated classification, then set `wfarr=M_-Qs Us`, shifted with PROPER's own center convention. Save all touched PROPER module globals, force `proper.phase_offset=False` to match the carrier-removed convention, propagate exactly `d_model` once, lift endpoint `wfarr` only with `Q_t` computed from `zeta_s+d_model`, and restore globals in `finally`. Add a regression that begins with deliberately polluted `phase_offset` and `beam_type_old` and still selects the required OO/OI/IO branch.
+Initialize a fresh stock PROPER wavefront in SI units with medium wavelength \(\lambda_{\mathrm{vac}}/n\), start-plane `z=0`, `z_w0=-zeta_s`, `z_Rayleigh=rx=ry`, `w0=wx=wy`, explicit `dx`, even asserted `ngrid`, and all lengths converted once from millimetres. Set both `reference_surface="SPHERI"/"PLANAR"` and `beam_type_old="OUTSIDE"/"INSIDE_"` from the prevalidated classification.
 
-Because stock PROPER has one square sampling while the ZBF has slightly different X/Y intervals, run two predeclared variants at the same N: X-priority uses `dx_square=dy_square=dx_ZBF`, and Y-priority uses `dx_square=dy_square=dy_ZBF`. Band-limit-resample the rectangular ZBF slow field `chi_Phi` onto each square grid, then form the Q-relative PROPER input explicitly as `wfarr_Q = chi_Phi * exp[i(Phi_s-Q_s)]`; never resample the under-sampled physical carrier. After propagation, keep the output `wfarr_Q` as the slow Q-relative field, band-limit-evaluate it onto the common target grid, and only there multiply `exp(+i Q_t_pred)` to recover the physical field. Never remove `Q_t` from `wfarr` and never lift it with `Phi_t`. Persist both square variants; their difference enters the PROPER implementation uncertainty. Do not inspect the Zemax endpoint before choosing a variant. The independent X/Y-aware scaled Fresnel field is the theoretical `F_Q` candidate; stock PROPER is an implementation cross-check.
+Let \(\chi_{\Phi,s}\) be the centered point-value ZBF slow field. Form the centered Q-relative point field and PROPER cell-energy samples as
 
-Run independent Fresnel and all fixed candidates on the same three-segment step/window matrices defined in Task 7, evaluate every level directly on the common target grid, and form separate `u_input/u_grid/u_window/u_output` components. On the frozen `Omega_-3`, use the same one piston and intensity-weighted physical-phase metric as Task 6. Require PROPER versus independent Fresnel phase RMS at most `1e-5` wave and record their complex, intensity, and power differences as implementation uncertainty. Task 14, only after every candidate field exists, additionally requires the phase implementation uncertainty to be less than one tenth of the same-segment `Omega_-3` minimum phase-candidate separation; that runtime separability check is not an offline unit-test oracle. Otherwise mark `F_Q` implementation-unresolved and do not use it to attribute a Zemax algorithm.
+\[
+\psi_s=\chi_{\Phi,s}\exp[i(\Phi_s-Q_s)],
+\qquad
+a_s=\sqrt{\Delta A_s}\,\psi_s.
+\]
+
+Assign `wfarr = prop_shift_center(a_s)` exactly once. Never call `prop_define_entrance`. Save all touched PROPER module globals, force `proper.phase_offset=False`, propagate exactly `d_model` once, then execute exactly one output `prop_shift_center` and divide by \(\sqrt{\Delta A_t}\) to recover the centered Q-relative point field. Restore every global in `finally`. Add a polluted-state regression that still selects the required OO/OI/IO branch and proves there was one input shift and one output shift.
+
+The stock result remains carrier-removed until the complete output has been mapped as a Q-relative slow field and multiplied by \(e^{iQ_t^{\mathrm{pred}}}\). Restore \(e^{ikd_{\mathrm{model}}}\) exactly once before constructing the public physical field.
+
+Because stock PROPER has one square sampling while the ZBF has slightly different X/Y intervals, run two predeclared variants at the same even N: X-priority uses `dx_square=dy_square=dx_ZBF`, and Y-priority uses `dx_square=dy_square=dy_ZBF`.
+
+Changing to either square grid is a finite-support operation, not periodic interpolation. Treat `chi_Phi` as exact zero outside the original rectangle. Center-zero-extend when the square window is larger and center-crop when it is smaller. Persist source, intersection, crop, and added-region bounds. Define the dimensionless crop fraction using point-value slow-field energy, `eta_crop = sum_cropped(|chi_Phi|^2*dA_source) / sum_source(|chi_Phi|^2*dA_source)`, and require `eta_crop <= 1e-10`; every added sample is exact complex zero. If the denominator is zero/non-finite or the crop gate fails, reject the variant or start a new wider-window case. A zero-padded Fourier evaluation may interpolate inside this frozen support, but Task 4's unpadded periodic trigonometric interpolant may not wrap an edge into the opposite side.
+
+After finite-support input mapping, form `a_s = sqrt(dA_s) * chi_Phi * exp[i(Phi_s-Q_s)]` and shift it once into PROPER. After propagation and one output shift, first divide by `sqrt(dA_t)` and retain the output as the slow Q-relative point field. Every common comparison node must lie inside the computed square-output window. Define the output edge band as the union of the outer `ceil(0.05*N)` rows and columns and require `eta_edge = sum_edge(|psi_t|^2*dA_t) / sum_all(|psi_t|^2*dA_t) <= 1e-10`; zero/non-finite denominators fail. Center-crop or zero-padded Fourier-evaluate the slow field only within that support. If the requested target extends outside the computed output or the edge gate fails, reject or run a wider square case—never fill an uncomputed output region with zeros and call it physical. Only after valid output mapping multiply `exp(+i Q_t_pred)` and the one known axial carrier. Never remove `Q_t` from `wfarr`, never resample the already restored Q carrier, and never lift a stock-PROPER array with `Phi_t`.
+
+Persist both square variants; their difference is a square-grid implementation component, separate from the same-square stock-PROPER versus independent-Fresnel implementation error. Do not inspect the Zemax endpoint before choosing a variant. The independent X/Y-aware scaled Fresnel field is the theoretical `F_Q` candidate; stock PROPER is an implementation cross-check.
+
+First cross-check stock PROPER against an independent explicit evaluator of the **same discrete branch operator** on exactly the same square input and exact natural output grid. The evaluator independently composes the centered unitary DFT/IDFT, periodic PTP kernel, Q phases, cell-area maps, and fixed `C_branch`; it does not call PROPER. Apply all analytic branch, Q-reference, center-order, and axial-carrier factors, then compare raw absolute complex fields with no piston or amplitude fit. Freeze the internal phase support from the independent evaluator as `Omega_impl_-6 = {I_ref/I_ref,max >= 1e-6}` before reading the PROPER difference. Require raw relative complex L2 at most `1e-10`, power relative error at most `1e-10`, and maximum no-piston raw phase error on `Omega_impl_-6` at most `1e-9` wave. Empty/non-finite support fails. Because this gate compares algebraically equivalent discrete operators, a failure is an implementation error, not part of X/Y square-grid uncertainty.
+
+Then run the independent finite-domain rectangular Fresnel candidate and both fixed square variants on the same three-segment step/window matrices from Task 7, evaluate every level on the common target grid, and form separate `u_input/u_grid/u_window/u_output/u_square` components. Differences between this converged finite-domain operator and the square periodic implementation are numerical/window uncertainty, not judged by the `1e-10` algebraic gate. Only the later candidate-to-Zemax comparison uses Task 6's one primary-ROI piston; the internal same-discrete-operator gate above does not. Require the final PROPER square-envelope versus independently converged rectangular Fresnel phase RMS at most `1e-5` wave after including the separately recorded square-grid component, and record complex, intensity, and power differences as implementation uncertainty. Task 14, only after every candidate field exists, additionally requires phase implementation uncertainty below one tenth of the same-segment `Omega_-3` minimum phase-candidate separation. Otherwise mark `F_Q` implementation-unresolved and do not use it to attribute a Zemax algorithm.
 
 - [ ] **Step 7: Run offline candidate tests**
 
