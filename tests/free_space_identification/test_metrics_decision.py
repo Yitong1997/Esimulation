@@ -51,11 +51,18 @@ def _frozen_roi(
 
 def _full_roi_set(grid: UniformGrid2D) -> FrozenRoiSet:
     mask = np.ones((grid.ny, grid.nx), dtype=bool)
+    return _roi_set_from_masks(grid, (mask, mask, mask))
+
+
+def _roi_set_from_masks(
+    grid: UniformGrid2D,
+    masks: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> FrozenRoiSet:
     return FrozenRoiSet(
-        primary=_frozen_roi(grid, mask, threshold=1e-3),
+        primary=_frozen_roi(grid, masks[0], threshold=1e-3),
         checks=(
-            _frozen_roi(grid, mask, threshold=1e-2),
-            _frozen_roi(grid, mask, threshold=1e-6),
+            _frozen_roi(grid, masks[1], threshold=1e-2),
+            _frozen_roi(grid, masks[2], threshold=1e-6),
         ),
     )
 
@@ -97,6 +104,13 @@ def test_roi_is_frozen_from_only_the_reference_peak_component() -> None:
             reference_zbf_sha256=_REFERENCE_SHA256,
             thresholds=(1e-3, 1e-3, 1e-6),
         )
+    overflow_reference = PointField2D(
+        np.full((6, 6), 1e154 + 0.0j, dtype=np.complex128), grid
+    )
+    with pytest.raises(ValueError, match="finite"):
+        build_frozen_rois(
+            overflow_reference, reference_zbf_sha256=_REFERENCE_SHA256
+        )
 
 
 def test_exactly_one_primary_roi_piston_is_reused_without_fitting_error() -> None:
@@ -123,6 +137,29 @@ def test_exactly_one_primary_roi_piston_is_reused_without_fitting_error() -> Non
     assert metrics[0].phase_rms_waves > 1e-4
     assert metrics[0].full_window_power_relative_error == pytest.approx(0.5625)
 
+    left = np.zeros_like(reference.values, dtype=bool)
+    left[:, :6] = True
+    right = np.zeros_like(reference.values, dtype=bool)
+    right[:, 6:] = True
+    separate_masks = _roi_set_from_masks(
+        grid, (left, right, np.ones_like(left, dtype=bool))
+    )
+    spatial_phase = 1.1 * x
+    spatial_candidate = PointField2D(
+        reference.values * np.exp(1j * spatial_phase), grid
+    )
+    shared = compare_physical_fields(spatial_candidate, reference, separate_masks)
+    primary_piston = np.angle(
+        np.sum(spatial_candidate.values[left] * np.conj(reference.values[left]))
+    )
+    independently_recomputed_check_piston = np.angle(
+        np.sum(spatial_candidate.values[right] * np.conj(reference.values[right]))
+    )
+    assert primary_piston != pytest.approx(independently_recomputed_check_piston)
+    assert all(metric.piston_rad == pytest.approx(primary_piston) for metric in shared)
+    with pytest.raises(ValueError, match="FrozenRoiSet"):
+        compare_physical_fields(spatial_candidate, reference, separate_masks.primary)
+
 
 def test_peak_anchored_unwrap_is_deterministic_and_ambiguity_fails_closed() -> None:
     grid = UniformGrid2D.centered(nx=5, ny=2, dx_mm=0.2, dy_mm=0.3)
@@ -131,13 +168,27 @@ def test_peak_anchored_unwrap_is_deterministic_and_ambiguity_fails_closed() -> N
     reference = PointField2D(reference_values, grid)
     phase = np.broadcast_to(np.array([0.1, 2.6, 5.1, 7.6, 10.1]), (2, 5))
     candidate = PointField2D(reference.values * np.exp(1j * phase), grid)
-    roi = _frozen_roi(grid, np.ones((2, 5), dtype=bool))
+    rois = _full_roi_set(grid)
 
-    first = compare_physical_fields(candidate, reference, roi)
-    second = compare_physical_fields(candidate, reference, roi)
+    first = compare_physical_fields(candidate, reference, rois)[0]
+    second = compare_physical_fields(candidate, reference, rois)[0]
     assert first.unwrap_status == "unique"
     assert first.phase_pv_waves == pytest.approx(10.0 / (2.0 * np.pi))
     assert first == second
+
+    slope_grid = UniformGrid2D.centered(nx=4, ny=4, dx_mm=0.2, dy_mm=0.3)
+    rows, columns = np.indices((4, 4))
+    legal_slope = 0.75 * np.pi * (rows + columns)
+    slope_reference = PointField2D(
+        np.ones((4, 4), dtype=np.complex128), slope_grid
+    )
+    slope = compare_physical_fields(
+        PointField2D(np.exp(1j * legal_slope), slope_grid),
+        slope_reference,
+        _full_roi_set(slope_grid),
+    )[0]
+    assert slope.unwrap_status == "unique"
+    assert slope.phase_pv_waves == pytest.approx(2.25)
 
     ambiguous_grid = UniformGrid2D.centered(nx=2, ny=2, dx_mm=0.2, dy_mm=0.3)
     ambiguous_reference = PointField2D(
@@ -148,12 +199,10 @@ def test_peak_anchored_unwrap_is_deterministic_and_ambiguity_fails_closed() -> N
     ambiguous_candidate = PointField2D(
         ambiguous_reference.values * np.exp(1j * exact_pi), ambiguous_grid
     )
-    ambiguous_roi = _frozen_roi(
-        ambiguous_grid, np.ones((2, 2), dtype=bool)
-    )
+    ambiguous_rois = _full_roi_set(ambiguous_grid)
     ambiguous = compare_physical_fields(
-        ambiguous_candidate, ambiguous_reference, ambiguous_roi
-    )
+        ambiguous_candidate, ambiguous_reference, ambiguous_rois
+    )[0]
     assert ambiguous.unwrap_status == "ambiguous"
     assert np.isnan(ambiguous.phase_rms_waves)
     assert np.isnan(ambiguous.phase_pv_waves)
@@ -161,7 +210,10 @@ def test_peak_anchored_unwrap_is_deterministic_and_ambiguity_fails_closed() -> N
         classify_pair(ambiguous.phase_rms_waves, 1e-6)
 
     inconsistent_phase = np.array(
-        [[0.0, 2.0 * np.pi / 3.0], [-2.0 * np.pi / 3.0, 0.0]]
+        [
+            [-3.0 * np.pi / 4.0, 3.0 * np.pi / 4.0],
+            [-np.pi / 4.0, np.pi / 4.0],
+        ]
     )
     inconsistent = compare_physical_fields(
         PointField2D(
@@ -169,18 +221,28 @@ def test_peak_anchored_unwrap_is_deterministic_and_ambiguity_fails_closed() -> N
             ambiguous_grid,
         ),
         ambiguous_reference,
-        ambiguous_roi,
-    )
+        ambiguous_rois,
+    )[0]
     assert inconsistent.unwrap_status == "ambiguous"
     assert np.isnan(inconsistent.phase_rms_waves)
+
+    diagonal_mask = np.array([[True, False], [False, True]])
+    diagonal_rois = _roi_set_from_masks(
+        ambiguous_grid, (diagonal_mask, diagonal_mask, diagonal_mask)
+    )
+    diagonal_only = compare_physical_fields(
+        ambiguous_reference, ambiguous_reference, diagonal_rois
+    )[0]
+    assert diagonal_only.unwrap_status == "ambiguous"
+    assert np.isnan(diagonal_only.phase_rms_waves)
 
     with_zero = ambiguous_candidate.values.copy()
     with_zero[0, 0] = 0.0
     zero_result = compare_physical_fields(
         PointField2D(with_zero, ambiguous_grid),
         ambiguous_reference,
-        ambiguous_roi,
-    )
+        ambiguous_rois,
+    )[0]
     assert zero_result.unwrap_status == "ambiguous"
     assert np.isnan(zero_result.phase_rms_waves)
 
@@ -212,6 +274,14 @@ def test_symmetric_distance_keeps_amplitude_and_common_grid_is_strict() -> None:
         compare_physical_fields(
             PointField2D(a, changed_grid),
             PointField2D(a, grid),
+            _full_roi_set(grid),
+        )
+    with pytest.raises(ValueError, match="finite"):
+        compare_physical_fields(
+            PointField2D(
+                np.full((4, 5), 1e154 + 0.0j, dtype=np.complex128), grid
+            ),
+            PointField2D(np.ones((4, 5), dtype=np.complex128), grid),
             _full_roi_set(grid),
         )
 
@@ -298,14 +368,14 @@ def test_s13_s14_r_phi_given_q_structural_identity_is_a_hard_gate() -> None:
     r_phi_given_q = PointField2D(
         f_q.values * np.exp(1j * (phi_minus_q + 0.7)), grid
     )
-    roi = _frozen_roi(grid, np.ones((4, 4), dtype=bool))
+    rois = _full_roi_set(grid)
     uncertainty = MetricUncertainty(1e-9, 1e-9, 1e-9, 1e-9)
 
     passed = s13_s14_r_phi_given_q_gate(
         r_phi_given_q,
         f_q,
         phi_minus_q,
-        roi,
+        rois,
         uncertainty=uncertainty,
         candidate_model="R_Phi_given_Q",
     )
@@ -320,7 +390,7 @@ def test_s13_s14_r_phi_given_q_structural_identity_is_a_hard_gate() -> None:
         PointField2D(changed_values, grid),
         f_q,
         phi_minus_q,
-        roi,
+        rois,
         uncertainty=MetricUncertainty(1e-4, 1e-4, 1e-4, 1e-4),
         candidate_model="R_Phi_given_Q",
     )
@@ -334,7 +404,7 @@ def test_s13_s14_r_phi_given_q_structural_identity_is_a_hard_gate() -> None:
         phase_error,
         f_q,
         phi_minus_q,
-        roi,
+        rois,
         uncertainty=MetricUncertainty(1e-5, 1e-5, 1e-5, 1e-5),
         candidate_model="R_Phi_given_Q",
     )
@@ -348,7 +418,7 @@ def test_s13_s14_r_phi_given_q_structural_identity_is_a_hard_gate() -> None:
             r_phi_given_q,
             f_q,
             phi_minus_q,
-            roi,
+            rois,
             uncertainty=uncertainty,
             candidate_model="R_Phi_given_Phi",
         )

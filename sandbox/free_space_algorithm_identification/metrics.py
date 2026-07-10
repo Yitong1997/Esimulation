@@ -11,7 +11,7 @@ import math
 import re
 from collections import deque
 from dataclasses import dataclass
-from typing import Literal, overload
+from typing import Literal
 
 import numpy as np
 
@@ -32,6 +32,7 @@ _NEIGHBOURS_8 = (
     (1, 0),
     (1, 1),
 )
+_NEIGHBOURS_4 = ((-1, 0), (0, -1), (0, 1), (1, 0))
 
 
 def _require_sha256(value: object, *, label: str) -> str:
@@ -241,11 +242,24 @@ def build_frozen_rois(
     if len(set(parsed)) != 3:
         raise ValueError("ROI thresholds must be distinct")
 
-    intensity = np.abs(reference.values) ** 2
-    peak_flat = int(np.argmax(intensity))
-    peak_value = float(intensity.flat[peak_flat])
-    total_energy = float(np.sum(intensity) * reference.grid.pixel_area_mm2)
-    if not math.isfinite(peak_value) or peak_value <= 0.0 or total_energy <= 0.0:
+    try:
+        with np.errstate(over="raise", invalid="raise"):
+            intensity = np.abs(reference.values) ** 2
+            peak_flat = int(np.argmax(intensity))
+            peak_value = float(intensity.flat[peak_flat])
+            summed_intensity = float(np.sum(intensity, dtype=np.float64))
+    except FloatingPointError as exc:
+        raise ValueError("reference field power must remain finite") from exc
+    pixel_area = reference.grid.pixel_area_mm2
+    total_energy = summed_intensity * pixel_area
+    if (
+        not math.isfinite(pixel_area)
+        or pixel_area <= 0.0
+        or not math.isfinite(peak_value)
+        or peak_value <= 0.0
+        or not math.isfinite(total_energy)
+        or total_energy <= 0.0
+    ):
         raise ValueError("reference field must have finite nonzero power")
     peak = np.unravel_index(peak_flat, intensity.shape)
 
@@ -286,7 +300,18 @@ def _overlap_piston(
     mask: np.ndarray,
     pixel_area_mm2: float,
 ) -> float:
-    overlap = np.sum(candidate[mask] * np.conj(reference[mask])) * pixel_area_mm2
+    if not math.isfinite(pixel_area_mm2) or pixel_area_mm2 <= 0.0:
+        raise ValueError("pixel area must be finite and positive")
+    try:
+        with np.errstate(over="raise", invalid="raise"):
+            overlap = (
+                np.sum(candidate[mask] * np.conj(reference[mask]))
+                * pixel_area_mm2
+            )
+    except FloatingPointError as exc:
+        raise ValueError("complex overlap must remain finite") from exc
+    if not np.isfinite(overlap):
+        raise ValueError("complex overlap must remain finite")
     if overlap.real == 0.0 and overlap.imag == 0.0:
         return 0.0
     return float(np.angle(overlap))
@@ -299,13 +324,34 @@ def _symmetric_distance_with_piston(
     pixel_area_mm2: float,
     piston_rad: float,
 ) -> float:
-    aligned = candidate[mask] * np.exp(-1j * piston_rad)
-    target = reference[mask]
-    numerator = 2.0 * float(np.sum(np.abs(aligned - target) ** 2)) * pixel_area_mm2
-    denominator = float(
-        np.sum(np.abs(candidate[mask]) ** 2 + np.abs(target) ** 2)
-    ) * pixel_area_mm2
-    if denominator <= 0.0 or not math.isfinite(denominator):
+    if not math.isfinite(pixel_area_mm2) or pixel_area_mm2 <= 0.0:
+        raise ValueError("pixel area must be finite and positive")
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            aligned = candidate[mask] * np.exp(-1j * piston_rad)
+            target = reference[mask]
+            numerator = (
+                2.0
+                * float(np.sum(np.abs(aligned - target) ** 2, dtype=np.float64))
+                * pixel_area_mm2
+            )
+            denominator = (
+                float(
+                    np.sum(
+                        np.abs(candidate[mask]) ** 2 + np.abs(target) ** 2,
+                        dtype=np.float64,
+                    )
+                )
+                * pixel_area_mm2
+            )
+    except FloatingPointError as exc:
+        raise ValueError("symmetric-distance norms must remain finite") from exc
+    if (
+        numerator < 0.0
+        or not math.isfinite(numerator)
+        or denominator <= 0.0
+        or not math.isfinite(denominator)
+    ):
         raise ValueError("symmetric distance requires nonzero finite field energy")
     return float(np.sqrt(max(0.0, numerator / denominator)))
 
@@ -346,7 +392,7 @@ def _unwrap_phase_on_mask(
     *,
     anchor: tuple[int, int],
 ) -> tuple[np.ndarray | None, UnwrapStatus]:
-    """Unwrap by assigning integer cycles on a deterministic 8-neighbour graph."""
+    """Unwrap by assigning integer cycles on the sampled four-neighbour graph."""
 
     phase = np.asarray(wrapped_phase, dtype=np.float64)
     if phase.shape != mask.shape or not np.all(np.isfinite(phase[mask])):
@@ -360,7 +406,7 @@ def _unwrap_phase_on_mask(
 
     while queue:
         row, column = queue.popleft()
-        for drow, dcolumn in _NEIGHBOURS_8:
+        for drow, dcolumn in _NEIGHBOURS_4:
             neighbour_row = row + drow
             neighbour_column = column + dcolumn
             if not (
@@ -413,7 +459,7 @@ def _validate_roi_against_grid(roi: FrozenRoi, grid: UniformGrid2D) -> None:
         raise ValueError("frozen ROI and physical fields must use an identical grid")
 
 
-def _metrics_for_roi(
+def _metrics_for_roi_unchecked(
     candidate: PointField2D,
     reference: PointField2D,
     roi: FrozenRoi,
@@ -512,27 +558,27 @@ def _metrics_for_roi(
     )
 
 
-@overload
-def compare_physical_fields(
+def _metrics_for_roi(
     candidate: PointField2D,
     reference: PointField2D,
-    rois: FrozenRoi,
-) -> ComparisonMetrics: ...
+    roi: FrozenRoi,
+    *,
+    piston_rad: float,
+) -> ComparisonMetrics:
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            return _metrics_for_roi_unchecked(
+                candidate, reference, roi, piston_rad=piston_rad
+            )
+    except FloatingPointError as exc:
+        raise ValueError("comparison metric norms must remain finite") from exc
 
 
-@overload
 def compare_physical_fields(
     candidate: PointField2D,
     reference: PointField2D,
     rois: FrozenRoiSet,
-) -> tuple[ComparisonMetrics, ComparisonMetrics, ComparisonMetrics]: ...
-
-
-def compare_physical_fields(
-    candidate: PointField2D,
-    reference: PointField2D,
-    rois: FrozenRoi | FrozenRoiSet,
-) -> ComparisonMetrics | tuple[ComparisonMetrics, ComparisonMetrics, ComparisonMetrics]:
+) -> tuple[ComparisonMetrics, ComparisonMetrics, ComparisonMetrics]:
     """Compare physical total fields after one primary-ROI phase piston."""
 
     if not isinstance(candidate, PointField2D) or not isinstance(
@@ -541,14 +587,9 @@ def compare_physical_fields(
         raise ValueError("comparison inputs must be physical PointField2D values")
     if not _grid_is_identical(candidate.grid, reference.grid):
         raise ValueError("candidate and reference must use one identical grid")
-    if isinstance(rois, FrozenRoi):
-        ordered = (rois,)
-        return_single = True
-    elif isinstance(rois, FrozenRoiSet):
-        ordered = rois.ordered
-        return_single = False
-    else:
-        raise ValueError("comparison requires a FrozenRoi or FrozenRoiSet")
+    if not isinstance(rois, FrozenRoiSet):
+        raise ValueError("comparison requires a FrozenRoiSet with a primary ROI")
+    ordered = rois.ordered
     for roi in ordered:
         _validate_roi_against_grid(roi, reference.grid)
 
@@ -563,9 +604,7 @@ def compare_physical_fields(
         _metrics_for_roi(candidate, reference, roi, piston_rad=piston)
         for roi in ordered
     )
-    if return_single:
-        return metrics[0]
-    return metrics  # type: ignore[return-value]
+    return metrics
 
 
 __all__ = [

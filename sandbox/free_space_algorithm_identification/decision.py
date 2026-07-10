@@ -10,7 +10,7 @@ from typing import Literal
 import numpy as np
 
 from .metrics import (
-    FrozenRoi,
+    FrozenRoiSet,
     UnwrapStatus,
     _phase_residual_on_roi,
     compare_physical_fields,
@@ -96,12 +96,15 @@ def _require_uncertainty(
 
 
 def _sum_uncertainties(components: tuple[MetricUncertainty, ...]) -> MetricUncertainty:
-    values = (
-        math.fsum(component.complex_distance for component in components),
-        math.fsum(component.phase_waves for component in components),
-        math.fsum(component.intensity_relative for component in components),
-        math.fsum(component.power_relative for component in components),
-    )
+    try:
+        values = (
+            math.fsum(component.complex_distance for component in components),
+            math.fsum(component.phase_waves for component in components),
+            math.fsum(component.intensity_relative for component in components),
+            math.fsum(component.power_relative for component in components),
+        )
+    except OverflowError as exc:
+        raise ValueError("combined metric uncertainty must be finite") from exc
     if not all(math.isfinite(value) for value in values):
         raise ValueError("combined metric uncertainty must be finite")
     return MetricUncertainty(
@@ -194,11 +197,11 @@ def resolve_roi_decisions(
     return PairDecision.UNDECIDED_ROI_SENSITIVITY
 
 
-def s13_s14_r_phi_given_q_gate(
+def _s13_s14_r_phi_given_q_gate_unchecked(
     r_phi_given_q: PointField2D,
     f_q: PointField2D,
     phi_minus_q_rad: np.ndarray,
-    roi: FrozenRoi,
+    rois: FrozenRoiSet,
     *,
     uncertainty: MetricUncertainty,
     candidate_model: str,
@@ -217,7 +220,8 @@ def s13_s14_r_phi_given_q_gate(
     analytic_target = PointField2D(
         f_q.values * np.exp(1j * phase_delta), f_q.grid
     )
-    metrics = compare_physical_fields(r_phi_given_q, analytic_target, roi)
+    metrics = compare_physical_fields(r_phi_given_q, analytic_target, rois)[0]
+    primary = rois.primary
 
     f_q_intensity = np.abs(f_q.values) ** 2
     r_intensity = np.abs(r_phi_given_q.values) ** 2
@@ -237,13 +241,15 @@ def s13_s14_r_phi_given_q_gate(
     aligned = r_phi_given_q.values * np.exp(-1j * metrics.piston_rad)
     target_intensity = np.abs(analytic_target.values) ** 2
     unwrapped, unwrap_status = _phase_residual_on_roi(
-        aligned, analytic_target.values, target_intensity, roi.mask
+        aligned, analytic_target.values, target_intensity, primary.mask
     )
     if unwrap_status == "ambiguous" or unwrapped is None:
         phase_error = float("nan")
         phase_decision = PairDecision.UNDECIDED
     else:
-        phase_error = float(np.max(np.abs(unwrapped[roi.mask])) / (2.0 * np.pi))
+        phase_error = float(
+            np.max(np.abs(unwrapped[primary.mask])) / (2.0 * np.pi)
+        )
         phase_decision = classify_pair(phase_error, bounds.phase_waves)
 
     intensity_decision = classify_pair(
@@ -269,6 +275,29 @@ def s13_s14_r_phi_given_q_gate(
         phase=phase_decision,
         overall=overall,
     )
+
+
+def s13_s14_r_phi_given_q_gate(
+    r_phi_given_q: PointField2D,
+    f_q: PointField2D,
+    phi_minus_q_rad: np.ndarray,
+    rois: FrozenRoiSet,
+    *,
+    uncertainty: MetricUncertainty,
+    candidate_model: str,
+) -> S13S14StructureGate:
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            return _s13_s14_r_phi_given_q_gate_unchecked(
+                r_phi_given_q,
+                f_q,
+                phi_minus_q_rad,
+                rois,
+                uncertainty=uncertainty,
+                candidate_model=candidate_model,
+            )
+    except FloatingPointError as exc:
+        raise ValueError("structural-gate metrics must remain finite") from exc
 
 
 __all__ = [
