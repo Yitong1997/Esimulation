@@ -1,4 +1,8 @@
+import hashlib
+import json
+import re
 from dataclasses import dataclass, field
+from numbers import Integral
 from typing import Literal
 
 import numpy as np
@@ -148,6 +152,74 @@ class CaseOutputSource:
 
 
 SamplingSource = NativeSurfaceSource | CaseOutputSource
+
+
+@dataclass(frozen=True)
+class UpstreamCaseProvenance:
+    """Immutable binding from a logical producer to one upstream artifact."""
+
+    run_id: str
+    producer_case: str
+    surface: int
+    artifact_sha256: str
+    receipt_sha256: str
+    _digest_sha256: str = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.run_id, str) or not self.run_id.strip():
+            raise ValueError("upstream provenance run_id must be nonempty")
+        if not isinstance(self.producer_case, str):
+            raise ValueError("upstream provenance producer_case must be a logical case id")
+        run_id = self.run_id.strip()
+        producer_case = self.producer_case.strip()
+        if not producer_case or "/" in producer_case or "\\" in producer_case:
+            raise ValueError("upstream provenance producer_case must be a logical case id")
+        if (
+            isinstance(self.surface, (bool, np.bool_))
+            or not isinstance(self.surface, Integral)
+            or int(self.surface) <= 0
+        ):
+            raise ValueError("upstream provenance surface must be a positive integer")
+
+        hashes: dict[str, str] = {}
+        for label, value in (
+            ("artifact_sha256", self.artifact_sha256),
+            ("receipt_sha256", self.receipt_sha256),
+        ):
+            if not isinstance(value, str) or re.fullmatch(
+                r"[0-9a-fA-F]{64}", value
+            ) is None:
+                raise ValueError(f"upstream provenance {label} must be 64-hex")
+            hashes[label] = value.lower()
+        if hashes["artifact_sha256"] == hashes["receipt_sha256"]:
+            raise ValueError(
+                "upstream provenance receipt SHA-256 must be independent of artifact SHA-256"
+            )
+
+        object.__setattr__(self, "run_id", run_id)
+        object.__setattr__(self, "producer_case", producer_case)
+        object.__setattr__(self, "surface", int(self.surface))
+        object.__setattr__(self, "artifact_sha256", hashes["artifact_sha256"])
+        object.__setattr__(self, "receipt_sha256", hashes["receipt_sha256"])
+        canonical_json = json.dumps(
+            {
+                "artifact_sha256": hashes["artifact_sha256"],
+                "producer_case": producer_case,
+                "receipt_sha256": hashes["receipt_sha256"],
+                "run_id": run_id,
+                "surface": int(self.surface),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        object.__setattr__(
+            self, "_digest_sha256", hashlib.sha256(canonical_json).hexdigest()
+        )
+
+    @property
+    def digest_sha256(self) -> str:
+        return self._digest_sha256
 
 
 @dataclass(frozen=True)

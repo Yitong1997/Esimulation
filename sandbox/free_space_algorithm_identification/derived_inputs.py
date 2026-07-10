@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +17,15 @@ from .field_contract import (
 )
 from .fourier import resample_bandlimited
 from .models import (
+    CaseOutputSource,
     DerivationStrategy,
+    NativeSurfaceSource,
     PointField2D,
     SampleValueConvention,
+    SamplingSource,
     SurfaceConvention,
     UniformGrid2D,
+    UpstreamCaseProvenance,
 )
 from .zbf_binary import (
     DX_OFFSET,
@@ -87,12 +90,13 @@ class DerivedInputValidation:
     trailing_bytes_preserved: bool
     components: tuple[ComponentDerivedInputValidation, ...]
     byte_exact_copy: bool
+    logical_source: SamplingSource
     edge_energy_target_fraction: float
     edge_energy_hard_gate_fraction: float
     applied_edge_energy_gate_fraction: float
     power_normalization_applied: bool = False
-    producer_case: str | None = None
-    upstream_run_case_sha256: str | None = None
+    upstream_provenance: UpstreamCaseProvenance | None = None
+    upstream_provenance_sha256: str | None = None
 
     def __post_init__(self) -> None:
         thresholds = (
@@ -160,47 +164,57 @@ class DerivedInputResult:
     output_path: Path
     strategy: DerivationStrategy
     sample_value_convention: SampleValueConvention
+    logical_source: SamplingSource
     source_sha256: str
     output_sha256: str
     validation: DerivedInputValidation
-    producer_case: str | None = None
-    upstream_run_case_sha256: str | None = None
+    upstream_provenance: UpstreamCaseProvenance | None = None
+    upstream_provenance_sha256: str | None = None
 
 
 def _same_float_bits(left: float, right: float) -> bool:
     return np.float64(left).tobytes() == np.float64(right).tobytes()
 
 
-def _validated_chained_provenance(
+def _validated_logical_source_binding(
     *,
-    strategy: DerivationStrategy,
+    logical_source: SamplingSource,
+    upstream_provenance: UpstreamCaseProvenance | None,
     source_content_sha256: str,
-    producer_case: str | None,
-    upstream_run_case_sha256: str | None,
-) -> tuple[str | None, str | None]:
-    if strategy != "chained_zemax_output":
-        if producer_case is not None or upstream_run_case_sha256 is not None:
+    convention: SurfaceConvention,
+) -> tuple[UpstreamCaseProvenance | None, str | None]:
+    if isinstance(logical_source, NativeSurfaceSource):
+        if logical_source.surface != convention.surface:
             raise ValueError(
-                "chained-output provenance is only valid for chained_zemax_output"
+                "NativeSurfaceSource surface does not match the derived-input convention"
+            )
+        if upstream_provenance is not None:
+            raise ValueError(
+                "NativeSurfaceSource must not carry upstream provenance"
             )
         return None, None
+    if not isinstance(logical_source, CaseOutputSource):
+        raise ValueError(
+            "logical_source must be a NativeSurfaceSource or CaseOutputSource"
+        )
+    if logical_source.surface != convention.surface:
+        raise ValueError(
+            "CaseOutputSource surface does not match the derived-input convention"
+        )
+    if not isinstance(upstream_provenance, UpstreamCaseProvenance):
+        raise ValueError("CaseOutputSource requires bound upstream provenance")
     if (
-        not isinstance(producer_case, str)
-        or not producer_case.strip()
-        or "/" in producer_case
-        or "\\" in producer_case
-        or not isinstance(upstream_run_case_sha256, str)
-        or re.fullmatch(r"[0-9a-fA-F]{64}", upstream_run_case_sha256) is None
+        upstream_provenance.producer_case != logical_source.producer_case
+        or upstream_provenance.surface != logical_source.surface
     ):
         raise ValueError(
-            "chained-output provenance requires a logical producer case and 64-hex run/case digest"
+            "upstream provenance producer_case/surface does not match logical source"
         )
-    normalized_digest = upstream_run_case_sha256.lower()
-    if normalized_digest == source_content_sha256.lower():
+    if upstream_provenance.artifact_sha256 != source_content_sha256.lower():
         raise ValueError(
-            "chained-output provenance run/case digest must differ from source content SHA-256"
+            "upstream provenance artifact SHA-256 does not match source content"
         )
-    return producer_case.strip(), normalized_digest
+    return upstream_provenance, upstream_provenance.digest_sha256
 
 
 def _require_same_grid(source: UniformGrid2D, target: UniformGrid2D) -> None:
@@ -591,9 +605,9 @@ def validate_derived_input(
     strategy: DerivationStrategy,
     convention: SurfaceConvention,
     sample_value_convention: SampleValueConvention,
+    logical_source: SamplingSource,
+    upstream_provenance: UpstreamCaseProvenance | None = None,
     max_edge_energy_fraction: float = 1e-10,
-    producer_case: str | None = None,
-    upstream_run_case_sha256: str | None = None,
 ) -> DerivedInputValidation:
     """Validate a derived input and raise if any strategy-specific hard gate fails."""
 
@@ -602,11 +616,11 @@ def validate_derived_input(
     effective_edge_gate = _effective_edge_gate(max_edge_energy_fraction)
     source = read_lossless_zbf(source_file)
     output = read_lossless_zbf(output_file)
-    producer_case, upstream_run_case_sha256 = _validated_chained_provenance(
-        strategy=strategy,
+    upstream_provenance, upstream_provenance_sha256 = _validated_logical_source_binding(
+        logical_source=logical_source,
+        upstream_provenance=upstream_provenance,
         source_content_sha256=source.source_sha256,
-        producer_case=producer_case,
-        upstream_run_case_sha256=upstream_run_case_sha256,
+        convention=convention,
     )
     _require_finite_beam_fields(source, label="source")
     _require_finite_beam_fields(output, label="output")
@@ -795,12 +809,13 @@ def validate_derived_input(
         trailing_bytes_preserved=True,
         components=tuple(component_validations),
         byte_exact_copy=source_file.read_bytes() == output_file.read_bytes(),
+        logical_source=logical_source,
         edge_energy_target_fraction=_EDGE_TARGET_FRACTION,
         edge_energy_hard_gate_fraction=_EDGE_HARD_GATE_FRACTION,
         applied_edge_energy_gate_fraction=effective_edge_gate,
         power_normalization_applied=False,
-        producer_case=producer_case,
-        upstream_run_case_sha256=upstream_run_case_sha256,
+        upstream_provenance=upstream_provenance,
+        upstream_provenance_sha256=upstream_provenance_sha256,
     )
     if strategy in {"exact_copy", "chained_zemax_output"} and not validation.byte_exact_copy:
         raise ValueError("copy strategy output is not byte-identical")
@@ -834,9 +849,9 @@ def derive_zbf_input(
     strategy: DerivationStrategy,
     convention: SurfaceConvention,
     sample_value_convention: SampleValueConvention,
+    logical_source: SamplingSource,
+    upstream_provenance: UpstreamCaseProvenance | None = None,
     max_edge_energy_fraction: float = 1e-10,
-    producer_case: str | None = None,
-    upstream_run_case_sha256: str | None = None,
 ) -> DerivedInputResult:
     """Construct one permitted derived input without fitting or normalizing power."""
 
@@ -852,11 +867,11 @@ def derive_zbf_input(
     effective_edge_gate = _effective_edge_gate(max_edge_energy_fraction)
     source = read_lossless_zbf(source_file)
     _require_finite_beam_fields(source, label="source")
-    producer_case, upstream_run_case_sha256 = _validated_chained_provenance(
-        strategy=strategy,
+    upstream_provenance, upstream_provenance_sha256 = _validated_logical_source_binding(
+        logical_source=logical_source,
+        upstream_provenance=upstream_provenance,
         source_content_sha256=source.source_sha256,
-        producer_case=producer_case,
-        upstream_run_case_sha256=upstream_run_case_sha256,
+        convention=convention,
     )
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -927,9 +942,9 @@ def derive_zbf_input(
             strategy=strategy,
             convention=convention,
             sample_value_convention=sample_value_convention,
+            logical_source=logical_source,
+            upstream_provenance=upstream_provenance,
             max_edge_energy_fraction=max_edge_energy_fraction,
-            producer_case=producer_case,
-            upstream_run_case_sha256=upstream_run_case_sha256,
         )
     except Exception:
         if output_file.exists():
@@ -942,11 +957,12 @@ def derive_zbf_input(
         output_path=output_file,
         strategy=strategy,
         sample_value_convention=sample_value_convention,
+        logical_source=logical_source,
         source_sha256=source.source_sha256,
         output_sha256=output_sha256,
         validation=validation,
-        producer_case=producer_case,
-        upstream_run_case_sha256=upstream_run_case_sha256,
+        upstream_provenance=upstream_provenance,
+        upstream_provenance_sha256=upstream_provenance_sha256,
     )
 
 

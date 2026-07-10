@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import struct
 from pathlib import Path
 
@@ -7,6 +9,7 @@ import numpy as np
 import pytest
 
 from sandbox.free_space_algorithm_identification.biconic_case import S7
+from sandbox.free_space_algorithm_identification import models as models_module
 from sandbox.free_space_algorithm_identification.derived_inputs import (
     derive_zbf_input,
     validate_derived_input,
@@ -15,7 +18,11 @@ from sandbox.free_space_algorithm_identification.field_contract import (
     pilot_from_zbf,
     reference_phases,
 )
-from sandbox.free_space_algorithm_identification.models import UniformGrid2D
+from sandbox.free_space_algorithm_identification.models import (
+    CaseOutputSource,
+    NativeSurfaceSource,
+    UniformGrid2D,
+)
 from sandbox.free_space_algorithm_identification.zbf_binary import (
     HEADER_BYTES,
     LosslessZbf,
@@ -24,6 +31,29 @@ from sandbox.free_space_algorithm_identification.zbf_binary import (
     read_lossless_zbf,
     write_lossless_zbf,
 )
+
+
+_NATIVE_S7 = NativeSurfaceSource(surface=7, role="fresh_continuous")
+
+
+def _upstream_provenance(
+    beam: LosslessZbf,
+    *,
+    producer_case: str = "S12_S13:ZO1",
+    surface: int = 7,
+    artifact_sha256: str | None = None,
+    receipt_sha256: str = "e" * 64,
+    run_id: str = "task5-upstream-run",
+):
+    return models_module.UpstreamCaseProvenance(
+        run_id=run_id,
+        producer_case=producer_case,
+        surface=surface,
+        artifact_sha256=(
+            beam.source_sha256 if artifact_sha256 is None else artifact_sha256
+        ),
+        receipt_sha256=receipt_sha256,
+    )
 
 
 def _periodic_fields(*, nx: int, ny: int) -> tuple[np.ndarray, np.ndarray]:
@@ -149,6 +179,7 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
         strategy="exact_copy",
         convention=S7,
         sample_value_convention="point_value",
+        logical_source=_NATIVE_S7,
     )
 
     assert output.read_bytes() == source.read_bytes()
@@ -168,9 +199,11 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
             strategy="exact_copy",
             convention=S7,
             sample_value_convention="point_value",
+            logical_source=_NATIVE_S7,
         )
 
-    with pytest.raises(ValueError, match="chained.*provenance"):
+    case_source = CaseOutputSource(producer_case="S12_S13:ZO1", surface=7)
+    with pytest.raises(ValueError, match="upstream provenance"):
         derive_zbf_input(
             source,
             tmp_path / "chained-missing-provenance.ZBF",
@@ -178,19 +211,18 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
             strategy="chained_zemax_output",
             convention=S7,
             sample_value_convention="point_value",
+            logical_source=case_source,
         )
 
-    producer_case = "S12_S13:ZO1"
-    upstream_run_case_sha256 = "f" * 64
-    for index, (case_id, digest) in enumerate(
+    provenance = _upstream_provenance(beam)
+    for index, invalid_provenance in enumerate(
         (
-            (None, upstream_run_case_sha256),
-            (producer_case, None),
-            (producer_case, "not-a-sha256"),
-            (producer_case, beam.source_sha256),
+            _upstream_provenance(beam, producer_case="S12_S13:ZO2"),
+            _upstream_provenance(beam, surface=8),
+            _upstream_provenance(beam, artifact_sha256="0" * 64),
         )
     ):
-        with pytest.raises(ValueError, match="chained.*provenance"):
+        with pytest.raises(ValueError, match="upstream provenance"):
             derive_zbf_input(
                 source,
                 tmp_path / f"chained-invalid-provenance-{index}.ZBF",
@@ -198,9 +230,52 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
                 strategy="chained_zemax_output",
                 convention=S7,
                 sample_value_convention="point_value",
-                producer_case=case_id,
-                upstream_run_case_sha256=digest,
+                logical_source=case_source,
+                upstream_provenance=invalid_provenance,
             )
+
+    for invalid_run_id in ("", None):
+        with pytest.raises(ValueError, match="run_id"):
+            _upstream_provenance(beam, run_id=invalid_run_id)
+    with pytest.raises(ValueError, match="producer_case"):
+        _upstream_provenance(beam, producer_case=None)
+    with pytest.raises(ValueError, match="independent"):
+        _upstream_provenance(
+            beam,
+            receipt_sha256=beam.source_sha256,
+        )
+    with pytest.raises(TypeError):
+        models_module.UpstreamCaseProvenance(
+            run_id="task5-upstream-run",
+            producer_case=case_source.producer_case,
+            surface=case_source.surface,
+            artifact_sha256=beam.source_sha256,
+            receipt_sha256="e" * 64,
+            digest_sha256="f" * 64,
+        )
+    with pytest.raises(TypeError):
+        derive_zbf_input(
+            source,
+            tmp_path / "chained-free-digest.ZBF",
+            target_grid=beam.grid,
+            strategy="chained_zemax_output",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=case_source,
+            upstream_provenance=provenance,
+            upstream_run_case_sha256="f" * 64,
+        )
+    with pytest.raises(ValueError, match="NativeSurfaceSource"):
+        derive_zbf_input(
+            source,
+            tmp_path / "native-with-upstream-provenance.ZBF",
+            target_grid=beam.grid,
+            strategy="exact_copy",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=_NATIVE_S7,
+            upstream_provenance=provenance,
+        )
 
     chained = derive_zbf_input(
         source,
@@ -209,18 +284,55 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
         strategy="chained_zemax_output",
         convention=S7,
         sample_value_convention="point_value",
-        producer_case=producer_case,
-        upstream_run_case_sha256=upstream_run_case_sha256,
+        logical_source=case_source,
+        upstream_provenance=provenance,
     )
-    assert chained.producer_case == producer_case
-    assert chained.upstream_run_case_sha256 == upstream_run_case_sha256
+    canonical = json.dumps(
+        {
+            "artifact_sha256": beam.source_sha256,
+            "producer_case": case_source.producer_case,
+            "receipt_sha256": "e" * 64,
+            "run_id": "task5-upstream-run",
+            "surface": case_source.surface,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    expected_digest = hashlib.sha256(canonical).hexdigest()
+    assert chained.logical_source == case_source
+    assert chained.upstream_provenance == provenance
+    assert chained.upstream_provenance_sha256 == expected_digest
+    assert provenance.digest_sha256 == expected_digest
     assert chained.source_sha256 == beam.source_sha256
-    assert chained.upstream_run_case_sha256 != chained.source_sha256
-    assert chained.validation.producer_case == producer_case
-    assert (
-        chained.validation.upstream_run_case_sha256
-        == upstream_run_case_sha256
+    assert provenance.artifact_sha256 == chained.source_sha256
+    assert chained.upstream_provenance_sha256 != chained.source_sha256
+    assert chained.validation.logical_source == case_source
+    assert chained.validation.upstream_provenance == provenance
+    assert chained.validation.upstream_provenance_sha256 == expected_digest
+
+    direct_validation = validate_derived_input(
+        source,
+        chained.output_path,
+        strategy="chained_zemax_output",
+        convention=S7,
+        sample_value_convention="point_value",
+        logical_source=case_source,
+        upstream_provenance=provenance,
     )
+    assert direct_validation.upstream_provenance_sha256 == expected_digest
+    with pytest.raises(ValueError, match="artifact SHA-256"):
+        validate_derived_input(
+            source,
+            chained.output_path,
+            strategy="chained_zemax_output",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=case_source,
+            upstream_provenance=_upstream_provenance(
+                beam, artifact_sha256="0" * 64
+            ),
+        )
 
 
 def test_fixed_window_refinement_recovers_original_complex_nodes(
@@ -238,6 +350,7 @@ def test_fixed_window_refinement_recovers_original_complex_nodes(
             strategy="fourier_refine_fixed_window",
             convention=S7,
             sample_value_convention=sample_value_convention,
+            logical_source=_NATIVE_S7,
         )
         refined = read_lossless_zbf(output)
         raw_factor = (
@@ -268,6 +381,33 @@ def test_fixed_step_extension_preserves_original_ex_and_ey_exactly(
     source = _write_source(tmp_path / "compact.ZBF", compact=True)
     output = tmp_path / "extended.ZBF"
     original = read_lossless_zbf(source)
+    case_source = CaseOutputSource(producer_case="S12_S13:ZO1", surface=7)
+    provenance = _upstream_provenance(original)
+
+    for index, invalid_provenance in enumerate(
+        (
+            None,
+            _upstream_provenance(original, producer_case="S12_S13:ZO2"),
+            _upstream_provenance(original, surface=8),
+            _upstream_provenance(original, artifact_sha256="0" * 64),
+        )
+    ):
+        with pytest.raises(ValueError, match="upstream provenance"):
+            derive_zbf_input(
+                source,
+                tmp_path / f"combined-invalid-provenance-{index}.ZBF",
+                target_grid=UniformGrid2D.centered(
+                    nx=24,
+                    ny=20,
+                    dx_mm=0.1,
+                    dy_mm=0.15,
+                ),
+                strategy="zero_extend_then_fourier_refine",
+                convention=S7,
+                sample_value_convention="point_value",
+                logical_source=case_source,
+                upstream_provenance=invalid_provenance,
+            )
 
     result = derive_zbf_input(
         source,
@@ -276,6 +416,8 @@ def test_fixed_step_extension_preserves_original_ex_and_ey_exactly(
         strategy="zero_extend_fixed_sampling",
         convention=S7,
         sample_value_convention="cell_energy",
+        logical_source=case_source,
+        upstream_provenance=provenance,
     )
 
     extended = read_lossless_zbf(output)
@@ -304,6 +446,8 @@ def test_fixed_step_extension_preserves_original_ex_and_ey_exactly(
         strategy="zero_extend_then_fourier_refine",
         convention=S7,
         sample_value_convention="point_value",
+        logical_source=case_source,
+        upstream_provenance=provenance,
     )
     assert combined.validation.fixed_step_overlap_bitwise
     assert combined.validation.added_samples_exact_zero
@@ -393,6 +537,7 @@ def test_zero_extension_rejects_excessive_edge_energy(tmp_path: Path) -> None:
                 strategy="zero_extend_fixed_sampling",
                 convention=S7,
                 sample_value_convention="point_value",
+                logical_source=_NATIVE_S7,
                 max_edge_energy_fraction=requested_maximum,
             )
         assert not output.exists()
@@ -426,6 +571,7 @@ def test_zero_extension_rejects_excessive_edge_energy(tmp_path: Path) -> None:
                 strategy="zero_extend_fixed_sampling",
                 convention=S7,
                 sample_value_convention="point_value",
+                logical_source=_NATIVE_S7,
             )
         assert not invalid_output.exists()
 
@@ -442,6 +588,7 @@ def test_derived_input_never_applies_power_normalization(tmp_path: Path) -> None
         strategy="fourier_refine_fixed_window",
         convention=S7,
         sample_value_convention="cell_energy",
+        logical_source=_NATIVE_S7,
     )
 
     refined = read_lossless_zbf(output)
@@ -469,6 +616,7 @@ def test_only_nx_ny_dx_dy_and_payload_may_change(tmp_path: Path) -> None:
         strategy="zero_extend_fixed_sampling",
         convention=S7,
         sample_value_convention="point_value",
+        logical_source=_NATIVE_S7,
     )
     after = read_lossless_zbf(output)
     validation = validate_derived_input(
@@ -477,6 +625,7 @@ def test_only_nx_ny_dx_dy_and_payload_may_change(tmp_path: Path) -> None:
         strategy="zero_extend_fixed_sampling",
         convention=S7,
         sample_value_convention="point_value",
+        logical_source=_NATIVE_S7,
     )
 
     changed_header_bytes = {
@@ -517,4 +666,5 @@ def test_only_nx_ny_dx_dy_and_payload_may_change(tmp_path: Path) -> None:
             strategy="zero_extend_fixed_sampling",
             convention=S7,
             sample_value_convention="cell_energy",
+            logical_source=_NATIVE_S7,
         )
