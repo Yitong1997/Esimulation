@@ -107,6 +107,17 @@ def test_forward_fft_matches_an_independent_natural_grid_sum() -> None:
     expected = direct_forward_field_sum(field, actual.fx_cpm, actual.fy_cpm)
     np.testing.assert_allclose(actual.values, expected, rtol=1e-11, atol=1e-12)
 
+    shifted_grid = UniformGrid2D(
+        x_mm=field.grid.x_mm + 0.3,
+        y_mm=field.grid.y_mm - 0.2,
+    )
+    shifted_field = PointField2D(field.values, shifted_grid)
+    shifted_actual = forward_continuous_spectrum(shifted_field)
+    shifted_expected = direct_forward_field_sum(
+        shifted_field, shifted_actual.fx_cpm, shifted_actual.fy_cpm
+    )
+    assert relative_l2(shifted_actual.values, shifted_expected) < 1e-11
+
 
 def test_non_square_impulse_keeps_y_x_and_fy_fx_axis_order() -> None:
     grid = UniformGrid2D.centered(nx=5, ny=7, dx_mm=0.2, dy_mm=0.3)
