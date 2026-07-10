@@ -756,6 +756,39 @@ git add sandbox/free_space_algorithm_identification/field_contract.py sandbox/fr
 git commit -m "test: lock physical ZBF field contract"
 ```
 
+### Task 3A: Harden immutable ZBF fields and nominal grid spacing
+
+This short corrective task closes two dependency risks found while implementing Task 3. It is limited to three high-information regression items and is not a new test matrix.
+
+**Files:**
+- Modify: `sandbox/free_space_algorithm_identification/models.py`
+- Modify: `sandbox/free_space_algorithm_identification/zbf_binary.py`
+- Modify: `tests/free_space_identification/test_models.py`
+- Modify: `tests/free_space_identification/test_zbf_binary.py`
+
+- [ ] **Step 1: Write three focused failing regressions**
+
+1. `LosslessZbf.ex/ey` must use immutable backing storage; item assignment and `setflags(write=True)` both fail.
+2. A disk-origin `LosslessZbf` whose stored SHA-256 no longer matches its exact header/payload/tail serialization is rejected. This prevents `dataclasses.replace()` from creating a changed field with stale provenance.
+3. For a centered `N=4096` grid with the native S12 interval, `grid.dx_mm` and `grid.dy_mm` reproduce the supplied IEEE-754 values exactly rather than subtracting two large edge coordinates.
+
+- [ ] **Step 2: Record RED, then implement the minimum correction**
+
+Store copied Ex/Ey arrays over immutable byte buffers and validate shape/polarization in `LosslessZbf.__post_init__()` without rejecting preserved NaN payload bits. Recompute the exact serialization hash incrementally over header, immutable Ex/Ey byte buffers, and tail rather than materializing a second full serialized copy; set it for `path=None` and require equality for `path!=None`. In `UniformGrid2D`, cache the nominal step from the sample-at-zero center and its adjacent sample during construction; the public spacing properties return that cached value.
+
+- [ ] **Step 3: Run the focused accumulated gate**
+
+```powershell
+python -m pytest tests/free_space_identification/test_models.py tests/free_space_identification/test_zbf_binary.py tests/free_space_identification/test_field_contract.py -q
+```
+
+- [ ] **Step 4: Commit Task 3A**
+
+```powershell
+git add -f sandbox/free_space_algorithm_identification/models.py sandbox/free_space_algorithm_identification/zbf_binary.py tests/free_space_identification/test_models.py tests/free_space_identification/test_zbf_binary.py
+git commit -m "fix: harden diagnostic field provenance"
+```
+
 ### Task 4: Continuous Fourier convention, CZT evaluation, and band-limited resampling
 
 **Files:**
@@ -799,6 +832,13 @@ def test_forward_czt_matches_direct_continuous_fourier_sum():
     np.testing.assert_allclose(actual.values, expected, rtol=1e-11, atol=1e-12)
 
 
+def test_forward_fft_matches_an_independent_natural_grid_sum():
+    field = smooth_test_field(nx=7, ny=6, dx=0.2, dy=0.15)
+    actual = forward_continuous_spectrum(field)
+    expected = direct_forward_field_sum(field, actual.fx_cpm, actual.fy_cpm)
+    np.testing.assert_allclose(actual.values, expected, rtol=1e-11, atol=1e-12)
+
+
 def test_lanczos_and_cubic_checks_interpolate_complex_field_not_wrapped_phase():
     field = analytic_bandlimited_complex_field()
     target = UniformGrid2D.centered(nx=15, ny=17, dx_mm=0.08, dy_mm=0.07)
@@ -822,7 +862,7 @@ Expected: import failure for `fourier.py`.
 - [ ] **Step 3: Implement the continuous FFT and separable inverse-CZT convention**
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class Spectrum2D:
     values: np.ndarray
     fx_cpm: np.ndarray
@@ -830,11 +870,14 @@ class Spectrum2D:
     source_grid: UniformGrid2D
 
     def __post_init__(self):
-        self.values = np.asarray(self.values, dtype=np.complex128)
-        self.fx_cpm = np.asarray(self.fx_cpm, dtype=np.float64)
-        self.fy_cpm = np.asarray(self.fy_cpm, dtype=np.float64)
-        if self.values.shape != (self.fy_cpm.size, self.fx_cpm.size):
+        values = np.array(self.values, dtype=np.complex128, copy=True)
+        fx = np.array(self.fx_cpm, dtype=np.float64, copy=True)
+        fy = np.array(self.fy_cpm, dtype=np.float64, copy=True)
+        if values.shape != (fy.size, fx.size):
             raise ValueError("spectrum shape does not match frequency axes")
+        # Also require finite values and finite, strictly increasing, uniform axes
+        # with at least two points; store all three arrays over immutable backing
+        # with object.__setattr__.
 
 
 def forward_continuous_spectrum(field, *, workers=-1):
@@ -882,7 +925,7 @@ def evaluate_spectrum_czt(spectrum, output_grid, *, batch_size=128):
     return PointField2D(out, output_grid)
 ```
 
-For arbitrary output frequencies, use the paired forward convention:
+For arbitrary **uniformly spaced, strictly increasing** output frequency axes, use the paired forward convention. Nonuniform or descending axes are rejected; a future direct-sum/NUFFT interface would be a distinct operator and is outside this task:
 
 ```python
 def _forward_czt_axis(values, coordinates, frequencies, *, axis):
@@ -904,13 +947,17 @@ def _forward_czt_axis(values, coordinates, frequencies, *, axis):
 
 `evaluate_field_fourier_czt()` applies this function along X and Y and returns a `Spectrum2D` whose axes are the requested `fx/fy`; `evaluate_spectrum_czt()` returns `PointField2D`. Implement `resample_bandlimited()` as `forward_continuous_spectrum()` followed by `evaluate_spectrum_czt()`.
 
+Require every coordinate/frequency axis to be one-dimensional, finite, strictly increasing, uniformly spaced, and at least two points. A single axis-normalization helper returns the canonical `start + arange(M)*step` sequence after a small documented ULP-based consistency check; that exact returned array must drive `ZoomFFT`, the external phase factor, and the returned coordinates. Do not let those three consumers use separately rounded nodes. Require `batch_size` to be a positive integer. These contracts need only one compact rejection test covering nonuniform/descending axes and invalid batch size.
+
 Rename the public batching argument to `batch_size`. Prebuild and reuse one `ZoomFFT` object per axis. For the X transform, read at most `batch_size` input rows and write into the single `Ny×Mx` intermediate array. For the Y transform, read at most `batch_size` intermediate columns and write into a preallocated `My×Mx` output. Add an instrumented transformer fake that asserts neither stage ever receives a larger slab. Do not call raw `czt(w=exp(i theta))` for canonical unit-circle production transforms: at N=12288 its accumulated unit-circle error exceeds the `1e-10` common-node gate on this environment.
 
-Add a production-parameter regression using N=12288, L=256 mm, and the native/quarter S13 output intervals. It compares common nodes against ordinary FFT nodes and 9–17 selected O(N) direct Fourier sums, requiring relative complex error at most `1e-10`. The test is marked `slow` but runs before a field can be labeled an exact baseline.
+Add a production-parameter stability regression using one-dimensional `N=12288` axes or a thin rectangular batch, never a `12288^2` field. Compare the natural grid against FFT/IFFT and evaluate 9–17 predeclared native/quarter-S13 coordinates with compensated direct sums, requiring relative complex error at most `1e-10`. Only the zero coordinate is assumed to coincide automatically with the natural grid; do not use nearest neighbours as common nodes. The test is marked `slow` but runs before a field can be labeled an exact baseline.
 
 Register the `slow` marker in `pytest.ini`; normal diagnostic commands use `-m "not slow"`, and Task 15 invokes the production regression explicitly.
 
 Implement the independent continuousization checks on real and imaginary parts of the same slow complex field: separable normalized Lanczos with exactly 8 or 12 lobes, and `scipy.ndimage.map_coordinates(..., order=3, mode="constant", cval=0)` for cubic sensitivity. They never operate on amplitude/phase separately and never define the canonical field. Task 7 compares Fourier, Lanczos-8, Lanczos-12, and cubic results on common nodes; only Fourier is the main definition, while the cross-method spread enters `u_input`.
+
+Document `resample_bandlimited()` as periodic trigonometric interpolation of the supplied finite sample grid. Fixed-window refinement is valid only when X and Y separately satisfy `N_target*delta_target = N_source*delta_source`; finite-window expansion remains the explicit zero-extension operation in Task 5.
 
 - [ ] **Step 4: Run Fourier tests including rectangular X/Y sampling**
 
@@ -1013,7 +1060,11 @@ Implement the strategies as follows:
 - `zero_extend_then_fourier_refine`: first perform exact centered zero extension at the original sampling, then Fourier-refine the extended slow field.
 - `chained_zemax_output`: byte-copy the named upstream output and record its upstream run/case hash; never re-encode it.
 
-Decode source payloads to point values using the frozen sample-value convention, perform all zero extension/interpolation in that point-field representation, then encode the target payload with the same convention. Under `point_value`, fixed-window common raw nodes remain unchanged; under `cell_energy`, their deterministic raw factor is `sqrt(dA_target/dA_source)` while decoded point values remain unchanged. This area conversion is not a fitted power normalization. Do not crop a window, apply an apodizer, interpolate wrapped phase, interpolate a physical total field whose carrier is under-sampled, or normalize power. Patch only the four sampling header fields; pass `Ex/Ey` and trailing bytes through the lossless writer.
+Decode source payloads to point values using the frozen sample-value convention for every Fourier interpolation. Under `point_value`, fixed-window common raw nodes remain unchanged; under `cell_energy`, their deterministic raw factor is `sqrt(dA_target/dA_source)` while decoded point values remain unchanged. This area conversion is not a fitted power normalization.
+
+For `zero_extend_fixed_sampling`, `dx`, `dy`, and therefore `dA` are unchanged: copy the original raw Ex/Ey arrays directly and bit-for-bit into the centered overlap, then fill only the new samples with exact complex zero. Do not divide by and multiply by `sqrt(dA)` on this path, because that numerically redundant round trip can change a payload by one ulp. Exact-step checks use the nominal cached `UniformGrid2D.dx_mm/dy_mm` from Task 3A and the raw header bits, not subtraction of two large edge coordinates.
+
+Do not crop a window, apply an apodizer, interpolate wrapped phase, interpolate a physical total field whose carrier is under-sampled, or normalize power. Patch only the four sampling header fields; preserve all untouched header bits and trailing bytes through the lossless writer.
 
 - [ ] **Step 4: Implement and enforce the derived-input gates**
 
