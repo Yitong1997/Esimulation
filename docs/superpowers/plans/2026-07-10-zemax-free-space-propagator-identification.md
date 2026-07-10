@@ -1148,6 +1148,8 @@ git commit -m "feat: define faithful ZBF sampling matrices"
 
 - [ ] **Step 1: Write failing ROI and no-fitting metric tests**
 
+Keep the file to at most seven high-information test items. Consolidate related assertions with parameterization: reference-only ROI selection/hash, one-piston/no-amplitude-or-defocus fitting, deterministic unwrap/fail-closed ambiguity, symmetric-distance/common-grid behavior, dimensioned uncertainty with exact `3u/5u` boundaries, ROI-sensitivity/candidate-pair uncertainty, and the S13→S14 analytic structure gate. Do not create a broad combinatorial edge-case matrix.
+
 Define the small two-component fields, peak indices, and full-ROI constructor locally in `test_metrics_decision.py`; none may call the ROI selection function under test to compute its expected mask.
 
 ```python
@@ -1329,38 +1331,32 @@ git add sandbox/free_space_algorithm_identification/metrics.py sandbox/free_spac
 git commit -m "feat: add physical field decisions with uncertainty"
 ```
 
-### Task 7: Band-limited exact Helmholtz angular-spectrum baseline
+### Task 7: Full Helmholtz angular-spectrum baseline with band-limit alias control
 
 **Files:**
+- Modify: `sandbox/free_space_algorithm_identification/fourier.py`
 - Modify: `sandbox/free_space_algorithm_identification/sampling.py`
 - Create: `sandbox/free_space_algorithm_identification/asm.py`
 - Modify: `tests/free_space_identification/test_sampling.py`
 - Create: `tests/free_space_identification/test_asm.py`
 
 **Interfaces:**
-- Consumes: a sufficiently sampled physical `PointField2D`, a target `UniformGrid2D`, and the continuous Fourier/CZT primitives.
-- Produces: `AsmDiagnostics`, `helmholtz_delta_k()`, `matsushima_bandlimit_mask()`, `estimate_exact_peak_bytes()`, `available_memory_bytes_windows()`, `apply_helmholtz_transfer_inplace()`, and `propagate_bl_asm()`.
+- Consumes: an immutable propagation-evidence contract, source/output grid metadata, a lazy builder for an owned finely sampled physical total field, a target `UniformGrid2D`, and the continuous Fourier/CZT convention.
+- Produces: separate `H_full` and `H_BL` physical outputs, `AsmDiagnostics`, `AsmAllocationPlan`, `helmholtz_delta_k()`, `matsushima_bandlimit_mask()`, `estimate_exact_peak_bytes()`, `available_memory_bytes_windows()`, and `propagate_helmholtz_pair()`.
 
 - [ ] **Step 1: Write failing analytic-kernel and direct-transform tests**
 
-Include all of the following:
+Keep this task to at most five high-information test items. Parameterize within the items instead of creating a large edge-case matrix:
 
 ```text
-test_fft_bin_plane_wave_acquires_exact_helmholtz_phase
-test_evanescent_branch_decays_and_never_grows
-test_negative_distance_is_rejected_for_this_experiment
-test_stable_delta_k_matches_mpmath_80_digit_paraxial_reference
-test_bandlimit_keeps_inside_mode_and_removes_outside_mode
-test_clipped_spectral_energy_is_reported
-test_small_same_grid_result_matches_explicit_fft_kernel_ifft
-test_arbitrary_output_grid_matches_direct_inverse_spectral_sum
-test_rectangular_sampling_uses_independent_x_and_y_frequencies
-test_low_na_gaussian_matches_the_analytic_gaussian_solution
-test_peak_memory_estimate_counts_fft_zoom_intermediate_and_output
-test_memory_gate_fails_before_allocating_a_large_field
+test_helmholtz_branches_stable_delta_k_and_positive_distance
+test_rectangular_matsushima_mask_is_two_ellipse_intersection
+test_small_rectangular_full_and_bl_fields_match_explicit_dft
+test_low_na_gaussian_and_full_bl_closure
+test_evidence_and_memory_fail_before_physical_field_builder
 ```
 
-The plane-wave and evanescent tests must compare the full complex ratio, not only intensity. Use `mpmath` at 80 decimal digits as the independent cancellation oracle; Windows `np.longdouble` is not wider than float64 on this host. The analytic Gaussian test may remove one known global axial phase, but it may not fit defocus or beam radius.
+The first item covers a propagating FFT-bin plane wave, an evanescent bin, `distance_mm <= 0`, and an 80-decimal-digit `mpmath` cancellation oracle. Compare the full complex ratio, not only intensity. The second item includes the S13→S14 diagonal counterexample. The third uses independent dense exponentials on a small non-square grid and also proves that requested CZT coordinates outside the accepted central period fail closed. The Gaussian test may remove only the known axial phase; it may not fit defocus or beam radius. The fifth item must prove that no fine-field, `Phi`, or `PointField2D` builder is invoked after an evidence or memory failure.
 
 - [ ] **Step 2: Run the ASM tests and verify import failure**
 
@@ -1370,7 +1366,7 @@ python -m pytest tests/free_space_identification/test_asm.py tests/free_space_id
 
 Expected: collection fails for `asm.py`.
 
-- [ ] **Step 3: Implement the stable Helmholtz branch and finite-window bandlimit**
+- [ ] **Step 3: Implement the full Helmholtz branch and the separate finite-window bandlimit**
 
 Let `lambda_medium = wavelength_vacuum_mm / refractive_index`, `k=2π/lambda_medium`, `kx=2πfx`, `ky=2πfy`, and `kappa2=kx²+ky²`. Use
 
@@ -1389,49 +1385,68 @@ For all bins calculate the carrier-removed phase with the stable identity
 
 For an evanescent bin `kz=i alpha`, this same kernel is the full complex value `exp(-alpha*d) exp(-i*k*d)`, not merely its decay magnitude. Record bins that underflow in complex128. Never select the negative-imaginary branch. Reject `distance_mm <= 0` in this experiment.
 
-The predeclared rectangular bandlimit is
+The carrier-removed work field is `U_bar_t = exp(-i*k*d) U_t`. Every public physical `PointField2D` output must restore `exp(+i*k*d)` using a numerically reduced axial phase and persist the unreduced nominal `k*d`, the reduced phase, and its input-parameter uncertainty. A carrier-removed array may never be labeled a physical total field. This path does not use `Q`, `prop_qphase`, or any ZBF reference other than the paired spherical `Phi` used before/after slow-field interpolation.
+
+Let
 
 \[
-f_{\mathrm{lim},j}=\min\left[\frac{1}{2\Delta j},
-\frac{1}{\lambda_{\rm medium}\sqrt{1+(2d/L_j)^2}}\right],
-\quad j\in\{x,y\}.
+f_{M,x}=\frac{1}{\lambda_{\rm medium}\sqrt{1+(2d/L_x)^2}},
+\qquad
+f_{M,y}=\frac{1}{\lambda_{\rm medium}\sqrt{1+(2d/L_y)^2}}.
 \]
 
-Persist both cutoffs, the exact two-dimensional Boolean mask definition, and
+The exact two-dimensional anti-alias mask is the intersection
+
+\[
+\left(f_x/f_{M,x}\right)^2+(\lambda_{\rm medium}f_y)^2\le1,
+\qquad
+(\lambda_{\rm medium}f_x)^2+\left(f_y/f_{M,y}\right)^2\le1,
+\]
+
+with the independent Nyquist rectangle
+
+\[
+|f_x|\le1/(2\Delta x),\qquad |f_y|\le1/(2\Delta y).
+\]
+
+These Matsushima inequalities apply to a centered field evaluated within the same central fundamental period. Do not replace `f_M` by `min(f_M, f_Nyquist)` inside the ellipses. Persist both ellipse parameters, both inequalities, the Nyquist bounds, a mask hash, and
 
 \[
 \eta_{\rm clipped}=\frac{\sum|\widehat U|^2(1-W)}{\sum|\widehat U|^2}.
 \]
 
-The bandlimit is not evidence of window convergence. If its field effect exceeds the uncertainty allocation, expand the input window.
+`H_full` applies the Helmholtz kernel to every resolvable bin, including evanescent bins. `H_BL = W H_full` is only a finite-window/transfer-sampling control, not a second physical candidate and not the definition of exact truth. The bandlimit is not evidence of window convergence.
 
-For each accepted top window, evaluate the same output once with the predeclared mask and once with the unmasked spectrum solely to quantify the mask effect. Require primary-ROI mask-induced phase RMS at most `1e-6` wave; record its complex/intensity/power changes in the corresponding uncertainty components. If this allocation fails, enlarge the window and start a new exact-baseline case rather than disabling the mask.
+For each accepted top window, evaluate `H_full` first and then `H_BL` from the same propagated spectrum and on the same target nodes. The mask-induced differences must independently satisfy: complex relative L2 at most `1e-8`, primary-ROI phase RMS at most `1e-6` wave, normalized-intensity relative L2 at most `1e-6`, and relative power at most `1e-8`. Record all four values in their corresponding uncertainty components. If any allocation fails, enlarge the input window at fixed step and start a new case rather than disabling the mask or substituting `H_BL` for `H_full`. Task 8 compares RS-I first with `H_full` and reports `H_full-H_BL` separately.
 
 - [ ] **Step 4: Implement memory-bounded propagation to arbitrary output nodes**
 
-`propagate_bl_asm()` must:
+The public propagation entry point must:
 
-1. call `forward_continuous_spectrum()` once;
-2. apply the bandlimit and Helmholtz kernel in-place in row batches;
-3. evaluate the propagated spectrum directly on the requested output grid with `evaluate_spectrum_czt()`;
-4. avoid simultaneously retaining separate full-size input, spectrum, kernel, propagated spectrum, and output arrays;
-5. persist peak resident-memory estimates and actual array shapes/dtypes.
+1. validate one immutable contract binding the segment's model distance, start/end ZBF vacuum wavelength, both refractive indices, uniform-medium assertion, millimetre units, model/settings/start/end artifact hashes, and requested/read-back values;
+2. construct an `AsmAllocationPlan` from only shapes, dtypes, target sizes, and CZT batch sizes, then query memory and apply the `1.3 * estimated_peak` gate **before** invoking the fine-field builder or allocating continuousized slow fields, `Phi`, `PointField2D`, or a full-size spectrum;
+3. invoke a lazy builder that returns one owned mutable complex128 physical-field workspace only after the gates pass;
+4. perform the forward transform using the Task 4 continuous-Fourier convention without constructing an immutable, copying `Spectrum2D`; retain Task 4's public immutable contract and expose only a reviewed internal raw-array adapter shared by its tested CZT implementation;
+5. apply the carrier-removed Helmholtz kernel in row batches to that one mutable spectrum, evaluate and restore the physical `H_full` output, then multiply the same spectrum by the Boolean mask in place and evaluate/restore `H_BL`;
+6. persist estimated and observed shapes/dtypes plus the allocation receipt, without simultaneously retaining separate full-size input, immutable spectrum, kernel, and propagated-spectrum copies.
 
-The caller constructs a finely sampled physical field by first interpolating the slow ZBF field and only then multiplying the analytic `exp(i Phi_s)`. It must never form an under-sampled physical carrier on the native S7 or S12 grid and then interpolate it.
+The lazy builder first interpolates the slow ZBF field and only then multiplies the analytic `exp(i Phi_s)` in the owned fine workspace. It must never form an under-sampled physical carrier on the native S7 or S12 grid and then interpolate it. If an output must be moved to another grid, first form the slow endpoint field `chi_H = U_H * exp(-i Phi_t)`, interpolate `chi_H`, and restore the same paired `Phi_t`; never introduce `Q`.
 
-For S12, construct four independently labeled continuous inputs from periodic Fourier interpolation, Lanczos-8, Lanczos-12, and cubic complex interpolation before multiplying `exp(i Phi12)`. Propagate all four at the common accepted grid/output nodes. Fourier is canonical; the maximum Fourier/Lanczos spread is the input-continuousization gate and enters `u_input`, while cubic is reported only as sensitivity. None may be selected after viewing Zemax error.
+For S12, use periodic Fourier interpolation as canonical and Lanczos-8 as the independent input-continuousization check before multiplying `exp(i Phi12)`. Their spread enters `u_input`. Add Lanczos-12 and cubic only if that predeclared gate fails, as diagnostics rather than post-hoc candidate selection. Every method is evaluated on identical target nodes before any Zemax comparison.
 
-- [ ] **Step 5: Encode the exact-baseline convergence matrices**
+- [ ] **Step 5: Encode compact three-level convergence trends**
 
 Use model distances, not pilot-position differences:
 
 | Segment | Step-size sequence | Window sequence |
 |---|---|---|
-| S7→S8 | L=256 mm; N=6144, 8192, 10240, 12288 | (L,N)=(256,10240),(320,12800) at dx=0.025 mm |
-| S12→S13 | L=256 mm; N=6144, 8192, 10240, 12288 | dx=dy=0.025 mm; (L,N)=(192,7680),(224,8960),(256,10240) |
-| S13→S14 | L=4.234 mm; N=2048, 4096, 8192 | fix dx=4.234/4096 mm; N=4096,6144,8192, giving displayed L=4.234,6.351,8.468 mm |
+| S7→S8 | L=256 mm; N=8192,10240,12288 | dx=dy=0.025 mm; (L,N)=(192,7680),(256,10240),(320,12800) |
+| S12→S13 | L=256 mm; N=8192,10240,12288 | dx=dy=0.025 mm; (L,N)=(192,7680),(224,8960),(256,10240) |
+| S13→S14 | L=4.234 mm; N=2048,4096,8192 | fix dx=4.234/4096 mm; N=4096,6144,8192, giving displayed L=4.234,6.351,8.468 mm |
 
-For every segment, use ZoomFFT evaluation to the same predeclared terminal metric grid for every step/window level before applying Task 6 metrics. Never compare arrays on their own changing grids. For S12→S13 additionally evaluate native S13 spacing, half spacing, and quarter spacing. Common-node complex error must be at most `1e-10`; common-node phase error must be at most `1e-9` wave. The S12 hard gates are:
+The lowest level is a cheaper trend check and never defines truth. For each grid/window axis, require the highest-pair difference to be smaller than the low-to-middle difference in every mandatory metric; the highest-pair difference then defines the reported numerical component. Without that decreasing trend, the value is only a sensitivity observation and cannot grant an accuracy-baseline label. If an axis misses this gate, stop the current run's truth label. Any additional finer or wider level must be declared in a **new run ID and new frozen manifest** after a new memory plan; never append a favorable level to the current immutable run after viewing Zemax.
+
+For every segment, use ZoomFFT evaluation to the same predeclared terminal metric grid for all three levels before applying Task 6 metrics. Never compare arrays on their own changing grids. For S12→S13 additionally evaluate native S13 spacing, half spacing, and quarter spacing. Common-node complex error must be at most `1e-10`; common-node phase error must be at most `1e-9` wave. The S12 hard gates are:
 
 ```text
 input continuousization cross-method phase RMS <= 3e-6 wave
@@ -1441,9 +1456,11 @@ N=10240 versus N=12288 normalized intensity RMS <= 0.003 percent
 L=224 versus L=256 normalized intensity RMS     <= 0.001 percent
 ```
 
-The `N=6144` and `L=192` S12 cases are trend diagnostics and cannot define truth. For S7, use N=10240↔12288 for `u_grid` and (256,10240)↔(320,12800) for `u_window`. For S12 use N=10240↔12288 and L=224↔256. For S13 use N=4096↔8192 at fixed L for `u_grid` and N=6144↔8192 at fixed dx for `u_window`. Apply the same frozen ROI, one piston, phase/intensity/power definitions from Task 6. Store separate complex, phase, intensity, and power deltas; for every segment, the conservative summed exact-baseline phase uncertainty must be at most `1e-5` wave before the result is labeled an accuracy baseline.
+For S7, use N=10240↔12288 for `u_grid` and (256,10240)↔(320,12800) for `u_window`. For S12 use N=10240↔12288 and L=224↔256. For S13 use N=4096↔8192 at fixed L for `u_grid` and N=6144↔8192 at fixed dx for `u_window`. Apply the same frozen ROI, one piston, phase/intensity/power definitions from Task 6. Store separate complex, phase, intensity, and power deltas; for every segment, the conservative summed exact-baseline phase uncertainty must be at most `1e-5` wave before the result is labeled an accuracy baseline.
 
-Before any N≥8192 allocation, calculate a conservative peak including the input physical field, FFT work/output, one mutable spectrum, row-batched transfer data, both ZoomFFT convolution workspaces, the `Ny×Mx` intermediate, and `My×Mx` output. Query Windows available physical RAM with standard-library `ctypes`/`GlobalMemoryStatusEx` and require `available_bytes >= 1.3 * estimated_peak_bytes`. Persist both values. If the gate fails, write a failed numerical receipt and stop; paging or disk-backed arrays may not establish the canonical exact baseline.
+The inverse finite-frequency sum is periodic with the input periods `Lx,Ly`. Persist the half-open central fundamental rectangle `[-Lx/2,Lx/2) × [-Ly/2,Ly/2)` as the only accepted CZT domain, including its boundary rule and hash. Require all frozen `Omega_-2`, `Omega_-3`, and `Omega_-6` nodes to lie inside it and require Zemax energy outside it to be at most `1e-8` of full endpoint energy. Enter that excluded-energy fraction explicitly into `u_period` and the power uncertainty. On failure, enlarge the input window in a new frozen run; if the enlarged run still cannot close, mark power/full-window evidence unverified. This is especially mandatory for S7→S8 because the native S8 window is about 649 mm while the proposed S7 input periods are 256/320 mm.
+
+Before **every** fine allocation, calculate a conservative peak including builder temporaries, point/slow fields, `Phi`, immutable-copy/tobytes costs if any remain, FFT work/output, one mutable spectrum, row-batched transfer data, both ZoomFFT convolution workspaces, the `Ny×Mx` intermediate, and `My×Mx` outputs. Query Windows available physical RAM with standard-library `ctypes`/`GlobalMemoryStatusEx` and require `available_bytes >= 1.3 * estimated_peak_bytes`. Persist both values. If the gate fails, write a failed numerical receipt and stop; paging or disk-backed arrays may not establish the canonical exact baseline.
 
 - [ ] **Step 6: Run offline ASM tests**
 
@@ -1456,7 +1473,7 @@ Expected: all ASM and Fourier tests pass. Command-line smoke execution is added 
 - [ ] **Step 7: Commit Task 7**
 
 ```powershell
-git add sandbox/free_space_algorithm_identification/sampling.py sandbox/free_space_algorithm_identification/asm.py tests/free_space_identification/test_sampling.py tests/free_space_identification/test_asm.py
+git add sandbox/free_space_algorithm_identification/fourier.py sandbox/free_space_algorithm_identification/sampling.py sandbox/free_space_algorithm_identification/asm.py tests/free_space_identification/test_sampling.py tests/free_space_identification/test_asm.py
 git commit -m "feat: add convergent Helmholtz baseline"
 ```
 
