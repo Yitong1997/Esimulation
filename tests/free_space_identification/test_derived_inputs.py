@@ -203,6 +203,29 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
         )
 
     case_source = CaseOutputSource(producer_case="S12_S13:ZO1", surface=7)
+    with pytest.raises(
+        ValueError, match="chained_zemax_output.*CaseOutputSource"
+    ):
+        derive_zbf_input(
+            source,
+            tmp_path / "chained-native-source.ZBF",
+            target_grid=beam.grid,
+            strategy="chained_zemax_output",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=_NATIVE_S7,
+        )
+    with pytest.raises(
+        ValueError, match="chained_zemax_output.*CaseOutputSource"
+    ):
+        validate_derived_input(
+            source,
+            output,
+            strategy="chained_zemax_output",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=_NATIVE_S7,
+        )
     with pytest.raises(ValueError, match="upstream provenance"):
         derive_zbf_input(
             source,
@@ -215,6 +238,27 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
         )
 
     provenance = _upstream_provenance(beam)
+    with pytest.raises(ValueError, match="exact_copy.*NativeSurfaceSource"):
+        derive_zbf_input(
+            source,
+            tmp_path / "exact-copy-case-source.ZBF",
+            target_grid=beam.grid,
+            strategy="exact_copy",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=case_source,
+            upstream_provenance=provenance,
+        )
+    with pytest.raises(ValueError, match="exact_copy.*NativeSurfaceSource"):
+        validate_derived_input(
+            source,
+            output,
+            strategy="exact_copy",
+            convention=S7,
+            sample_value_convention="point_value",
+            logical_source=case_source,
+            upstream_provenance=provenance,
+        )
     for index, invalid_provenance in enumerate(
         (
             _upstream_provenance(beam, producer_case="S12_S13:ZO2"),

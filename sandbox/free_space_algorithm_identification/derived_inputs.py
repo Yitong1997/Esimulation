@@ -178,11 +178,22 @@ def _same_float_bits(left: float, right: float) -> bool:
 
 def _validated_logical_source_binding(
     *,
+    strategy: DerivationStrategy,
     logical_source: SamplingSource,
     upstream_provenance: UpstreamCaseProvenance | None,
     source_content_sha256: str,
     convention: SurfaceConvention,
 ) -> tuple[UpstreamCaseProvenance | None, str | None]:
+    if strategy == "chained_zemax_output" and not isinstance(
+        logical_source, CaseOutputSource
+    ):
+        raise ValueError(
+            "chained_zemax_output requires a CaseOutputSource"
+        )
+    if strategy == "exact_copy" and not isinstance(
+        logical_source, NativeSurfaceSource
+    ):
+        raise ValueError("exact_copy requires a NativeSurfaceSource")
     if isinstance(logical_source, NativeSurfaceSource):
         if logical_source.surface != convention.surface:
             raise ValueError(
@@ -617,6 +628,7 @@ def validate_derived_input(
     source = read_lossless_zbf(source_file)
     output = read_lossless_zbf(output_file)
     upstream_provenance, upstream_provenance_sha256 = _validated_logical_source_binding(
+        strategy=strategy,
         logical_source=logical_source,
         upstream_provenance=upstream_provenance,
         source_content_sha256=source.source_sha256,
@@ -868,6 +880,7 @@ def derive_zbf_input(
     source = read_lossless_zbf(source_file)
     _require_finite_beam_fields(source, label="source")
     upstream_provenance, upstream_provenance_sha256 = _validated_logical_source_binding(
+        strategy=strategy,
         logical_source=logical_source,
         upstream_provenance=upstream_provenance,
         source_content_sha256=source.source_sha256,
