@@ -459,10 +459,10 @@ def write_lossless_zbf(path, beam):
 Run:
 
 ```powershell
-python -m pytest tests/free_space_identification/test_zbf_binary.py tests/test_zbf_io.py -q
+python -m pytest tests/free_space_identification/test_zbf_binary.py tests/test_zbf_io.py -k "not reference_phase_uses_spherical_header_metadata" -q
 ```
 
-Expected: all new codec tests pass and existing `test_zbf_io.py` remains green.
+Expected: all new codec tests and unaffected existing ZBF I/O tests pass. The excluded legacy test predates commit `1373b4c` and still expects Gaussian-curvature phase inside the Rayleigh range; the approved contract and new Task 3 tests require a planar reference there. Do not modify production ZBF code to satisfy that stale expectation.
 
 - [ ] **Step 5: Commit Task 2**
 
@@ -678,7 +678,7 @@ The registered result is deliberately surface-specific: S7/S8 use no additional 
 Run:
 
 ```powershell
-python -m pytest tests/free_space_identification/test_field_contract.py tests/free_space_identification/test_geometry.py tests/test_reference_frames.py -q
+python -m pytest tests/free_space_identification/test_field_contract.py tests/free_space_identification/test_geometry.py tests/test_zbf_source.py -q
 ```
 
 Expected: all tests pass.
@@ -2078,7 +2078,7 @@ git commit -m "feat: orchestrate gated propagator identification"
 ```powershell
 python -m pytest tests/free_space_identification -m "not slow" -q
 python -m pytest tests/free_space_identification/test_fourier.py -m slow -q
-python -m pytest tests/test_zbf_io.py tests/test_reference_frames.py -q
+python -m pytest tests/test_zbf_io.py tests/test_zbf_source.py -k "not reference_phase_uses_spherical_header_metadata" -q
 python -m compileall sandbox/free_space_algorithm_identification tests/free_space_identification
 git diff --check
 ```
@@ -2301,7 +2301,7 @@ If and only if the three-segment evidence uniquely localizes a production-code e
 
 ```powershell
 python -m pytest tests/free_space_identification -m "not slow" -q
-python -m pytest tests/test_zbf_io.py tests/test_reference_frames.py -q
+python -m pytest tests/test_zbf_io.py tests/test_zbf_source.py -k "not reference_phase_uses_spherical_header_metadata" -q
 git diff --check
 git diff --exit-code -- pop proper_v3.3.4_python/proper angular_spectrum_method sandbox/biconic_focus_baseline_utils.py sandbox/zemax_pop_benchmark/zosapi_runner.py
 git add sandbox/free_space_algorithm_identification/report.py sandbox/free_space_algorithm_identification/cli.py sandbox/free_space_algorithm_identification/pipeline.py tests/free_space_identification/test_pipeline_report.py sandbox/diagnostics/zemax_free_space_propagator_identification_report.md sandbox/diagnostics/s7_s8_phase_root_cause.md
