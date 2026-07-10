@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,18 @@ class ComponentDerivedInputValidation:
     fixed_step_overlap_bitwise: bool
     added_samples_exact_zero: bool
 
+    def __post_init__(self) -> None:
+        metrics = (
+            self.slow_field_common_node_relative_l2,
+            self.physical_phase_rms_waves,
+            self.normalized_intensity_rms_percent,
+            self.relative_energy_error,
+            self.edge_energy_fraction_x,
+            self.edge_energy_fraction_y,
+        )
+        if not np.all(np.isfinite(metrics)):
+            raise ValueError(f"{self.component} derived-input metrics must be finite")
+
 
 @dataclass(frozen=True)
 class DerivedInputValidation:
@@ -78,6 +91,17 @@ class DerivedInputValidation:
     edge_energy_hard_gate_fraction: float
     applied_edge_energy_gate_fraction: float
     power_normalization_applied: bool = False
+    producer_case: str | None = None
+    upstream_run_case_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        thresholds = (
+            self.edge_energy_target_fraction,
+            self.edge_energy_hard_gate_fraction,
+            self.applied_edge_energy_gate_fraction,
+        )
+        if not np.all(np.isfinite(thresholds)):
+            raise ValueError("derived-input gate thresholds must be finite")
 
     @property
     def slow_field_common_node_relative_l2(self) -> float:
@@ -139,11 +163,44 @@ class DerivedInputResult:
     source_sha256: str
     output_sha256: str
     validation: DerivedInputValidation
+    producer_case: str | None = None
     upstream_run_case_sha256: str | None = None
 
 
 def _same_float_bits(left: float, right: float) -> bool:
     return np.float64(left).tobytes() == np.float64(right).tobytes()
+
+
+def _validated_chained_provenance(
+    *,
+    strategy: DerivationStrategy,
+    source_content_sha256: str,
+    producer_case: str | None,
+    upstream_run_case_sha256: str | None,
+) -> tuple[str | None, str | None]:
+    if strategy != "chained_zemax_output":
+        if producer_case is not None or upstream_run_case_sha256 is not None:
+            raise ValueError(
+                "chained-output provenance is only valid for chained_zemax_output"
+            )
+        return None, None
+    if (
+        not isinstance(producer_case, str)
+        or not producer_case.strip()
+        or "/" in producer_case
+        or "\\" in producer_case
+        or not isinstance(upstream_run_case_sha256, str)
+        or re.fullmatch(r"[0-9a-fA-F]{64}", upstream_run_case_sha256) is None
+    ):
+        raise ValueError(
+            "chained-output provenance requires a logical producer case and 64-hex run/case digest"
+        )
+    normalized_digest = upstream_run_case_sha256.lower()
+    if normalized_digest == source_content_sha256.lower():
+        raise ValueError(
+            "chained-output provenance run/case digest must differ from source content SHA-256"
+        )
+    return producer_case.strip(), normalized_digest
 
 
 def _require_same_grid(source: UniformGrid2D, target: UniformGrid2D) -> None:
@@ -202,23 +259,48 @@ def _component_arrays(beam: LosslessZbf) -> tuple[tuple[str, np.ndarray], ...]:
     return tuple(arrays)
 
 
+def _require_finite_array(values: np.ndarray, *, label: str) -> None:
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{label} must be finite")
+
+
+def _require_finite_scalar(value: float, *, label: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{label} must be finite")
+    return result
+
+
+def _require_finite_beam_fields(beam: LosslessZbf, *, label: str) -> None:
+    for component, values in _component_arrays(beam):
+        _require_finite_array(values, label=f"{label} {component} field")
+
+
 def _outer_edge_energy_fractions(values: np.ndarray) -> tuple[float, float]:
-    intensity = np.abs(values) ** 2
-    total = float(np.sum(intensity, dtype=np.float64))
+    _require_finite_array(values, label="edge-energy field")
+    with np.errstate(over="ignore", invalid="ignore"):
+        intensity = np.abs(values) ** 2
+        total = np.sum(intensity, dtype=np.float64)
+    _require_finite_array(intensity, label="edge-energy intensity")
+    total = _require_finite_scalar(total, label="edge-energy total")
     if total == 0.0:
         return 0.0, 0.0
     ny, nx = intensity.shape
     edge_nx = max(1, math.ceil(0.05 * nx))
     edge_ny = max(1, math.ceil(0.05 * ny))
-    x_energy = float(
-        np.sum(intensity[:, :edge_nx], dtype=np.float64)
-        + np.sum(intensity[:, -edge_nx:], dtype=np.float64)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        x_energy = np.sum(
+            intensity[:, :edge_nx], dtype=np.float64
+        ) + np.sum(intensity[:, -edge_nx:], dtype=np.float64)
+        y_energy = np.sum(
+            intensity[:edge_ny, :], dtype=np.float64
+        ) + np.sum(intensity[-edge_ny:, :], dtype=np.float64)
+        x_fraction = x_energy / total
+        y_fraction = y_energy / total
+    return (
+        _require_finite_scalar(x_fraction, label="X edge-energy fraction"),
+        _require_finite_scalar(y_fraction, label="Y edge-energy fraction"),
     )
-    y_energy = float(
-        np.sum(intensity[:edge_ny, :], dtype=np.float64)
-        + np.sum(intensity[-edge_ny:, :], dtype=np.float64)
-    )
-    return x_energy / total, y_energy / total
 
 
 def _effective_edge_gate(requested_maximum: float) -> float:
@@ -243,22 +325,27 @@ def _resample_payload(
     target_grid: UniformGrid2D,
     sample_value_convention: SampleValueConvention,
 ) -> np.ndarray:
+    _require_finite_array(values, label="Fourier source payload")
     point_values = zbf_payload_to_point_values(
         values,
         source_grid,
         sample_value_convention=sample_value_convention,
     )
+    _require_finite_array(point_values, label="decoded Fourier point field")
     refined = resample_bandlimited(PointField2D(point_values, source_grid), target_grid)
-    return point_values_to_zbf_payload(
+    payload = point_values_to_zbf_payload(
         refined.values,
         target_grid,
         sample_value_convention=sample_value_convention,
     )
+    _require_finite_array(payload, label="encoded Fourier output payload")
+    return payload
 
 
 def _zero_extend_raw(
     values: np.ndarray, *, target_shape: tuple[int, int]
 ) -> np.ndarray:
+    _require_finite_array(values, label="fixed-step source payload")
     source_ny, source_nx = values.shape
     target_ny, target_nx = target_shape
     x0 = target_nx // 2 - source_nx // 2
@@ -306,6 +393,9 @@ def _write_derived(
     ex: np.ndarray,
     ey: np.ndarray | None,
 ) -> None:
+    _require_finite_array(ex, label="derived Ex field")
+    if ey is not None:
+        _require_finite_array(ey, label="derived Ey field")
     header = patch_sampling_header(
         source.header,
         nx=target_grid.nx,
@@ -363,36 +453,75 @@ def _center_slices(
 
 
 def _relative_l2(left: np.ndarray, right: np.ndarray) -> float:
-    denominator = float(np.linalg.norm(left.reshape(-1)))
-    numerator = float(np.linalg.norm((right - left).reshape(-1)))
+    _require_finite_array(left, label="relative-L2 reference field")
+    _require_finite_array(right, label="relative-L2 comparison field")
+    with np.errstate(over="ignore", invalid="ignore"):
+        difference = right - left
+        denominator = np.linalg.norm(left.reshape(-1))
+        numerator = np.linalg.norm(difference.reshape(-1))
+    _require_finite_array(difference, label="relative-L2 difference")
+    denominator = _require_finite_scalar(
+        denominator, label="relative-L2 denominator"
+    )
+    numerator = _require_finite_scalar(numerator, label="relative-L2 numerator")
     if denominator == 0.0:
         return 0.0 if numerator == 0.0 else math.inf
-    return numerator / denominator
+    return _require_finite_scalar(
+        numerator / denominator, label="relative-L2 metric"
+    )
 
 
 def _phase_rms_waves(left: np.ndarray, right: np.ndarray) -> float:
-    weights = np.abs(left) ** 2
-    valid = (weights > 0.0) & (np.abs(right) > 0.0)
+    _require_finite_array(left, label="phase-RMS reference field")
+    _require_finite_array(right, label="phase-RMS comparison field")
+    with np.errstate(over="ignore", invalid="ignore"):
+        weights = np.abs(left) ** 2
+        right_amplitude = np.abs(right)
+    _require_finite_array(weights, label="phase-RMS weights")
+    _require_finite_array(right_amplitude, label="phase-RMS comparison amplitude")
+    valid = (weights > 0.0) & (right_amplitude > 0.0)
     if not np.any(valid):
         return 0.0
-    phase_waves = np.angle(right[valid] * np.conj(left[valid])) / (2 * np.pi)
-    return float(np.sqrt(np.sum(weights[valid] * phase_waves**2) / np.sum(weights[valid])))
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        phasor_product = right[valid] * np.conj(left[valid])
+        phase_waves = np.angle(phasor_product) / (2 * np.pi)
+        weighted_squared_phase = weights[valid] * phase_waves**2
+        weighted_sum = np.sum(weighted_squared_phase, dtype=np.float64)
+        weight_sum = np.sum(weights[valid], dtype=np.float64)
+        metric = np.sqrt(weighted_sum / weight_sum)
+    _require_finite_array(phasor_product, label="phase-RMS phasor product")
+    _require_finite_array(phase_waves, label="phase-RMS wave differences")
+    _require_finite_array(
+        weighted_squared_phase, label="phase-RMS weighted differences"
+    )
+    _require_finite_scalar(weighted_sum, label="phase-RMS weighted sum")
+    _require_finite_scalar(weight_sum, label="phase-RMS weight sum")
+    return _require_finite_scalar(metric, label="phase-RMS metric")
 
 
 def _normalized_intensity_rms_percent(
     left: np.ndarray, right: np.ndarray
 ) -> float:
-    left_i = np.abs(left) ** 2
-    right_i = np.abs(right) ** 2
+    _require_finite_array(left, label="intensity-RMS reference field")
+    _require_finite_array(right, label="intensity-RMS comparison field")
+    with np.errstate(over="ignore", invalid="ignore"):
+        left_i = np.abs(left) ** 2
+        right_i = np.abs(right) ** 2
+    _require_finite_array(left_i, label="intensity-RMS reference intensity")
+    _require_finite_array(right_i, label="intensity-RMS comparison intensity")
     left_peak = float(np.max(left_i, initial=0.0))
     right_peak = float(np.max(right_i, initial=0.0))
     if left_peak == 0.0 and right_peak == 0.0:
         return 0.0
     if left_peak == 0.0 or right_peak == 0.0:
         return math.inf
-    return 100.0 * float(
-        np.sqrt(np.mean((right_i / right_peak - left_i / left_peak) ** 2))
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        normalized_difference = right_i / right_peak - left_i / left_peak
+        metric = 100.0 * np.sqrt(np.mean(normalized_difference**2))
+    _require_finite_array(
+        normalized_difference, label="normalized-intensity difference"
     )
+    return _require_finite_scalar(metric, label="normalized-intensity RMS metric")
 
 
 def _relative_energy_error(
@@ -402,15 +531,33 @@ def _relative_energy_error(
     source_grid: UniformGrid2D,
     output_grid: UniformGrid2D,
 ) -> float:
-    source_energy = float(
-        np.sum(np.abs(source) ** 2, dtype=np.float64) * source_grid.pixel_area_mm2
+    _require_finite_array(source, label="energy reference field")
+    _require_finite_array(output, label="energy comparison field")
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        source_intensity = np.abs(source) ** 2
+        output_intensity = np.abs(output) ** 2
+        source_energy = (
+            np.sum(source_intensity, dtype=np.float64)
+            * source_grid.pixel_area_mm2
+        )
+        output_energy = (
+            np.sum(output_intensity, dtype=np.float64)
+            * output_grid.pixel_area_mm2
+        )
+    _require_finite_array(source_intensity, label="energy reference intensity")
+    _require_finite_array(output_intensity, label="energy comparison intensity")
+    source_energy = _require_finite_scalar(
+        source_energy, label="reference integrated energy"
     )
-    output_energy = float(
-        np.sum(np.abs(output) ** 2, dtype=np.float64) * output_grid.pixel_area_mm2
+    output_energy = _require_finite_scalar(
+        output_energy, label="comparison integrated energy"
     )
     if source_energy == 0.0:
         return 0.0 if output_energy == 0.0 else math.inf
-    return abs(output_energy - source_energy) / source_energy
+    return _require_finite_scalar(
+        abs(output_energy - source_energy) / source_energy,
+        label="relative energy error",
+    )
 
 
 def _physical_values(
@@ -418,15 +565,23 @@ def _physical_values(
     beam: LosslessZbf,
     *,
     convention: SurfaceConvention,
+    grid: UniformGrid2D | None = None,
 ) -> np.ndarray:
+    _require_finite_array(point_payload, label="physical-field point payload")
+    physical_grid = beam.grid if grid is None else grid
+    if point_payload.shape != (physical_grid.ny, physical_grid.nx):
+        raise ValueError("physical-field point payload does not match its grid")
     pilot = pilot_from_zbf(beam, convention)
     phases = reference_phases(
-        beam.grid,
+        physical_grid,
         pilot,
         wavelength_vacuum_mm=beam.header.wavelength_vacuum_mm,
         refractive_index=beam.header.refractive_index,
     )
-    return np.conj(point_payload) * np.exp(1j * phases.phi_rad)
+    with np.errstate(over="ignore", invalid="ignore"):
+        physical = np.conj(point_payload) * np.exp(1j * phases.phi_rad)
+    _require_finite_array(physical, label="physical field")
+    return physical
 
 
 def validate_derived_input(
@@ -437,6 +592,8 @@ def validate_derived_input(
     convention: SurfaceConvention,
     sample_value_convention: SampleValueConvention,
     max_edge_energy_fraction: float = 1e-10,
+    producer_case: str | None = None,
+    upstream_run_case_sha256: str | None = None,
 ) -> DerivedInputValidation:
     """Validate a derived input and raise if any strategy-specific hard gate fails."""
 
@@ -445,6 +602,14 @@ def validate_derived_input(
     effective_edge_gate = _effective_edge_gate(max_edge_energy_fraction)
     source = read_lossless_zbf(source_file)
     output = read_lossless_zbf(output_file)
+    producer_case, upstream_run_case_sha256 = _validated_chained_provenance(
+        strategy=strategy,
+        source_content_sha256=source.source_sha256,
+        producer_case=producer_case,
+        upstream_run_case_sha256=upstream_run_case_sha256,
+    )
+    _require_finite_beam_fields(source, label="source")
+    _require_finite_beam_fields(output, label="output")
     intermediate_grid: UniformGrid2D | None = None
     if strategy in {"exact_copy", "chained_zemax_output"}:
         _require_same_grid(source.grid, output.grid)
@@ -498,6 +663,8 @@ def validate_derived_input(
             output.grid,
             sample_value_convention=sample_value_convention,
         )
+        _require_finite_array(source_point, label=f"decoded source {component}")
+        _require_finite_array(output_point, label=f"decoded output {component}")
         edge_x, edge_y = _outer_edge_energy_fractions(source_point)
         common_l2 = 0.0
         phase_rms = 0.0
@@ -559,18 +726,41 @@ def validate_derived_input(
             added_zero = intermediate_raw[mask].tobytes() == np.zeros(
                 int(np.sum(mask)), dtype=np.complex128
             ).tobytes()
-            expected_raw = _resample_payload(
+            intermediate_point = zbf_payload_to_point_values(
                 intermediate_raw,
-                source_grid=intermediate_grid,
-                target_grid=output.grid,
                 sample_value_convention=sample_value_convention,
+                grid=intermediate_grid,
             )
-            expected_point = zbf_payload_to_point_values(
-                expected_raw,
-                output.grid,
-                sample_value_convention=sample_value_convention,
+            _require_finite_array(
+                intermediate_point, label=f"decoded intermediate {component}"
             )
-            common_l2 = _relative_l2(expected_point, output_point)
+            intermediate_common_indices = _common_node_indices(
+                intermediate_grid, output.grid
+            )
+            if intermediate_common_indices is None:
+                raise ValueError(
+                    "combined output has no exact intermediate common nodes"
+                )
+            intermediate_iy, intermediate_ix = intermediate_common_indices
+            output_common = output_point[
+                np.ix_(intermediate_iy, intermediate_ix)
+            ]
+            common_l2 = _relative_l2(intermediate_point, output_common)
+            intermediate_physical = _physical_values(
+                intermediate_point,
+                source,
+                convention=convention,
+                grid=intermediate_grid,
+            )
+            output_physical = _physical_values(
+                output_point, output, convention=convention
+            )[np.ix_(intermediate_iy, intermediate_ix)]
+            phase_rms = _phase_rms_waves(
+                intermediate_physical, output_physical
+            )
+            intensity_rms = _normalized_intensity_rms_percent(
+                intermediate_physical, output_physical
+            )
             if not overlap_bitwise or not added_zero:
                 raise ValueError("combined derivation failed its exact fixed-step audit")
 
@@ -609,6 +799,8 @@ def validate_derived_input(
         edge_energy_hard_gate_fraction=_EDGE_HARD_GATE_FRACTION,
         applied_edge_energy_gate_fraction=effective_edge_gate,
         power_normalization_applied=False,
+        producer_case=producer_case,
+        upstream_run_case_sha256=upstream_run_case_sha256,
     )
     if strategy in {"exact_copy", "chained_zemax_output"} and not validation.byte_exact_copy:
         raise ValueError("copy strategy output is not byte-identical")
@@ -619,12 +811,13 @@ def validate_derived_input(
             raise ValueError("fixed-window physical-phase gate failed")
         if validation.normalized_intensity_rms_percent > _FIXED_WINDOW_INTENSITY_LIMIT_PERCENT:
             raise ValueError("fixed-window normalized-intensity gate failed")
-    if (
-        strategy == "zero_extend_then_fourier_refine"
-        and validation.slow_field_common_node_relative_l2
-        > _FIXED_WINDOW_FIELD_L2_LIMIT
-    ):
-        raise ValueError("combined derivation Fourier-refinement gate failed")
+    if strategy == "zero_extend_then_fourier_refine":
+        if validation.slow_field_common_node_relative_l2 > _FIXED_WINDOW_FIELD_L2_LIMIT:
+            raise ValueError("combined common-node slow-field gate failed")
+        if validation.physical_phase_rms_waves > _FIXED_WINDOW_PHASE_LIMIT_WAVES:
+            raise ValueError("combined physical-phase gate failed")
+        if validation.normalized_intensity_rms_percent > _FIXED_WINDOW_INTENSITY_LIMIT_PERCENT:
+            raise ValueError("combined normalized-intensity gate failed")
     if validation.relative_energy_error > _RELATIVE_ENERGY_LIMIT:
         raise ValueError("derived input pixel-area-weighted energy gate failed")
     if strategy in {"zero_extend_fixed_sampling", "zero_extend_then_fourier_refine"}:
@@ -642,6 +835,8 @@ def derive_zbf_input(
     convention: SurfaceConvention,
     sample_value_convention: SampleValueConvention,
     max_edge_energy_fraction: float = 1e-10,
+    producer_case: str | None = None,
+    upstream_run_case_sha256: str | None = None,
 ) -> DerivedInputResult:
     """Construct one permitted derived input without fitting or normalizing power."""
 
@@ -656,6 +851,13 @@ def derive_zbf_input(
         raise ValueError("sample_value_convention must be explicit")
     effective_edge_gate = _effective_edge_gate(max_edge_energy_fraction)
     source = read_lossless_zbf(source_file)
+    _require_finite_beam_fields(source, label="source")
+    producer_case, upstream_run_case_sha256 = _validated_chained_provenance(
+        strategy=strategy,
+        source_content_sha256=source.source_sha256,
+        producer_case=producer_case,
+        upstream_run_case_sha256=upstream_run_case_sha256,
+    )
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -726,6 +928,8 @@ def derive_zbf_input(
             convention=convention,
             sample_value_convention=sample_value_convention,
             max_edge_energy_fraction=max_edge_energy_fraction,
+            producer_case=producer_case,
+            upstream_run_case_sha256=upstream_run_case_sha256,
         )
     except Exception:
         if output_file.exists():
@@ -741,9 +945,8 @@ def derive_zbf_input(
         source_sha256=source.source_sha256,
         output_sha256=output_sha256,
         validation=validation,
-        upstream_run_case_sha256=(
-            source.source_sha256 if strategy == "chained_zemax_output" else None
-        ),
+        producer_case=producer_case,
+        upstream_run_case_sha256=upstream_run_case_sha256,
     )
 
 

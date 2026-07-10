@@ -11,6 +11,10 @@ from sandbox.free_space_algorithm_identification.derived_inputs import (
     derive_zbf_input,
     validate_derived_input,
 )
+from sandbox.free_space_algorithm_identification.field_contract import (
+    pilot_from_zbf,
+    reference_phases,
+)
 from sandbox.free_space_algorithm_identification.models import UniformGrid2D
 from sandbox.free_space_algorithm_identification.zbf_binary import (
     HEADER_BYTES,
@@ -166,6 +170,58 @@ def test_native_case_is_a_byte_exact_copy(tmp_path: Path) -> None:
             sample_value_convention="point_value",
         )
 
+    with pytest.raises(ValueError, match="chained.*provenance"):
+        derive_zbf_input(
+            source,
+            tmp_path / "chained-missing-provenance.ZBF",
+            target_grid=beam.grid,
+            strategy="chained_zemax_output",
+            convention=S7,
+            sample_value_convention="point_value",
+        )
+
+    producer_case = "S12_S13:ZO1"
+    upstream_run_case_sha256 = "f" * 64
+    for index, (case_id, digest) in enumerate(
+        (
+            (None, upstream_run_case_sha256),
+            (producer_case, None),
+            (producer_case, "not-a-sha256"),
+            (producer_case, beam.source_sha256),
+        )
+    ):
+        with pytest.raises(ValueError, match="chained.*provenance"):
+            derive_zbf_input(
+                source,
+                tmp_path / f"chained-invalid-provenance-{index}.ZBF",
+                target_grid=beam.grid,
+                strategy="chained_zemax_output",
+                convention=S7,
+                sample_value_convention="point_value",
+                producer_case=case_id,
+                upstream_run_case_sha256=digest,
+            )
+
+    chained = derive_zbf_input(
+        source,
+        tmp_path / "chained-valid.ZBF",
+        target_grid=beam.grid,
+        strategy="chained_zemax_output",
+        convention=S7,
+        sample_value_convention="point_value",
+        producer_case=producer_case,
+        upstream_run_case_sha256=upstream_run_case_sha256,
+    )
+    assert chained.producer_case == producer_case
+    assert chained.upstream_run_case_sha256 == upstream_run_case_sha256
+    assert chained.source_sha256 == beam.source_sha256
+    assert chained.upstream_run_case_sha256 != chained.source_sha256
+    assert chained.validation.producer_case == producer_case
+    assert (
+        chained.validation.upstream_run_case_sha256
+        == upstream_run_case_sha256
+    )
+
 
 def test_fixed_window_refinement_recovers_original_complex_nodes(
     tmp_path: Path,
@@ -251,7 +307,78 @@ def test_fixed_step_extension_preserves_original_ex_and_ey_exactly(
     )
     assert combined.validation.fixed_step_overlap_bitwise
     assert combined.validation.added_samples_exact_zero
-    assert combined.validation.slow_field_common_node_relative_l2 <= 1e-10
+    combined_beam = read_lossless_zbf(combined.output_path)
+    intermediate_grid = UniformGrid2D.centered(
+        nx=12,
+        ny=10,
+        dx_mm=0.2,
+        dy_mm=0.3,
+    )
+    intermediate_ex = np.zeros((10, 12), dtype=np.complex128)
+    intermediate_ys, intermediate_xs = _center_overlap(
+        original.ex.shape, intermediate_ex.shape
+    )
+    intermediate_ex[intermediate_ys, intermediate_xs] = original.ex
+    output_common = combined_beam.ex[::2, ::2]
+    expected_l2 = np.linalg.norm(output_common - intermediate_ex) / np.linalg.norm(
+        intermediate_ex
+    )
+
+    pilot = pilot_from_zbf(original, S7)
+    intermediate_phi = reference_phases(
+        intermediate_grid,
+        pilot,
+        wavelength_vacuum_mm=original.header.wavelength_vacuum_mm,
+        refractive_index=original.header.refractive_index,
+    ).phi_rad
+    output_phi = reference_phases(
+        combined_beam.grid,
+        pilot,
+        wavelength_vacuum_mm=original.header.wavelength_vacuum_mm,
+        refractive_index=original.header.refractive_index,
+    ).phi_rad[::2, ::2]
+    intermediate_physical = np.conj(intermediate_ex) * np.exp(1j * intermediate_phi)
+    output_physical = np.conj(output_common) * np.exp(1j * output_phi)
+    weights = np.abs(intermediate_physical) ** 2
+    valid = (weights > 0.0) & (np.abs(output_physical) > 0.0)
+    phase_waves = np.angle(
+        output_physical[valid] * np.conj(intermediate_physical[valid])
+    ) / (2 * np.pi)
+    expected_phase_rms = np.sqrt(
+        np.sum(weights[valid] * phase_waves**2) / np.sum(weights[valid])
+    )
+    intermediate_i = np.abs(intermediate_physical) ** 2
+    output_i = np.abs(output_physical) ** 2
+    expected_intensity_rms = 100 * np.sqrt(
+        np.mean(
+            (
+                output_i / np.max(output_i)
+                - intermediate_i / np.max(intermediate_i)
+            )
+            ** 2
+        )
+    )
+    ex_metrics = next(
+        item for item in combined.validation.components if item.component == "Ex"
+    )
+    assert ex_metrics.slow_field_common_node_relative_l2 == pytest.approx(
+        expected_l2, rel=1e-12, abs=0.0
+    )
+    assert ex_metrics.physical_phase_rms_waves == pytest.approx(
+        expected_phase_rms, rel=1e-12, abs=0.0
+    )
+    assert ex_metrics.normalized_intensity_rms_percent == pytest.approx(
+        expected_intensity_rms, rel=1e-12, abs=0.0
+    )
+    assert np.all(
+        np.isfinite(
+            [
+                expected_l2,
+                expected_phase_rms,
+                expected_intensity_rms,
+            ]
+        )
+    )
 
 
 def test_zero_extension_rejects_excessive_edge_energy(tmp_path: Path) -> None:
@@ -269,6 +396,38 @@ def test_zero_extension_rejects_excessive_edge_energy(tmp_path: Path) -> None:
                 max_edge_energy_fraction=requested_maximum,
             )
         assert not output.exists()
+
+    template = read_lossless_zbf(
+        _write_source(tmp_path / "finite-template.ZBF", compact=True)
+    )
+    for index, invalid_value in enumerate(
+        (np.nan + 0j, np.inf + 0j, 1e308 + 0j)
+    ):
+        invalid_ex = template.ex.copy()
+        invalid_ex[2, 3] = invalid_value
+        invalid_source = tmp_path / f"nonfinite-or-overflow-{index}.ZBF"
+        write_lossless_zbf(
+            invalid_source,
+            LosslessZbf(
+                path=None,
+                source_sha256="",
+                header=template.header,
+                ex=invalid_ex,
+                ey=template.ey,
+                trailing_bytes=template.trailing_bytes,
+            ),
+        )
+        invalid_output = tmp_path / f"nonfinite-or-overflow-output-{index}.ZBF"
+        with pytest.raises(ValueError, match="finite"):
+            derive_zbf_input(
+                invalid_source,
+                invalid_output,
+                target_grid=_extended_grid(),
+                strategy="zero_extend_fixed_sampling",
+                convention=S7,
+                sample_value_convention="point_value",
+            )
+        assert not invalid_output.exists()
 
 
 def test_derived_input_never_applies_power_normalization(tmp_path: Path) -> None:
