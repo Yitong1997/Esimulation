@@ -19,7 +19,8 @@
 - Freeze whether ZBF payloads are continuous point values or cell-energy samples through an independent cross-sampling power/identity probe. Every payload-to-field and field-to-payload conversion takes that explicit convention; per-case entrance constants may not silently absorb an unresolved area factor.
 - Use `complex128` and the CPU NumPy/SciPy implementation for canonical results. GPU or `complex64` results may not establish the accuracy baseline.
 - Fix coordinate center, axis directions, reflection parity, phasor convention, model distance, and reference formulas before viewing candidate residuals.
-- The mapped surface conventions are fixed: S7/S8 use `axis_sign=-1, conjugate=False`; S12/S13/S14 use `axis_sign=+1, conjugate=True`.
+- Raw ZBF phasor conversion is global, not surface-specific: every directly read `Ex` is converted to the common `exp(-i omega t)` convention as `conj(Ex)`. Real coordinate pullbacks and reflection parity never cancel that anti-linear conversion. S7/S8 use `axis_sign=-1`; S12/S13/S14 use `axis_sign=+1`.
+- The even ZBF grid is sample-at-zero: `x_i=(i-Nx/2)dx`, `y_j=(j-Ny/2)dy`. This is fixed independently by the OpticStudio `IAR_DataGrid` and ZBF format contracts and must be revalidated from raw `DataGrid` metadata. Never use the half-step-shifted ZOSPy DataFrame labels to reconstruct phase or resample a field.
 - Use model physical distances 368.600000 mm, 608.600000 mm, and 2.000000 mm for propagation. Use ZBF pilot-to-waist distances only for STW/WTS sampling.
 - Candidate comparison may remove one global phase piston. It may not fit amplitude, shift, flip, rotation, tilt, defocus, astigmatism, quartic phase, Zernike terms, propagation distance, reference radius, or a residual scale coefficient.
 - The primary region is the central connected component at `I_Z / I_Z.max() >= 1e-3`; repeat conclusions at `1e-2` and `1e-6`.
@@ -91,12 +92,13 @@ tests/free_space_identification/
   test_zemax_live.py
 ```
 
-The following existing files are read-only dependencies, not modification targets:
+The following existing files are read-only evidence or implementation references, not modification targets:
 
-- `sandbox/biconic_focus_baseline_utils.py`
 - `sandbox/zemax_pop_benchmark/zosapi_runner.py`
 - `pop/io/zbf.py`
 - `sandbox/diagnostics/s7_s8_phase_root_cause.md` until Task 16
+
+No diagnostic module may import the ignored, untracked `sandbox/biconic_focus_baseline_utils.py`; Task 3 owns a minimal tracked native-report parser.
 
 ---
 
@@ -139,9 +141,10 @@ def test_segment_axis_and_phasor_conventions_are_fixed() -> None:
     assert all(s.start_convention.side == "after" and s.end_convention.side == "after"
                for s in BICONIC_SEGMENTS)
     assert by_key["S07_S08"].start_convention.axis_sign == -1
-    assert by_key["S07_S08"].start_convention.conjugate is False
     assert by_key["S12_S13"].start_convention.axis_sign == 1
-    assert by_key["S12_S13"].start_convention.conjugate is True
+    assert all(not hasattr(s.start_convention, "conjugate")
+               and not hasattr(s.end_convention, "conjugate")
+               for s in BICONIC_SEGMENTS)
 ```
 
 - [ ] **Step 2: Run the tests and verify the import failure**
@@ -227,7 +230,6 @@ class SurfaceConvention:
     surface: int
     side: Literal["after"]
     axis_sign: Literal[-1, 1]
-    conjugate: bool
 
 
 @dataclass(frozen=True)
@@ -281,11 +283,11 @@ class SamplingCase:
 from pathlib import Path
 from .models import SegmentSpec, SurfaceConvention
 
-S7 = SurfaceConvention(7, "after", -1, False)
-S8 = SurfaceConvention(8, "after", -1, False)
-S12 = SurfaceConvention(12, "after", 1, True)
-S13 = SurfaceConvention(13, "after", 1, True)
-S14 = SurfaceConvention(14, "after", 1, True)
+S7 = SurfaceConvention(7, "after", -1)
+S8 = SurfaceConvention(8, "after", -1)
+S12 = SurfaceConvention(12, "after", 1)
+S13 = SurfaceConvention(13, "after", 1)
+S14 = SurfaceConvention(14, "after", 1)
 
 BICONIC_SEGMENTS = (
     SegmentSpec("S07_S08", 7, 8, "OO", 368.600000,
@@ -320,7 +322,7 @@ output/
 
 `UniformGrid2D.__post_init__()` and `PointField2D.__post_init__()` must copy their arrays, validate finiteness/shape/uniform spacing, and set the stored NumPy arrays read-only so the frozen dataclasses are actually immutable. `tests/free_space_identification/conftest.py` contains only environment-gated `baseline_dir` and `baseline_report` pytest fixtures; it must not import modules that are created in later tasks. Task-specific synthetic builders and direct-sum oracles live in the corresponding test file so Task 1 remains independently runnable.
 
-The sample-at-zero even-grid constructor is the registered hypothesis carried from the prior independent diagnostics, not a result-selected option. Task 3 must validate it against native coordinate/phase evidence; failure blocks the experiment and does not trigger a trial of the half-pixel convention against endpoint error.
+The sample-at-zero even-grid constructor is fixed independently by the installed OpticStudio `IAR_DataGrid` and ZBF format contracts, plus existing raw DataGrid evidence; it is not selected from endpoint error. Task 3 encodes the fail-closed validation contract, and Task 12 must revalidate it from raw ZOS-API metadata before the formal run. Failure blocks the experiment and does not trigger a trial of the half-pixel convention against endpoint error.
 
 - [ ] **Step 4: Run the model tests**
 
@@ -471,6 +473,47 @@ git add sandbox/free_space_algorithm_identification/zbf_binary.py tests/free_spa
 git commit -m "feat: add lossless ZBF diagnostic codec"
 ```
 
+### Task 2A: Correct the global raw-ZBF phasor contract before Task 3
+
+This is a migration task for the already-started execution branch whose Task 1 commit `615172e` and Task 2 head `aec1215` still contain the superseded surface-specific flag. The amended Task 1 specification above is already correct for a fresh execution, so a fresh run skips Task 2A after verifying the corrected Task 1 test is green. On the current branch, this task is required by the pre-Task-3 physics audit: the earlier flag had no evidence outside the old plan and incorrectly treated a real coordinate reflection as an anti-linear phasor conversion. Existing project contracts and the user-provided POP/ZBF reference-frame validation require uniform `conj(Ex)` for every directly read raw ZBF.
+
+**Files:**
+- Modify: `sandbox/free_space_algorithm_identification/models.py`
+- Modify: `sandbox/free_space_algorithm_identification/biconic_case.py`
+- Modify: `tests/free_space_identification/test_models.py`
+
+- [ ] **Step 1: Write the failing regression before changing the models**
+
+Change the registry test so that `SurfaceConvention` contains only `surface`, `side`, and `axis_sign`; assert that no start or end convention exposes a `conjugate` attribute. Add an analytic regression showing that a real-coordinate pullback commutes with complex conjugation but is not itself conjugation for a nontrivial complex field.
+
+- [ ] **Step 2: Run the focused test and record RED**
+
+```powershell
+python -m pytest tests/free_space_identification/test_models.py -q
+```
+
+Expected on the current `aec1215` execution branch: the new contract test fails because the existing dataclass still exposes the invalid surface-specific flag. Expected on a fresh execution of the amended Task 1: the test is already green, no migration edit or extra commit is made, and execution proceeds to Task 3.
+
+- [ ] **Step 3: Remove the surface-specific flag and update the registry**
+
+`SurfaceConvention` must contain only the physical side and local-axis sign. Construct S7/S8 with `axis_sign=-1` and S12/S13/S14 with `axis_sign=+1`. Do not add another per-surface phasor switch. Task 3 will perform the single global conversion `reference_relative = np.conj(point_payload)`.
+
+- [ ] **Step 4: Run focused and accumulated diagnostic tests**
+
+```powershell
+python -m pytest tests/free_space_identification/test_models.py tests/free_space_identification/test_zbf_binary.py -q
+python -m pytest tests/test_zbf_io.py tests/test_zbf_source.py -k "not reference_phase_uses_spherical_header_metadata" -W ignore::DeprecationWarning -q
+```
+
+Expected: all focused tests pass; the known stale legacy test remains the only deselection.
+
+- [ ] **Step 5: Commit Task 2A**
+
+```powershell
+git add -f sandbox/free_space_algorithm_identification/models.py sandbox/free_space_algorithm_identification/biconic_case.py tests/free_space_identification/test_models.py
+git commit -m "fix: make raw ZBF conjugation a global contract"
+```
+
 ### Task 3: Physical-field, coordinate, reference-phase, and pilot-state contract
 
 **Files:**
@@ -482,7 +525,7 @@ git commit -m "feat: add lossless ZBF diagnostic codec"
 
 **Interfaces:**
 - Consumes: `LosslessZbf`, `SegmentSpec`, `UniformGrid2D`, and `PointField2D`.
-- Produces: `PilotState`, `MappedZbfField`, `zbf_payload_to_point_values()`, `point_values_to_zbf_payload()`, `pilot_from_zbf()`, `quadratic_reference_phase()`, `spherical_reference_phase()`, `physical_field_from_zbf()`, `load_segment_geometry()`, and `validate_parallel_segment()`.
+- Produces: `PilotState`, `MappedZbfField`, `ReportNumber`, `SegmentGeometry`, `RawGridEvidence`, `ConventionValidation`, `zbf_payload_to_point_values()`, `point_values_to_zbf_payload()`, `pilot_from_zbf()`, `quadratic_reference_phase()`, `spherical_reference_phase()`, `physical_field_from_zbf()`, `parse_native_intermediate_trace()`, `load_segment_geometry()`, `validate_parallel_segment()`, `validate_raw_grid_contract()`, and `validate_convention_validation()`.
 
 - [ ] **Step 1: Write failing tests for the exact Q/Phi formulas and fixed surface mappings**
 
@@ -502,7 +545,7 @@ def test_reference_uses_signed_waist_distance_not_gaussian_curvature():
 
 
 def test_plane_reference_is_zero_inside_rayleigh_range():
-    pilot = PilotState(zeta_mm=-0.015, rayleigh_mm=0.761, waist_mm=0.0508, inside=True)
+    pilot = PilotState(zeta_mm=-0.015, rayleigh_mm=0.761, waist_mm=0.0508)
     grid = UniformGrid2D.centered(nx=8, ny=8, dx_mm=0.01, dy_mm=0.01)
     phases = reference_phases(grid, pilot, wavelength_vacuum_mm=0.01064,
                               refractive_index=1.0)
@@ -512,9 +555,11 @@ def test_plane_reference_is_zero_inside_rayleigh_range():
 
 def test_common_physical_mapping_is_fixed_by_surface_registry():
     beam = make_small_unpolarized_lossless_zbf()
-    convention = SurfaceConvention(7, "after", -1, False)
+    convention = SurfaceConvention(7, "after", -1)
     mapped = physical_field_from_zbf(
-        beam, convention=convention, sample_value_convention="point_value")
+        beam, convention=convention,
+        convention_validation=make_in_memory_authoritative_validation_fixture(),
+        sample_value_convention="point_value")
     grid = UniformGrid2D.centered(nx=beam.header.nx, ny=beam.header.ny,
                                  dx_mm=beam.header.dx, dy_mm=beam.header.dy)
     x, y = np.meshgrid(grid.x_mm, grid.y_mm)
@@ -523,12 +568,14 @@ def test_common_physical_mapping_is_fixed_by_surface_registry():
                     beam.header.wavelength_vacuum_mm) * (
         np.sqrt(zeta*zeta+x*x+y*y)-abs(zeta)
     )
-    expected = beam.ex * np.exp(1j * expected_phi)
+    expected = np.conj(beam.ex) * np.exp(1j * expected_phi)
     np.testing.assert_allclose(mapped.physical.values, expected)
 ```
 
 Define `make_small_unpolarized_lossless_zbf()` locally in `test_field_contract.py`; construct its raw header independently rather than round-tripping through `physical_field_from_zbf()`.
-Also add `test_point_and_cell_payload_conversions_have_the_expected_area_factor` and `test_cell_payload_roundtrip_recovers_the_same_point_field`.
+Also add `test_point_and_cell_payload_conversions_have_the_expected_area_factor`, `test_cell_payload_roundtrip_recovers_the_same_point_field`, and parameterized raw-ZBF physical-field oracles covering all five registered surfaces, both axis signs, positive/negative `zeta`, inside/outside/boundary Rayleigh states, and nontrivial complex payloads. Every raw-ZBF oracle uses `conj(Ex)`; no surface-specific switch exists.
+
+Add fail-closed raw-grid evidence tests. A valid even grid must satisfy `MinX=-(Nx/2)Dx`, `MinY=-(Ny/2)Dy`, `X(Nx/2)=Y(Ny/2)=0`, `X(i)=MinX+iDx`, `Y(j)=MinY+jDy`, and `Z(ix,iy)=Values[ix,iy]`. Reject the half-step-shifted ZOSPy DataFrame labels. The API array order is `[x,y]`; conversion to the package/ZBF `[y,x]` order is one explicit transpose.
 
 - [ ] **Step 2: Run the contract tests and verify failure**
 
@@ -548,7 +595,16 @@ class PilotState:
     zeta_mm: float
     rayleigh_mm: float
     waist_mm: float
-    inside: bool
+
+    def __post_init__(self):
+        if not np.all(np.isfinite([self.zeta_mm, self.rayleigh_mm, self.waist_mm])):
+            raise ValueError("pilot values must be finite")
+        if self.rayleigh_mm <= 0.0 or self.waist_mm <= 0.0:
+            raise ValueError("pilot Rayleigh distance and waist must be positive")
+
+    @property
+    def inside(self) -> bool:
+        return abs(self.zeta_mm) < self.rayleigh_mm
 
 
 @dataclass(frozen=True)
@@ -564,11 +620,14 @@ class MappedZbfField:
     references: ReferencePhases
     pilot: PilotState
     source_sha256: str
+    convention_evidence_sha256: str
     sample_value_convention: SampleValueConvention
 
 
 def pilot_from_zbf(beam: LosslessZbf, convention: SurfaceConvention) -> PilotState:
     h = beam.header
+    if h.units != 0:
+        raise ValueError("biconic physical contract requires ZBF millimetre units")
     if not np.allclose([h.zx, h.rx, h.wx], [h.zy, h.ry, h.wy],
                        rtol=1e-10, atol=1e-12):
         raise ValueError("axisymmetric reference contract is not satisfied")
@@ -577,8 +636,7 @@ def pilot_from_zbf(beam: LosslessZbf, convention: SurfaceConvention) -> PilotSta
     if not np.isclose(h.rx, expected_rayleigh, rtol=1e-8, atol=1e-12):
         raise ValueError("ZBF Rayleigh distance and waist are inconsistent")
     zeta = convention.axis_sign * h.zx
-    inside = abs(zeta) < abs(h.rx)
-    return PilotState(zeta_mm=zeta, rayleigh_mm=h.rx, waist_mm=h.wx, inside=inside)
+    return PilotState(zeta_mm=zeta, rayleigh_mm=h.rx, waist_mm=h.wx)
 
 
 def quadratic_reference_phase(grid, *, wavelength_vacuum_mm, refractive_index,
@@ -634,7 +692,10 @@ def point_values_to_zbf_payload(values, grid, *, sample_value_convention):
     raise ValueError("unknown ZBF sample-value convention")
 
 
-def physical_field_from_zbf(beam, *, convention, sample_value_convention):
+def physical_field_from_zbf(
+    beam, *, convention, convention_validation, sample_value_convention
+):
+    validate_convention_validation(convention_validation, surface=convention.surface)
     if beam.header.is_polarized:
         raise NotImplementedError("biconic scalar ranking requires an approved Jones-field extension")
     grid = UniformGrid2D.centered(nx=beam.header.nx, ny=beam.header.ny,
@@ -646,39 +707,44 @@ def physical_field_from_zbf(beam, *, convention, sample_value_convention):
     )
     point_payload = zbf_payload_to_point_values(
         beam.ex, grid, sample_value_convention=sample_value_convention)
-    reference_relative = np.conj(point_payload) if convention.conjugate else point_payload
+    reference_relative = np.conj(point_payload)
     physical = PointField2D(reference_relative * np.exp(1j*refs.phi_rad), grid)
     return MappedZbfField(physical=physical, reference_relative=reference_relative,
                           references=refs, pilot=pilot,
                           source_sha256=beam.source_sha256,
+                          convention_evidence_sha256=convention_validation.evidence_sha256,
                           sample_value_convention=sample_value_convention)
 ```
 
 The reference arrays and stored reference-relative array are copied and marked read-only in their dataclass post-initializers.
 
-`geometry.py` must call `parse_baseline_intermediate_trace_file()` from `sandbox/biconic_focus_baseline_utils.py`, validate that each segment's transverse basis change is the identity to `1e-9`, and take physical distance from the report/model geometry rather than a ZBF pilot-position difference. Native report distances remain signed in each local ZBF axis: validate `axis_sign * report_signed_distance == model_distance` and independently validate `report_signed_distance == raw_z_end - raw_z_start`. In particular, S7→S8 is reported as approximately `-368.6 mm` before applying `axis_sign=-1`.
+`geometry.py` must contain its own minimal, tracked parser for the native chief-ray and surface-transfer blocks. It may not import the ignored and untracked `sandbox/biconic_focus_baseline_utils.py`. Preserve every parsed distance token as `ReportNumber(text, value, last_digit_resolution)` so comparison tolerance follows the report's printed precision rather than an arbitrary `isclose` default. Define immutable `SegmentGeometry` records and validate that each segment's transverse basis change is the identity to `1e-9`, that the report's inside/outside states match `SegmentSpec.branch`, and that the physical propagation distance comes from model/report geometry rather than a ZBF pilot-position difference.
 
-- [ ] **Step 4: Add the real-file static coordinate-center gate**
+Native report distances remain signed in each local ZBF axis. Validate `axis_sign * report_signed_distance == model_distance` and independently validate `report_signed_distance == raw_z_end - raw_z_start`, using the report token's half-last-digit interval plus a small floating parse allowance. Persist all three quantities. In particular, S7→S8 has raw pilot delta about `-368.600001354865 mm`, while the report prints approximately `-368.6 mm`; propagation still uses exactly `368.600000 mm`.
 
-The test must be skipped unless both environment variables are set:
+- [ ] **Step 4: Add static evidence and a fail-closed convention-validation contract**
+
+The historical-fixture portion is skipped unless both environment variables are set:
 
 ```powershell
 $env:BTS_FREE_SPACE_ZBF_DIR='D:\BTS\.worktrees\residual-phase\sandbox\Zemax_baseline'
 $env:BTS_FREE_SPACE_REPORT='D:\BTS\.worktrees\residual-phase\sandbox\Zemax_baseline\biconic_focus_test.txt'
 ```
 
-It must assert the mapped pilot values from the design specification and reject the half-pixel-center alternative rather than selecting whichever gives a smaller endpoint error.
+It must assert the mapped pilot values and signed geometry from the design specification. The native report proves surface side, orientation, signed distance, and OO/OI/IO classification; it does not by itself prove raw complex phasor conversion or the array origin, and the analytic `biconic_phase.txt` must not be mislabeled as a five-surface native phase grid.
 
-It must also use the read-only native phase/coordinate text available in the baseline directory to independently assert the `after` side, reflection parity, axis sign, and conjugation choice for S7, S8, S12, S13, and S14. Expected signs come from the text coordinates and surface orientation records, not from whichever convention minimizes an endpoint residual. If the optional phase text is absent, skip only this static evidence test and block live preflight from declaring the convention validated.
+Add immutable `RawGridEvidence` and `ConventionValidation` types. `RawGridEvidence` stores the raw ZOS-API `Nx/Ny/MinX/MinY/Dx/Dy`, selected `X/Y/Z/Values` checkpoints, the exact raw-grid array hash, input/output ZBF hashes, model/CFG hashes, run id, evidence origin `synthetic_test|live_zosapi`, and the explicit API `[x,y]` to package `[y,x]` transpose. `validate_raw_grid_contract()` enforces sample-at-zero and rejects half-step labels. `ConventionValidation` records the five `after` sides, axis signs, uniform raw-ZBF `conj(Ex)` phasor contract, raw-grid evidence hashes, report/model/CFG hashes, phase unit, origin, `authoritative` flag, and validation status. Its `evidence_sha256` is the canonical JSON hash of all those fields, not a caller-supplied free string.
 
-The registered result is deliberately surface-specific: S7/S8 use no additional conjugation after their odd-reflection common-frame mapping, while S12/S13/S14 use conjugation after the even-reflection mapping. A generic existing reader that conjugates every raw ZBF is not evidence to override this parity result; only the independent static/live coordinate gate can invalidate it, in which case execution stops.
+`validate_convention_validation()` is fail-closed: missing raw-grid evidence, hash mismatch, a half-step center, a per-surface conjugation switch, a branch/axis mismatch, unknown phase unit, or `authoritative=False` raises and prevents formal physical-field derivation. Unit tests may build an in-memory self-consistent authoritative fixture to exercise the mapping function, but that object has no `ArtifactRef` and cannot enter the receipt-driven pipeline. Any serialized synthetic or smoke receipt has `authoritative=false`; Task 14 rejects it before deserialization into a formal `ConventionValidation`. The static historical-fixture test never emits a receipt, so a pytest skip cannot unlock a live run.
+
+The sample-at-zero rule is independently fixed by the installed OpticStudio manual's `IAR_DataGrid` and ZBF format sections and by the existing raw S4/S6 DataGrid evidence. The formal live run must nevertheless capture raw DataGrid evidence directly through ZOS-API before any main derivation; it may not use `zospy.analyses.base.AnalysisResult.get_data_grid()` or its internal `zospy.utils.zputils.unpack_datagrid()` DataFrame path. Task 12 creates the live evidence and Task 14 requires its immutable receipt before the fresh continuous field can unlock candidate inputs.
 
 - [ ] **Step 5: Run contract, geometry, and existing reference-frame tests**
 
 Run:
 
 ```powershell
-python -m pytest tests/free_space_identification/test_field_contract.py tests/free_space_identification/test_geometry.py tests/test_zbf_source.py -q
+python -m pytest tests/free_space_identification/test_field_contract.py tests/free_space_identification/test_geometry.py tests/free_space_identification/test_static_fixtures.py tests/test_zbf_source.py -q
 ```
 
 Expected: all tests pass.
@@ -1726,7 +1792,7 @@ git commit -m "feat: validate native POP reports"
 
 **Interfaces:**
 - Consumes: the immutable run layout, copied ZMX/native CFG, explicit segment requests, and exact input ZBF artifact references.
-- Produces: `NativeContinuousRequest`, `SegmentPopRequest`, `CapturedPopRun`, `capture_native_continuous()`, `capture_segment_run()`, and `expected_output_names()`.
+- Produces: `NativeContinuousRequest`, `SegmentPopRequest`, `RawDataGridSnapshot`, `CoordinatePhasorProbe`, `CapturedPopRun`, `capture_raw_data_grid()`, `capture_coordinate_phasor_probe()`, `capture_native_continuous()`, `capture_segment_run()`, and `expected_output_names()`.
 
 - [ ] **Step 1: Write failing fake-ZOS call-order and stale-output tests**
 
@@ -1747,6 +1813,11 @@ test_input_artifact_to_popdir_copy_hashes_match
 test_popdir_output_to_run_copy_hashes_match
 test_application_log_is_read_only_while_connection_is_alive
 test_staged_input_cleanup_failure_cannot_prevent_close_or_disconnect
+test_raw_datagrid_capture_never_calls_analysisresult_get_data_grid_or_unpack_datagrid
+test_raw_datagrid_uses_sample_at_zero_and_api_xy_order
+test_raw_datagrid_values_are_transposed_exactly_once_for_zbf_yx_order
+test_half_step_dataframe_labels_fail_the_coordinate_gate
+test_coordinate_phasor_probe_precedes_native_continuous_capture
 ```
 
 - [ ] **Step 2: Run runner tests and verify import failure**
@@ -1806,17 +1877,39 @@ zos.disconnect()
 
 On error, preserve the primary exception, attempt Close, and always disconnect. The returned dataclass contains only immutable paths, hashes, parsed values, and messages.
 
+Never call `AnalysisResult.get_data_grid()` or `zospy.utils.zputils.unpack_datagrid()` for physical coordinates. While the analysis is sustained, read `analysis.Results.DataGrids[k]` directly and persist `Nx/Ny/MinX/MinY/Dx/Dy`, `X(0)/X(Nx//2)/X(Nx-1)`, `Y(0)/Y(Ny//2)/Y(Ny-1)`, selected `Z(ix,iy)` and `Values[ix,iy]` checkpoints, and the raw `Values` array. Validate the official `X=MinX+iDx`, `Y=MinY+jDy`, sample-at-zero center, and `Z=Values` relations before converting API `[x,y]` to package/ZBF `[y,x]` with exactly one transpose.
+
 Use nested cleanup in this fixed order: finish/abort capture, close `wrapper.analysis` or raw `live` exactly once, disconnect, and only then remove the exact staged input file created by this run after resolving and proving it lies inside `POPDir`. A staged-file deletion failure cannot prevent Close/disconnect and cannot obscure an earlier primary exception; record it as a separate cleanup error. Never enumerate or clean unrelated POP files. The run-local input artifact remains immutable.
 
-- [ ] **Step 6: Add identity-output fallback support without weakening side validation**
+- [ ] **Step 6: Add the live coordinate and raw-phasor representation probe**
+
+Before the fresh native continuous run can unlock any candidate input, run a small Start=End File-beam probe in the copied model using a planar-reference ZBF with a predeclared, band-limited, non-centrosymmetric complex pattern. Include several known phase plateaus/slopes below `0.4 rad` so radians and waves differ well beyond the numerical tolerance without phase wrapping. Read raw `EXPhase` DataGrid values and the saved output ZBF from the same sustained analysis. The probe must establish, without endpoint propagation fitting:
+
+```text
+raw DataGrid sample-at-zero coordinates
+raw API Values[x,y] -> ZBF Ex[y,x] by one transpose
+no X/Y exchange or additional left/right/up/down flip
+the raw phase unit from setting/document readback; if unavailable, radians versus waves
+must be classified by a predeclared 3u/5u known-input test or remain undecided
+raw DataGrid EXPhase follows arg(raw ZBF Ex) in Zemax's own phasor convention,
+up to one phase piston and the predeclared numerical tolerance
+```
+
+Convert the declared raw phase unit to radians and compare periodic unit phasors; do not unwrap or fit spatial terms. This probe verifies the API/ZBF representation relation; the conversion to the common external `exp(-i omega t)` convention remains the fixed analytic `conj(Ex)` contract and is not selected by this residual.
+
+`CoordinatePhasorProbe.to_raw_grid_evidence()` binds the raw snapshot to the exact model, CFG, input ZBF, output ZBF, run id, and raw-grid array hashes. Only the connected live path may set origin `live_zosapi`. `CoordinatePhasorProbe.to_convention_validation()` combines that evidence with the Task 3 geometry/phasor contract and produces canonical JSON plus `evidence_sha256`. Task 10 writes both the evidence artifact and a stage receipt whose `ArtifactRef` hashes match that canonical JSON. Fakes and optional smoke fixtures always produce `authoritative=false`.
+
+Any missing raw field, half-step center, unknown phase unit, axis-order ambiguity, hash mismatch, or phase mismatch fails closed. The probe must use a unique prefix, must not write into the historical baseline directory, and must not use the high-level DataFrame coordinates.
+
+- [ ] **Step 7: Add identity-output fallback support without weakening side validation**
 
 Request Start=End first. If no usable base output is produced, run a controlled all-surfaces capture and select only the exact numbered start-surface output after report/settings evidence proves it is on the same physical side as the input. Record the fallback path in the receipt; do not silently switch.
 
-- [ ] **Step 7: Add a gated live smoke test**
+- [ ] **Step 8: Add a gated live smoke test**
 
-`test_zemax_live.py` is skipped only when `BTS_RUN_ZEMAX_BENCHMARK` is not `1` or `BTS_FREE_SPACE_BASELINE_DIR` was not supplied. The test resolves and copies the model/CFG from that explicit read-only directory into a temporary run. Once explicitly enabled, connection, license, model-load, capture, and validation failures fail the test rather than becoming skips. It captures one small identity case and checks settings/report/ZBF/header/hash closure. It may never write into the historical baseline directory.
+`test_zemax_live.py` is skipped only when `BTS_RUN_ZEMAX_BENCHMARK` is not `1` or `BTS_FREE_SPACE_BASELINE_DIR` was not supplied. The test resolves and copies the model/CFG from that explicit read-only directory into a temporary run. Once explicitly enabled, connection, license, model-load, coordinate-phasor probe, capture, and validation failures fail the test rather than becoming skips. It captures the small asymmetric identity probe and checks raw DataGrid/settings/report/ZBF/header/hash closure. It may never write into the historical baseline directory.
 
-- [ ] **Step 8: Run offline runner tests**
+- [ ] **Step 9: Run offline runner tests**
 
 ```powershell
 python -m pytest tests/free_space_identification/test_zos_runner.py -q
@@ -1824,7 +1917,7 @@ python -m pytest tests/free_space_identification/test_zos_runner.py -q
 
 Expected: all fake-ZOS failure-order tests pass; no OpticStudio process is required.
 
-- [ ] **Step 9: Commit Task 12**
+- [ ] **Step 10: Commit Task 12**
 
 ```powershell
 git add sandbox/free_space_algorithm_identification/biconic_case.py sandbox/free_space_algorithm_identification/zos_runner.py tests/free_space_identification/test_zos_runner.py tests/free_space_identification/test_zemax_live.py
@@ -1950,6 +2043,10 @@ git commit -m "feat: gate Zemax input identity"
 ```text
 test_preflight_failure_never_calls_zemax
 test_manifest_is_frozen_before_any_live_backend_call
+test_coordinate_phasor_failure_blocks_native_capture_and_all_derivations
+test_coordinate_phasor_receipt_rejects_half_step_dataframe_labels
+test_synthetic_or_skipped_coordinate_evidence_cannot_unlock_live_pipeline
+test_convention_validation_hashes_bind_model_cfg_input_output_and_raw_grid
 test_actual_inputs_resolve_to_fresh_continuous_artifacts
 test_sample_value_convention_is_frozen_before_main_derivation
 test_every_case_runs_identity_before_propagation
@@ -1988,6 +2085,7 @@ The only valid order is:
 ```text
 offline_preflight
 → freeze_manifest
+→ coordinate_phasor_probe
 → fresh_native_continuous
 → sample_value_convention_probe
 → resolve_intervention_parameters_from_fresh_start_only
@@ -2008,7 +2106,7 @@ offline_preflight
 → final_dimensioned_uncertainty_and_3u_5u_decision
 ```
 
-The historical baseline ZBF/report/CFG files are read-only preflight fixtures. After `fresh_native_continuous`, every S7/S12/S13 native restart source must be an `ArtifactRef` produced by that fresh case. `derive_available_seed_inputs` may derive S7/S12 refinements and native-S13 window controls, but it may not fabricate chained S13 hashes. Only after S12→S13 `ZO1/ZO2` propagation, copy/hash/header validation, and passed receipts may `validate_and_register_chained_s13_inputs` create those `ArtifactRef` records and unlock S13→S14 high-resolution identity runs.
+The historical baseline ZBF/report/CFG files are read-only preflight fixtures. `coordinate_phasor_probe` consumes only the run-local model/CFG copies and its predeclared asymmetric planar-reference input; it writes the immutable `ConventionValidation` artifact and stage receipt required by every later raw-ZBF physical-field mapping. Before accepting it, the pipeline verifies `authoritative=true`, origin `live_zosapi`, stage name, run id, OpticStudio/ZOS versions, and the `ArtifactRef` hashes for the model, CFG, input ZBF, output ZBF, raw-grid array, canonical validation JSON, and receipt. A synthetic/smoke artifact, a skipped static test, or a free in-memory object cannot satisfy this dependency. A missing raw DataGrid, half-step-shifted coordinate label, unknown phase unit, axis-order ambiguity, phasor mismatch, or hash mismatch stops before `fresh_native_continuous`. After `fresh_native_continuous`, every S7/S12/S13 native restart source must be an `ArtifactRef` produced by that fresh case. `derive_available_seed_inputs` may derive S7/S12 refinements and native-S13 window controls, but it may not fabricate chained S13 hashes. Only after S12→S13 `ZO1/ZO2` propagation, copy/hash/header validation, and passed receipts may `validate_and_register_chained_s13_inputs` create those `ArtifactRef` records and unlock S13→S14 high-resolution identity runs.
 
 For continuous/restart closure compare `c_entry * U_t,restart` against `U_t,continuous`; never apply `c_entry` to the continuous endpoint. Before high-sampling runs, freeze dedicated `Omega_-2/-3/-6` regions from the continuous endpoint alone and use the same complex-distance, phase, intensity, power, and separate 3u/5u formulas as candidate comparisons. This dedicated control ROI avoids depending on the later high-sampling candidate ROI. If start identity passes but this calibrated endpoint comparison is excluded, set `blocked_hidden_state`; if it lies in any 3u–5u gray zone, set `undecided_hidden_state`. Both stop continuous-kernel attribution with the interpretation “输出依赖是否完全由物理总复振幅确定尚未闭合”. Do not infer the continuous-run kernel from restart results. If multiple candidates remain inside the later candidate gray zone, set `undecided`; never promote the smallest error.
 
