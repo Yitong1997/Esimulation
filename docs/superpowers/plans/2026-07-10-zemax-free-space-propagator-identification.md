@@ -1484,23 +1484,22 @@ git commit -m "feat: add convergent Helmholtz baseline"
 - Create: `tests/free_space_identification/test_rayleigh_sommerfeld.py`
 
 **Interfaces:**
-- Consumes: the identical finely sampled physical input used by ASM and 9–17 predeclared target points.
-- Produces: `RsPointResult`, `RsDiagnostics`, `rs1_kernel()`, `select_rs_points()`, and `propagate_rs1_points()`.
+- Consumes: the identical owned finely sampled physical input/evidence contract used by `H_full` and exactly nine target points frozen from converged Zemax geometry before any candidate evaluation.
+- Produces: physical-total-field `RsPointResult`, explicitly scoped `RsDiagnostics`, a hashed `FrozenRsPointSet`, `RsAllocationPlan`, `rs1_kernel()`, `select_rs_points()`, and `propagate_rs1_points()`.
 
 - [ ] **Step 1: Write failing strict-kernel and blocked-sum tests**
 
+Keep at most five high-information test items:
+
 ```text
-test_axial_removed_kernel_times_exp_ikd_equals_full_kernel
-test_on_axis_kernel_has_the_rs1_sign_and_far_field_limit
-test_stable_r_minus_d_matches_high_precision_value
-test_blocked_sum_matches_explicit_small_double_sum
-test_rectangular_grid_uses_dx_dy_and_cell_center_weights
-test_trapezoid_edge_rule_is_reported_as_quadrature_sensitivity
-test_smooth_gaussian_converges_under_delta_halving
-test_sparse_result_reports_only_point_set_errors
+test_rs1_convention_carrier_stability_and_positive_distance
+test_rectangular_half_open_rule_matches_independent_double_sum
+test_hierarchical_compensation_is_block_size_invariant
+test_gaussian_refinement_closes_to_unmasked_hfull_without_fit
+test_frozen_zemax_point_provenance_and_point_only_scope
 ```
 
-Use `mpmath` at 80 decimal digits for the independent `R-d` and kernel-phase cancellation oracles; do not use `np.longdouble` on Windows.
+Use `mpmath` at 80 decimal digits for the independent `R-d` and kernel-phase cancellation oracles; do not use `np.longdouble` on Windows. The second item proves that first/last half weights on the existing half-open nodes are a changed-window sensitivity, not a composite-trapezoid rule. The fourth compares restored physical total fields from RS-I and unmasked `H_full` with no fitted piston. The fifth proves that candidate fields cannot enter point selection.
 
 - [ ] **Step 2: Run the tests and verify import failure**
 
@@ -1523,26 +1522,65 @@ R=\sqrt{d^2+\Delta x^2+\Delta y^2},
 h'_{\rm RS1}=\frac{d(1-ikR)}{2\pi R^3}\exp[i k(R-d)].
 \]
 
-The non-removed form is `h' exp(ikd)`. Include exactly one source-plane obliquity factor `d/R`; do not multiply a second target-plane factor and do not reverse `1-ikR` to manufacture a phase match.
+The carrier-removed point result is
+
+\[
+\bar U_{\rm RS}(P_m)=\Delta x\Delta y
+\sum_{p,q}U_s(Q_{pq})h'_{\rm RS1}(P_m-Q_{pq}).
+\]
+
+Reuse Task 7's same propagation-evidence contract and axial phase reduction to construct the public physical total field
+
+\[
+U_{\rm RS}(P_m)=\exp[i\,\operatorname{remainder}(kd,2\pi)]
+\bar U_{\rm RS}(P_m).
+\]
+
+`RsPointResult` may expose the carrier-removed values only as explicitly labeled diagnostics; its public field values must contain the restored physical total phase. Include exactly one source-plane obliquity factor `d/R`; do not multiply a second target-plane factor and do not reverse `1-ikR` to manufacture a phase match. This kernel never uses `Q`, `prop_qphase`, or the target ZBF reference phase.
+
+Obtain finite positive `d` only from `SegmentSpec.model_distance_mm`, giving `368.6`, `608.6`, and `2.0` mm. Reject `d <= 0`; neither a signed report-local distance nor a pilot-position difference may enter the kernel. Bind `k=2*pi*n/wavelength_vacuum_mm` to the already verified uniform-medium start/end evidence rather than free floating-point arguments.
 
 - [ ] **Step 4: Implement complex128 sparse quadrature with bounded memory**
 
-The ZBF/FFT samples represent the same half-open cell-centered grid used by the continuous Fourier sum, so the canonical RS Riemann quadrature uses uniform cell weights and physical `dx*dy`. Run a second composite-trapezoid edge rule as quadrature sensitivity and include its spread in the sparse-point uncertainty; do not silently mix the two conventions. Use row-blocked source evaluation and pairwise or compensated complex summation. Never allocate an array shaped `n_target × ny × nx`. Use the model distances `368.600000`, `608.600000`, and `2.000000` mm.
+The source nodes are the same sample-at-zero half-open grid used by the continuous Fourier sum,
 
-Select 9–17 points from the predeclared high-intensity ROI: center, symmetric X/Y axis points, and diagonal points whose reference intensity remains above the fixed threshold. Persist coordinates before evaluating either ASM or RS.
+\[
+x_p=(p-N_x/2)\Delta x,\qquad y_q=(q-N_y/2)\Delta y,
+\]
+
+not a symmetric cell-centered closed grid. The canonical rule is therefore the **half-open equal-weight node quadrature** with every source value multiplied exactly once by `dx*dy`. A run that halves weights on the existing first/last rows or columns changes the represented boundary/window; label its spread `u_boundary` and never call it composite trapezoid or pure quadrature error. A true closed trapezoid would require explicit `+L/2` endpoints and a separately frozen zero-extension/continuousization rule, so it is not part of the canonical run.
+
+Use row-blocked evaluation and a hierarchical compensated complex sum: real and imaginary parts are accumulated with Neumaier/Kahan compensation within fixed small source fragments, then the fragment/block sums are compensated again across all row blocks. Maintain a nested `B/2` accumulator from the same evaluated kernel blocks while computing the canonical block size `B`; do not recompute exponentials. Persist complex relative difference, phase difference, and `sum(abs(z_j))/abs(sum(z_j))` as a cancellation-condition proxy. The `B` versus `B/2` phase difference must be below one tenth of the RS-to-`H_full` phase budget. Never allocate `n_target × ny × nx`.
+
+Before accepting a run, build an allocation plan from metadata only. Count the non-copying source field, point-by-row-block `R/kernel/product` temporaries, two compensated accumulators, boundary sensitivity, and output. Require Windows available memory at least `1.3 * peak` before invoking a fine-field builder. Fix the target count at nine and run a small result-independent kernel-block timing benchmark before the formal matrix. Persist the exact planned source-point/target-point kernel-evaluation count, warmed-up measured evaluations per second, predicted seconds, and the manifest's fixed maximum of `21600 s` per segment matrix. If the estimate exceeds that bound, write a failed receipt; a new run manifest may change the implementation/resource plan but may not silently reduce the nine points or convergence levels.
+
+Freeze exactly nine points from the converged Zemax endpoint before evaluating any `H_full`, `H_BL`, RS, Fresnel, or PROPER field. `select_rs_points()` may read only the endpoint ZBF, its convergence receipt, frozen primary ROI, and grid geometry, and implements this parameter-free index rule:
+
+1. set the center `(cy,cx)` to the global endpoint-intensity maximum, breaking ties by the lowest C-order flat index, and require it to lie in the primary ROI;
+2. enumerate every positive integer radius `r` for which the eight indices `(cy,cx±r)`, `(cy±r,cx)`, and `(cy±r,cx±r)` are in bounds and all lie in the primary ROI;
+3. sort the valid radii and choose their lower median `valid[(len(valid)-1)//2]`; no coordinate rounding is performed because the rule is entirely in integer index space;
+4. order the saved points as center, `-X,+X,-Y,+Y`, then `(-X,-Y),(+X,-Y),(-X,+Y),(+X,+Y)` using package `[y,x]` indices, and obtain physical coordinates only by exact lookup in the frozen grid axes.
+
+If no positive valid radius exists, fail; non-symmetric ROIs are not repaired or recentered. Persist endpoint-ZBF hash, convergence-receipt hash, ROI-mask hash, center tie rule, all valid radii, chosen radius, ordered integer indices, physical coordinates, threshold, algorithm id `peak_square_lower_median_v1`, canonical JSON, and point-set SHA-256. The compact unit test must use a hand-built ROI and hand-written expected indices; it may not call the selector to construct its oracle. Never inspect propagation results to delete or replace a point.
 
 - [ ] **Step 5: Add the formal three-segment point-set convergence gates**
 
-Use the identical finest-input definitions as ASM. For S7→S8 run L=256 mm at N=10240 and 12288. For S12→S13 run L=256 mm at N=8192, 10240, and 12288. For S13→S14 run L=4.234 mm at N=4096 and 8192. Use the same predeclared center/axis/diagonal point coordinates within each segment's fixed ROI and require for every segment:
+Use the same three-level step sequences and identical continuous physical inputs as Task 7: S7→S8 and S12→S13 use `N=8192,10240,12288` at `L=256 mm`; S13→S14 uses `N=2048,4096,8192` at `L=4.234 mm`. The lowest level is only a decreasing-trend check; the highest pair defines the point-set component. Use the same frozen nine coordinates at every level and require for every segment:
 
 ```text
-highest two RS levels point-set phase RMS       <= 5e-6 wave
-finest RS versus finest ASM point-set phase RMS <= 5e-6 wave
-finest RS versus finest ASM max phase           <= 5e-6 wave
-max_m abs(|U_RS|/|U_ASM|-1)                     <= 1e-4
+highest two RS levels point-set phase RMS            <= 5e-6 wave
+highest two RS levels raw complex relative L2        <= 1e-4
+finest RS versus finest H_full point-set phase RMS   <= 5e-6 wave
+finest RS versus finest H_full max phase             <= 5e-6 wave
+finest RS versus finest H_full raw complex relative L2 <= 1e-4
+max_m abs(|U_RS|/|U_H_full|-1)                       <= 1e-4
+B versus B/2 summation phase difference              <= 5e-7 wave
+max_m abs(U_B/U_B2-1)                                <= 1e-5
 ```
 
-Because ASM and RS already use the same axial-carrier removal, save the raw complex ratio at every point and apply no fitted point-set piston in the hard kernel/sign gate. A one-piston diagnostic may be reported separately but cannot replace the raw gate. Point RMS is equal-weight over the predeclared high-intensity points; the amplitude limit is the maximum pointwise relative magnitude error shown above. Apply the same amplitude definition to highest-two-level RS convergence.
+For each of raw complex relative L2, no-piston point-set phase RMS, maximum absolute phase, and maximum relative amplitude, additionally require `delta_mid_high < delta_low_mid`. A non-decreasing quantity stops the convergence label even when the highest pair meets its absolute gate. Every ratio denominator must be finite and nonzero; otherwise fail.
+
+Compare the restored physical total fields using the raw ratio `U_RS/U_H_full` at every point. Apply no fitted point-set piston, normalization, shift, tilt, defocus, or reference phase in the hard kernel/sign gate. A one-piston diagnostic may be reported separately but cannot replace the raw gate. Point RMS is equal-weight over the frozen points; the amplitude limit is the maximum pointwise relative magnitude error shown above. Apply the same amplitude definition to highest-two-level RS convergence. Report `RS-H_BL` and `H_full-H_BL` separately; neither can replace the RS-to-`H_full` gate.
 
 Call these values “稀疏 RS-I 点集误差”. They do not bound full-field `epsilon_E`, intensity, power, or unmeasured points, and they share the same input-continuousization uncertainty as ASM. If final classification depends on unsampled full-field structure, add a separately converged full-field RS convolution or enlarge the uncertainty and mark that evidence unverified. A segment that misses its RS matrix is explicitly `RS sparse unverified`; S12 evidence may not be extrapolated to S7 or S13.
 
