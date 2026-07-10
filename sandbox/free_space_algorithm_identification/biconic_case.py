@@ -3,11 +3,11 @@ from pathlib import Path
 from .models import SegmentSpec, SurfaceConvention
 
 
-S7 = SurfaceConvention(7, "after", -1, False)
-S8 = SurfaceConvention(8, "after", -1, False)
-S12 = SurfaceConvention(12, "after", 1, True)
-S13 = SurfaceConvention(13, "after", 1, True)
-S14 = SurfaceConvention(14, "after", 1, True)
+S7 = SurfaceConvention(7, "after", -1)
+S8 = SurfaceConvention(8, "after", -1)
+S12 = SurfaceConvention(12, "after", 1)
+S13 = SurfaceConvention(13, "after", 1)
+S14 = SurfaceConvention(14, "after", 1)
 
 BICONIC_SEGMENTS = (
     SegmentSpec(

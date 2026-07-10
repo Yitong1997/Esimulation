@@ -26,13 +26,36 @@ def test_even_grid_uses_the_prevalidated_sample_at_zero_convention() -> None:
         field.values.setflags(write=True)
 
 
-def test_segment_axis_and_phasor_conventions_are_fixed() -> None:
-    by_key = {s.key: s for s in BICONIC_SEGMENTS}
-    assert all(
-        s.start_convention.side == "after" and s.end_convention.side == "after"
-        for s in BICONIC_SEGMENTS
+def test_segment_side_and_axis_conventions_are_fixed_without_phasor_switch() -> None:
+    conventions = [
+        convention
+        for segment in BICONIC_SEGMENTS
+        for convention in (segment.start_convention, segment.end_convention)
+    ]
+    by_surface = {convention.surface: convention for convention in conventions}
+
+    assert {
+        surface: (convention.side, convention.axis_sign)
+        for surface, convention in by_surface.items()
+    } == {
+        7: ("after", -1),
+        8: ("after", -1),
+        12: ("after", 1),
+        13: ("after", 1),
+        14: ("after", 1),
+    }
+    assert all(not hasattr(convention, "conjugate") for convention in conventions)
+
+
+def test_real_coordinate_pullback_commutes_with_but_is_not_conjugation() -> None:
+    field = np.array(
+        [
+            [1.0 + 2.0j, -3.0 + 4.0j, 5.0 - 6.0j],
+            [7.0 - 8.0j, -9.0 - 10.0j, 11.0 + 12.0j],
+        ],
+        dtype=np.complex128,
     )
-    assert by_key["S07_S08"].start_convention.axis_sign == -1
-    assert by_key["S07_S08"].start_convention.conjugate is False
-    assert by_key["S12_S13"].start_convention.axis_sign == 1
-    assert by_key["S12_S13"].start_convention.conjugate is True
+
+    pulled_back = field[:, ::-1]
+    np.testing.assert_array_equal(np.conj(pulled_back), np.conj(field)[:, ::-1])
+    assert not np.array_equal(pulled_back, np.conj(field))

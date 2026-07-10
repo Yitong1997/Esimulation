@@ -107,7 +107,6 @@ class SurfaceConvention:
     surface: int
     side: Literal["after"]
     axis_sign: Literal[-1, 1]
-    conjugate: bool
 
 
 @dataclass(frozen=True)
