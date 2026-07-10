@@ -152,8 +152,16 @@ def forward_continuous_spectrum(
 
     if not isinstance(field, PointField2D):
         raise ValueError("field must be a PointField2D")
-    unshifted_fx = scipy.fft.fftfreq(field.grid.nx, field.grid.dx_mm)
-    unshifted_fy = scipy.fft.fftfreq(field.grid.ny, field.grid.dy_mm)
+    fx = _normalize_uniform_axis(
+        scipy.fft.fftshift(scipy.fft.fftfreq(field.grid.nx, field.grid.dx_mm)),
+        name="fx_cpm",
+    )
+    fy = _normalize_uniform_axis(
+        scipy.fft.fftshift(scipy.fft.fftfreq(field.grid.ny, field.grid.dy_mm)),
+        name="fy_cpm",
+    )
+    unshifted_fx = scipy.fft.ifftshift(fx)
+    unshifted_fy = scipy.fft.ifftshift(fy)
     origin_phase = np.exp(
         -2j
         * np.pi
@@ -165,9 +173,7 @@ def forward_continuous_spectrum(
     values = scipy.fft.fftshift(
         scipy.fft.fft2(field.values, workers=workers) * origin_phase
     ) * field.grid.pixel_area_mm2
-    fx = scipy.fft.fftshift(unshifted_fx)
-    fy = scipy.fft.fftshift(unshifted_fy)
-    return Spectrum2D(
+    return Spectrum2D._from_normalized(
         values=values,
         fx_cpm=fx,
         fy_cpm=fy,

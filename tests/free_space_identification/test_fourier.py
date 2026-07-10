@@ -204,6 +204,32 @@ def test_axes_batch_and_spectrum_contracts_reject_bad_inputs_and_freeze_arrays(
     np.testing.assert_array_equal(actual.fx_cpm, captured_inverse_axes[0])
     np.testing.assert_array_equal(actual.fy_cpm, captured_inverse_axes[1])
 
+    translated_grid = UniformGrid2D(
+        x_mm=1000.0 + np.arange(6) * 0.03125,
+        y_mm=-700.0 + np.arange(7) * 0.03125,
+    )
+    translated_field = PointField2D(
+        np.ones((translated_grid.ny, translated_grid.nx), dtype=np.complex128),
+        translated_grid,
+    )
+    captured_exponents: list[np.ndarray] = []
+    real_exp = np.exp
+
+    def capture_exp(exponent, *args, **kwargs):
+        captured_exponents.append(np.array(exponent, copy=True))
+        return real_exp(exponent, *args, **kwargs)
+
+    monkeypatch.setattr(fourier_module.np, "exp", capture_exp)
+    translated_spectrum = forward_continuous_spectrum(translated_field)
+    expected_exponent = -2j * np.pi * (
+        scipy.fft.ifftshift(translated_spectrum.fy_cpm)[:, np.newaxis]
+        * translated_grid.y_mm[0]
+        + scipy.fft.ifftshift(translated_spectrum.fx_cpm)[np.newaxis, :]
+        * translated_grid.x_mm[0]
+    )
+    assert len(captured_exponents) == 1
+    np.testing.assert_array_equal(captured_exponents[0], expected_exponent)
+
 
 def test_inverse_and_forward_czt_never_transform_more_than_one_batch_slab(
     monkeypatch: pytest.MonkeyPatch,
