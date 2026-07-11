@@ -46,7 +46,7 @@ sandbox/free_space_algorithm_identification/
   derived_inputs.py        # fixed-window interpolation and fixed-step zero padding
   sampling.py              # segment-specific Zemax and exact-baseline matrices
   asm.py                   # band-limited exact Helmholtz angular spectrum
-  rayleigh_sommerfeld.py   # sparse RS-I direct quadrature
+  # no separate RS-I solver: full-spectrum ASM is the scalar Helmholtz baseline
   fresnel.py               # independent physical-field Fresnel propagation
   candidates.py            # F_Q, R_Phi|Q and R_Phi|Phi fixed operators
   metrics.py               # fixed ROI, piston, physical complex-field metrics
@@ -76,7 +76,6 @@ tests/free_space_identification/
   test_sampling.py
   test_metrics_decision.py
   test_asm.py
-  test_rayleigh_sommerfeld.py
   test_fresnel_candidates.py
   fixtures/
     native_oo_report.txt
@@ -1417,7 +1416,7 @@ These Matsushima inequalities apply to a centered field evaluated within the sam
 
 `H_full` applies the Helmholtz kernel to every resolvable bin, including evanescent bins. `H_BL = W H_full` is only a finite-window/transfer-sampling control, not a second physical candidate and not the definition of exact truth. The bandlimit is not evidence of window convergence.
 
-For each accepted top window, evaluate `H_full` first and then `H_BL` from the same propagated spectrum and on the same target nodes. The mask-induced differences must independently satisfy: complex relative L2 at most `1e-8`, primary-ROI phase RMS at most `1e-6` wave, normalized-intensity relative L2 at most `1e-6`, and relative power at most `1e-8`. Record all four values in their corresponding uncertainty components. If any allocation fails, enlarge the input window at fixed step and start a new case rather than disabling the mask or substituting `H_BL` for `H_full`. Task 8 compares RS-I first with `H_full` and reports `H_full-H_BL` separately.
+For each accepted top window, evaluate `H_full` first and then `H_BL` from the same propagated spectrum and on the same target nodes. The mask-induced differences must independently satisfy: complex relative L2 at most `1e-8`, primary-ROI phase RMS at most `1e-6` wave, normalized-intensity relative L2 at most `1e-6`, and relative power at most `1e-8`. Record all four values in their corresponding uncertainty components. If any allocation fails, enlarge the input window at fixed step and start a new case rather than disabling the mask or substituting `H_BL` for `H_full`. The independent dense discrete-Fourier oracle, analytic Gaussian case, step-size convergence, window convergence, and central-period energy gate jointly validate `H_full`; report `H_full-H_BL` separately.
 
 - [ ] **Step 4: Implement memory-bounded propagation to arbitrary output nodes**
 
@@ -1477,7 +1476,11 @@ git add sandbox/free_space_algorithm_identification/fourier.py sandbox/free_spac
 git commit -m "feat: add convergent Helmholtz baseline"
 ```
 
-### Task 8: Sparse first Rayleigh–Sommerfeld cross-check
+### Task 8: Withdrawn — no separate Rayleigh–Sommerfeld implementation
+
+**Scope amendment (2026-07-11, user approved):** Do not implement or run a separate RS-I solver in the required path. Full-spectrum ASM and first Rayleigh–Sommerfeld propagation are two representations of the same outgoing scalar Helmholtz solution, so RS-I would be a costly duplicate numerical quadrature rather than an independent physical candidate. Task 7 already supplies the required independent dense discrete-Fourier oracle, analytic Gaussian check, sampling-step convergence, window convergence, and central-period/edge-energy controls. Those checks, together with `H_full-H_BL`, are the accuracy-baseline evidence.
+
+The former Task 8 specification below is retained only as a dormant contingency. Every checkbox in this section is void for the current run. It may be reactivated only by a new explicit scope decision if the ASM self-checks fail or the three-segment classification is internally contradictory.
 
 **Files:**
 - Create: `sandbox/free_space_algorithm_identification/rayleigh_sommerfeld.py`
@@ -2507,7 +2510,7 @@ Expected: either every prescribed convergence/identity/structure gate passes and
 
 - [ ] **Step 1: Write failing report-content and terminology tests**
 
-Require the report to contain source hashes, the point-value/cell-energy convention evidence, physical-field/reference equations, segment tables, convergence and uncertainty tables, exact/RS and Fresnel/PROPER checks, every candidate's `D`, `u`, `D/u`, phase/intensity/power gates, the S13→S14 structural identity, continuous/restart status, and direct artifact links. Reject missing units and the informal terms `winner`, `trick`, `ledger`, and “最小误差故胜出”.
+Require the report to contain source hashes, the point-value/cell-energy convention evidence, physical-field/reference equations, segment tables, convergence and uncertainty tables, ASM independent-oracle/convergence checks and Fresnel/PROPER checks, every candidate's `D`, `u`, `D/u`, phase/intensity/power gates, the S13→S14 structural identity, continuous/restart status, and direct artifact links. Reject missing units and the informal terms `winner`, `trick`, `ledger`, and “最小误差故胜出”.
 
 - [ ] **Step 2: Implement deterministic report rendering**
 
@@ -2516,7 +2519,7 @@ Use formal Chinese academic prose and the notation of the approved design. When 
 - ZBF physical fields are reconstructed only with their paired `Phi_ZBF` reference;
 - PROPER `wfarr` is reconstructed only with `Q_PROPER`;
 - matching `H` means “在这些输入和不确定度内与非旁轴标量传播等效”, not that Zemax internally uses ASM or RS;
-- sparse RS evidence is “稀疏 RS-I 点集核验”, not a full-field RS RMS;
+- no separate RS-I result is required; the report must state that full-spectrum ASM and RS-I are equivalent representations of the same outgoing scalar Helmholtz model, and that ASM was instead verified by independent discrete-Fourier and convergence controls;
 - segment-dependent matches are a branch-dependent or mixed rule, not an averaged single algorithm;
 - unresolved candidates are “当前采样与输入条件下不可判别”.
 
