@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import numpy as np
 import pytest
@@ -148,6 +148,39 @@ def _cell_convention() -> SampleConventionResult:
     )
 
 
+def _probe_with_pilot_roundtrip(
+    probe: SampleConventionProbe,
+    *,
+    position_relative_drift: float,
+    waist_relative_drift: float,
+    rayleigh_relative_error: float = 0.0,
+) -> SampleConventionProbe:
+    waist_x = probe.pilot_wx_mm * (1.0 + waist_relative_drift)
+    waist_y = probe.pilot_wy_mm * (1.0 + waist_relative_drift)
+    rayleigh_x = (
+        np.pi
+        * probe.refractive_index
+        * waist_x**2
+        / probe.wavelength_vacuum_mm
+    ) * (1.0 + rayleigh_relative_error)
+    rayleigh_y = (
+        np.pi
+        * probe.refractive_index
+        * waist_y**2
+        / probe.wavelength_vacuum_mm
+    ) * (1.0 + rayleigh_relative_error)
+    values = {item.name: getattr(probe, item.name) for item in fields(probe)}
+    values.update(
+        pilot_zx_mm=probe.pilot_zx_mm * (1.0 + position_relative_drift),
+        pilot_rx_mm=rayleigh_x,
+        pilot_wx_mm=waist_x,
+        pilot_zy_mm=probe.pilot_zy_mm * (1.0 + position_relative_drift),
+        pilot_ry_mm=rayleigh_y,
+        pilot_wy_mm=waist_y,
+    )
+    return SampleConventionProbe._create(**values)
+
+
 def _binding(
     grid: UniformGrid2D,
     *,
@@ -270,6 +303,40 @@ def test_power_evidence_freezes_sample_semantics_then_recovers_one_scalar() -> N
     assert not cell.authoritative
     assert cell.cell_max_closure_sigma < 1e-8
     assert cell.point_min_separation_sigma > 5.0
+    measured_roundtrip = (
+        _probe_with_pilot_roundtrip(
+            cell.probes[0],
+            position_relative_drift=0.0,
+            waist_relative_drift=0.0,
+        ),
+        _probe_with_pilot_roundtrip(
+            cell.probes[1],
+            position_relative_drift=2.22344e-9,
+            waist_relative_drift=2.22346e-9,
+        ),
+        _probe_with_pilot_roundtrip(
+            cell.probes[2],
+            position_relative_drift=-2.22344e-9,
+            waist_relative_drift=-2.22346e-9,
+        ),
+    )
+    assert SampleConventionResult._synthetic(measured_roundtrip).status == "cell_energy"
+    excessive_roundtrip = measured_roundtrip[:2] + (
+        _probe_with_pilot_roundtrip(
+            cell.probes[2],
+            position_relative_drift=2.0e-7,
+            waist_relative_drift=2.0e-7,
+        ),
+    )
+    with pytest.raises(ValueError, match="pilot roundtrip"):
+        SampleConventionResult._synthetic(excessive_roundtrip)
+    with pytest.raises(ValueError, match="Rayleigh relation"):
+        _probe_with_pilot_roundtrip(
+            cell.probes[1],
+            position_relative_drift=2.22344e-9,
+            waist_relative_drift=2.22346e-9,
+            rayleigh_relative_error=2.0e-7,
+        )
     with pytest.raises(TypeError, match="current-run identity capture"):
         SampleConventionProbe()
     with pytest.raises(TypeError, match="init=False"):

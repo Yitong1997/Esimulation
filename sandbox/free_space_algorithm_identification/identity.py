@@ -38,6 +38,10 @@ from .zbf_binary import HEADER_BYTES, RawZbfHeader
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _RUN_INSTANCE_RE = re.compile(r"[0-9a-f]{32}\Z")
 _FLOAT_TOKEN = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?"
+_PILOT_ROUNDTRIP_RELATIVE_TOLERANCE = 1.0e-8
+_PILOT_ROUNDTRIP_ABSOLUTE_TOLERANCE_MM = 1.0e-12
+_PILOT_RAYLEIGH_RELATION_RELATIVE_TOLERANCE = 1.0e-8
+_PILOT_RAYLEIGH_RELATION_ABSOLUTE_TOLERANCE_MM = 1.0e-12
 _NEIGHBOURS_8 = (
     (-1, -1),
     (-1, 0),
@@ -118,6 +122,37 @@ def physical_grid_sha256(grid: UniformGrid2D) -> str:
 def _float_equal(left: float, right: float) -> bool:
     scale = max(1.0, abs(float(left)), abs(float(right)))
     return abs(float(left) - float(right)) <= 64.0 * math.ulp(scale)
+
+
+def _pilot_roundtrip_close(left_mm: float, right_mm: float) -> bool:
+    return bool(
+        np.isclose(
+            left_mm,
+            right_mm,
+            rtol=_PILOT_ROUNDTRIP_RELATIVE_TOLERANCE,
+            atol=_PILOT_ROUNDTRIP_ABSOLUTE_TOLERANCE_MM,
+        )
+    )
+
+
+def _validate_pilot_rayleigh_relation(
+    *,
+    wavelength_vacuum_mm: float,
+    refractive_index: float,
+    rayleigh_mm: float,
+    waist_mm: float,
+    label: str,
+) -> None:
+    expected_rayleigh_mm = (
+        np.pi * refractive_index * waist_mm**2 / wavelength_vacuum_mm
+    )
+    if not np.isclose(
+        rayleigh_mm,
+        expected_rayleigh_mm,
+        rtol=_PILOT_RAYLEIGH_RELATION_RELATIVE_TOLERANCE,
+        atol=_PILOT_RAYLEIGH_RELATION_ABSOLUTE_TOLERANCE_MM,
+    ):
+        raise ValueError(f"{label} pilot violates the Rayleigh relation")
 
 
 @dataclass(frozen=True)
@@ -290,6 +325,10 @@ class SampleConventionProbe:
         run_id: str = "synthetic",
         run_instance_uuid: str = "a" * 32,
     ) -> "SampleConventionProbe":
+        synthetic_waist_mm = 0.15
+        synthetic_rayleigh_mm = (
+            np.pi * 1.0 * synthetic_waist_mm**2 / 0.01064
+        )
         refs = {
             role: _synthetic_artifact(
                 run_id=run_id,
@@ -327,11 +366,11 @@ class SampleConventionProbe:
             normalization_mode="total_power",
             normalization_value=1.0,
             pilot_zx_mm=12.0,
-            pilot_rx_mm=7.0,
-            pilot_wx_mm=0.15,
+            pilot_rx_mm=synthetic_rayleigh_mm,
+            pilot_wx_mm=synthetic_waist_mm,
             pilot_zy_mm=12.0,
-            pilot_ry_mm=7.0,
-            pilot_wy_mm=0.15,
+            pilot_ry_mm=synthetic_rayleigh_mm,
+            pilot_wy_mm=synthetic_waist_mm,
             report=report,
             raw_energy=float(raw_energy),
             raw_peak=float(raw_peak),
@@ -450,6 +489,20 @@ class SampleConventionProbe:
             value = getattr(self, name)
             if type(value) is not float or not math.isfinite(value):
                 raise ValueError(f"{name} must be a finite float")
+        _validate_pilot_rayleigh_relation(
+            wavelength_vacuum_mm=self.wavelength_vacuum_mm,
+            refractive_index=self.refractive_index,
+            rayleigh_mm=self.pilot_rx_mm,
+            waist_mm=self.pilot_wx_mm,
+            label="sample-convention X",
+        )
+        _validate_pilot_rayleigh_relation(
+            wavelength_vacuum_mm=self.wavelength_vacuum_mm,
+            refractive_index=self.refractive_index,
+            rayleigh_mm=self.pilot_ry_mm,
+            waist_mm=self.pilot_wy_mm,
+            label="sample-convention Y",
+        )
         for name in ("wavelength_number", "field_number"):
             if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -645,12 +698,6 @@ class SampleConventionResult:
             "wavelength_vacuum_mm",
             "refractive_index",
             "normalization_value",
-            "pilot_zx_mm",
-            "pilot_rx_mm",
-            "pilot_wx_mm",
-            "pilot_zy_mm",
-            "pilot_ry_mm",
-            "pilot_wy_mm",
         )
         if any(
             not _float_equal(getattr(probe, name), getattr(first, name))
@@ -659,7 +706,25 @@ class SampleConventionResult:
         ):
             raise ValueError(
                 "sample-convention probes must preserve the S7 window, medium, "
-                "pilot, and normalization"
+                "and normalization"
+            )
+        common_pilot_mm = (
+            "pilot_zx_mm",
+            "pilot_rx_mm",
+            "pilot_wx_mm",
+            "pilot_zy_mm",
+            "pilot_ry_mm",
+            "pilot_wy_mm",
+        )
+        if any(
+            not _pilot_roundtrip_close(
+                getattr(probe, name), getattr(first, name)
+            )
+            for probe in probes[1:]
+            for name in common_pilot_mm
+        ):
+            raise ValueError(
+                "sample-convention pilot roundtrip exceeds the fixed tolerance"
             )
 
         point_scores = [
@@ -954,6 +1019,28 @@ def _pilot_tuple(header: RawZbfHeader) -> tuple[float, ...]:
     return (header.zx, header.rx, header.wx, header.zy, header.ry, header.wy)
 
 
+def _validate_header_pilot(header: RawZbfHeader, *, label: str) -> None:
+    for axis, position_mm, rayleigh_mm, waist_mm in (
+        ("X", header.zx, header.rx, header.wx),
+        ("Y", header.zy, header.ry, header.wy),
+    ):
+        if (
+            not math.isfinite(position_mm)
+            or not math.isfinite(rayleigh_mm)
+            or rayleigh_mm <= 0.0
+            or not math.isfinite(waist_mm)
+            or waist_mm <= 0.0
+        ):
+            raise ValueError(f"{label} {axis} pilot header is not physical")
+        _validate_pilot_rayleigh_relation(
+            wavelength_vacuum_mm=header.wavelength_vacuum_mm,
+            refractive_index=header.refractive_index,
+            rayleigh_mm=rayleigh_mm,
+            waist_mm=waist_mm,
+            label=f"{label} {axis}",
+        )
+
+
 def _read_zbf_header(path: Path) -> RawZbfHeader:
     with Path(path).open("rb") as stream:
         raw = stream.read(HEADER_BYTES)
@@ -1013,13 +1100,15 @@ def _load_identity_capture(
     ):
         if not _float_equal(actual, expected):
             raise ValueError(f"identity {axis} window does not match settings")
+    _validate_header_pilot(source_header, label="identity source")
+    _validate_header_pilot(rewrite_header, label="identity rewrite")
     if any(
-        not _float_equal(left, right)
+        not _pilot_roundtrip_close(left, right)
         for left, right in zip(
             _pilot_tuple(source_header), _pilot_tuple(rewrite_header), strict=True
         )
     ):
-        raise ValueError("identity rewrite changes the bound S7 pilot header")
+        raise ValueError("identity pilot roundtrip exceeds the fixed tolerance")
     if rewrite_header.is_polarized or source_header.is_polarized:
         raise ValueError("identity physical-summary contract currently requires scalar ZBFs")
     summary = IdentityNativeReport.parse(_read_native_text(report_path))
@@ -1732,7 +1821,12 @@ def _validate_mapped_physical(
     expected_rayleigh = (
         np.pi * refractive_index * mapped.pilot.waist_mm**2 / wavelength_vacuum_mm
     )
-    if not np.isclose(mapped.pilot.rayleigh_mm, expected_rayleigh, rtol=1e-8, atol=1e-12):
+    if not np.isclose(
+        mapped.pilot.rayleigh_mm,
+        expected_rayleigh,
+        rtol=_PILOT_RAYLEIGH_RELATION_RELATIVE_TOLERANCE,
+        atol=_PILOT_RAYLEIGH_RELATION_ABSOLUTE_TOLERANCE_MM,
+    ):
         raise ValueError(f"{label} pilot violates the Rayleigh relation")
     expected = reference_phases(
         mapped.physical.grid,
