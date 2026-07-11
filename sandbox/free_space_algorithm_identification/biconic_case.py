@@ -45,6 +45,9 @@ BICONIC_SEGMENTS = (
     ),
 )
 
+# The amended experiment starts only from these matched, immutable ZBF planes.
+FIXED_INPUT_SURFACES = (7, 12, 13)
+
 
 def resolve_biconic_baseline(baseline_dir: Path) -> Path:
     path = baseline_dir.resolve()
