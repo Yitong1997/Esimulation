@@ -20,6 +20,10 @@ from sandbox.free_space_algorithm_identification.fourier import (
     _forward_continuous_spectrum_owned_inplace,
     forward_continuous_spectrum,
 )
+from sandbox.free_space_algorithm_identification.metrics import (
+    FrozenRoiSet,
+    build_frozen_rois,
+)
 from sandbox.free_space_algorithm_identification.models import (
     PointField2D,
     SegmentSpec,
@@ -55,6 +59,18 @@ def _evidence(
         uniform_medium_asserted=True,
         zbf_length_unit="mm",
         grid_length_unit="mm",
+    )
+
+
+def _frozen_rois(
+    grid: UniformGrid2D, evidence: AsmPropagationEvidence
+) -> FrozenRoiSet:
+    reference = PointField2D(
+        np.ones((grid.ny, grid.nx), dtype=np.complex128), grid
+    )
+    return build_frozen_rois(
+        reference,
+        reference_zbf_sha256=evidence.frozen_end_artifact_sha256,
     )
 
 
@@ -173,6 +189,8 @@ def test_rectangular_matsushima_mask_is_two_ellipse_intersection() -> None:
     assert result.mask_sha256 == hashlib.sha256(
         result.mask.tobytes(order="C")
     ).hexdigest()
+    assert result.rule_version == "matsushima_two_ellipse_nyquist_v1"
+    assert len(result.rule_sha256) == 64
 
     nyquist_control = matsushima_bandlimit_mask(
         np.array([-6.0, 0.0, 6.0]),
@@ -203,6 +221,7 @@ def test_small_rectangular_full_and_bl_fields_match_explicit_dft() -> None:
     )
     target = UniformGrid2D.centered(nx=5, ny=4, dx_mm=0.17, dy_mm=0.2)
     evidence = _evidence(segment, wavelength_vacuum_mm=0.5)
+    rois = _frozen_rois(target, evidence)
 
     owned_spectrum = values.copy(order="C")
     owned_fx, owned_fy = _forward_continuous_spectrum_owned_inplace(
@@ -222,7 +241,7 @@ def test_small_rectangular_full_and_bl_fields_match_explicit_dft() -> None:
         target_grid=target,
         evidence=evidence,
         physical_field_builder=lambda: (values.copy(order="C"), source),
-        primary_roi_mask=np.ones((target.ny, target.nx), dtype=bool),
+        frozen_rois=rois,
         fft_shift_batch_rows=2,
         transfer_batch_rows=2,
         czt_batch_size=2,
@@ -273,6 +292,19 @@ def test_small_rectangular_full_and_bl_fields_match_explicit_dft() -> None:
     assert result.diagnostics.bandlimit.mask_sha256 == hashlib.sha256(
         mask.tobytes(order="C")
     ).hexdigest()
+    assert result.diagnostics.bandlimit.rule_version == (
+        "matsushima_two_ellipse_nyquist_v1"
+    )
+    assert len(result.diagnostics.bandlimit.rule_sha256) == 64
+    assert result.diagnostics.builder_observed_shape == values.shape
+    assert result.diagnostics.builder_observed_dtype == "complex128"
+    assert result.diagnostics.roi_threshold == rois.primary.threshold
+    assert result.diagnostics.roi_mask_sha256 == rois.primary.mask_sha256
+    assert result.diagnostics.roi_reference_zbf_sha256 == (
+        evidence.frozen_end_artifact_sha256
+    )
+    assert result.diagnostics.source_grid_rule == "sample_at_zero_centered_v1"
+    assert len(result.diagnostics.source_grid_sha256) == 64
 
     builder_called = False
 
@@ -285,6 +317,7 @@ def test_small_rectangular_full_and_bl_fields_match_explicit_dft() -> None:
         x_mm=np.array([lx_mm / 2.0 - 0.1, lx_mm / 2.0]),
         y_mm=np.array([-0.1, 0.0]),
     )
+    outside_rois = _frozen_rois(outside, evidence)
     with pytest.raises(ValueError, match="central period"):
         propagate_helmholtz_pair(
             segment=segment,
@@ -293,7 +326,24 @@ def test_small_rectangular_full_and_bl_fields_match_explicit_dft() -> None:
             target_grid=outside,
             evidence=evidence,
             physical_field_builder=forbidden_builder,
-            primary_roi_mask=np.ones((2, 2), dtype=bool),
+            frozen_rois=outside_rois,
+            available_memory_query=lambda: 1 << 50,
+        )
+    assert not builder_called
+
+    translated_source = UniformGrid2D(
+        x_mm=source.x_mm + 0.01,
+        y_mm=source.y_mm,
+    )
+    with pytest.raises(ValueError, match="sample-at-zero"):
+        propagate_helmholtz_pair(
+            segment=segment,
+            source_grid=translated_source,
+            source_shape=values.shape,
+            target_grid=target,
+            evidence=evidence,
+            physical_field_builder=forbidden_builder,
+            frozen_rois=rois,
             available_memory_query=lambda: 1 << 50,
         )
     assert not builder_called
@@ -306,14 +356,22 @@ def test_low_na_gaussian_and_full_bl_closure() -> None:
     x, y = np.meshgrid(source.x_mm, source.y_mm)
     waist_mm = 0.3
     input_values = np.exp(-(x**2 + y**2) / waist_mm**2).astype(np.complex128)
+    evidence = _evidence(segment, wavelength_vacuum_mm=wavelength_mm)
+    rois = _frozen_rois(source, evidence)
+
+    def builder_with_immutable_roi_check():
+        with pytest.raises(ValueError):
+            rois.primary.mask[0, 0] = False
+        return input_values.copy(order="C"), source
+
     result = propagate_helmholtz_pair(
         segment=segment,
         source_grid=source,
         source_shape=input_values.shape,
         target_grid=source,
-        evidence=_evidence(segment, wavelength_vacuum_mm=wavelength_mm),
-        physical_field_builder=lambda: (input_values.copy(order="C"), source),
-        primary_roi_mask=np.ones(input_values.shape, dtype=bool),
+        evidence=evidence,
+        physical_field_builder=builder_with_immutable_roi_check,
+        frozen_rois=rois,
         fft_shift_batch_rows=8,
         transfer_batch_rows=8,
         czt_batch_size=8,
@@ -370,7 +428,7 @@ def test_evidence_and_memory_fail_before_physical_field_builder() -> None:
         source_shape=(source.ny, source.nx),
         target_grid=target,
         physical_field_builder=sentinel_builder,
-        primary_roi_mask=np.ones((target.ny, target.nx), dtype=bool),
+        frozen_rois=_frozen_rois(target, valid),
         available_memory_query=lambda: 1 << 50,
     )
     for evidence in bad_evidence:
@@ -386,7 +444,7 @@ def test_evidence_and_memory_fail_before_physical_field_builder() -> None:
         czt_batch_size=2,
     )
     components = dict(plan.components)
-    assert set(components) == {
+    assert {
         "builder_physical_workspace",
         "builder_slow_field_allowance",
         "builder_phi_allowance",
@@ -398,13 +456,103 @@ def test_evidence_and_memory_fail_before_physical_field_builder() -> None:
         "czt_y_convolution_workspaces",
         "czt_intermediate",
         "czt_result",
-        "retained_physical_outputs",
-        "immutable_pointfield_copies",
+        "retained_previous_physical_output",
+        "pointfield_np_array_copy",
+        "pointfield_tobytes_transient",
+        "both_retained_physical_outputs",
+        "closure_aligned_field",
+        "closure_intensity_fields",
+        "closure_boolean_indexing_temporaries",
+        "closure_phase_temporaries",
+    } <= set(components)
+    phase_peaks = dict(plan.phase_peaks)
+    assert set(phase_peaks) == {
+        "builder",
+        "fft_and_transfer",
+        "czt_and_pointfield_construction",
+        "full_bl_closure",
     }
-    assert plan.estimated_peak_bytes == sum(components.values())
+    assert phase_peaks["builder"] == sum(
+        components[name]
+        for name in (
+            "builder_physical_workspace",
+            "builder_slow_field_allowance",
+            "builder_phi_allowance",
+        )
+    )
+    assert phase_peaks["fft_and_transfer"] == (
+        components["owned_mutable_spectrum"]
+        + components["numpy_fft_scratch"]
+        + max(
+            components["fft_shift_block"],
+            components["transfer_row_temporaries"],
+        )
+    )
+    assert phase_peaks["czt_and_pointfield_construction"] == sum(
+        components[name]
+        for name in (
+            "owned_mutable_spectrum",
+            "czt_x_convolution_workspaces",
+            "czt_y_convolution_workspaces",
+            "czt_intermediate",
+            "czt_result",
+            "retained_previous_physical_output",
+            "pointfield_np_array_copy",
+            "pointfield_tobytes_transient",
+        )
+    )
+    assert phase_peaks["full_bl_closure"] == sum(
+        components[name]
+        for name in (
+            "owned_mutable_spectrum",
+            "both_retained_physical_outputs",
+            "closure_aligned_field",
+            "closure_intensity_fields",
+            "closure_boolean_indexing_temporaries",
+            "closure_phase_temporaries",
+            "closure_roi_mask_resident",
+        )
+    )
+    assert plan.estimated_peak_bytes == max(phase_peaks.values())
     assert plan.required_available_bytes == int(
         np.ceil(1.3 * plan.estimated_peak_bytes)
     )
+
+    target_dominant = estimate_exact_peak_bytes(
+        source_shape=(4, 4),
+        target_shape=(1000, 1000),
+        fft_shift_batch_rows=2,
+        transfer_batch_rows=2,
+        czt_batch_size=2,
+    )
+    target_complex_bytes = 1000 * 1000 * np.dtype(np.complex128).itemsize
+    assert target_dominant.estimated_peak_bytes >= 7 * target_complex_bytes
+
+    wrong_hash_rois = build_frozen_rois(
+        PointField2D(
+            np.ones((target.ny, target.nx), dtype=np.complex128), target
+        ),
+        reference_zbf_sha256="e" * 64,
+    )
+    wrong_grid = UniformGrid2D.centered(
+        nx=target.nx,
+        ny=target.ny,
+        dx_mm=target.dx_mm * 1.1,
+        dy_mm=target.dy_mm,
+    )
+    wrong_grid_rois = _frozen_rois(wrong_grid, valid)
+    for frozen_rois in (wrong_hash_rois, wrong_grid_rois):
+        with pytest.raises(ValueError, match="ROI"):
+            propagate_helmholtz_pair(
+                evidence=valid,
+                frozen_rois=frozen_rois,
+                **{
+                    key: value
+                    for key, value in common.items()
+                    if key != "frozen_rois"
+                },
+            )
+    assert calls == 0
 
     with pytest.raises(MemoryError, match="1.3"):
         propagate_helmholtz_pair(
