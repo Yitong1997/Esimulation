@@ -29,6 +29,7 @@
 - Default pytest runs are offline. Live native Zemax smoke tests require `BTS_RUN_ZEMAX_BENCHMARK=1`; 2048/4096 runs additionally require `BTS_RUN_ZEMAX_HIGH_SAMPLING=1`.
 - Generated high-resolution ZBFs, native reports, CFG files, arrays, and plots are not committed. Commit only code, tests, small summary JSON files, and the final scientific report.
 - If the experiment does not uniquely distinguish candidates within the prescribed uncertainty, report “当前采样与输入条件下不可判别”; do not select the smallest numerical error.
+- Keep the remaining engineering verification compact. Tasks 10–14 use at most 4, 4, 5, 4, and 5 high-information pytest functions respectively; related failure modes are parameterized inside those items rather than expanded into one test per API exception. Implement only the artifact, report/readback, raw-DataGrid, start-identity, convergence, and decision gates that can change the physical conclusion. Conditional reference/pilot or sideband interventions are dormant until the natural three-segment matrix is genuinely non-separable.
 
 ## File Structure
 
@@ -2442,7 +2443,7 @@ if ($StageCode -eq 2) {
 
 Expected: ZI and ZO axes are reported separately, every high-resolution input passes its own identity gate, and S13→S14 chained cases point to the matching upstream ZO outputs. A 4096 limitation is recorded rather than hidden.
 
-- [ ] **Step 7: Run exact Helmholtz/RS, Fresnel/PROPER, and fixed candidate matrices**
+- [ ] **Step 7: Run full-spectrum Helmholtz, Fresnel/PROPER, and fixed candidate matrices**
 
 ```powershell
 $Workspace = (git rev-parse --show-toplevel).Trim()
