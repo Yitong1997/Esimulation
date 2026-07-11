@@ -85,6 +85,33 @@ class ScaledDftResult:
         )
 
 
+@dataclass(frozen=True)
+class FresnelPropagationResult:
+    """Physical point field plus the axial-carrier phase receipt."""
+
+    field: PointField2D
+    axial_carrier_nominal_rad: float
+    axial_carrier_reduced_rad: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.field, PointField2D):
+            raise ValueError("Fresnel result field must be a PointField2D")
+        phases = np.asarray(
+            [self.axial_carrier_nominal_rad, self.axial_carrier_reduced_rad],
+            dtype=np.float64,
+        )
+        if not np.all(np.isfinite(phases)):
+            raise ValueError("Fresnel axial-carrier receipt must be finite")
+        expected = float(np.remainder(self.axial_carrier_nominal_rad, 2.0 * np.pi))
+        if not np.isclose(
+            self.axial_carrier_reduced_rad,
+            expected,
+            rtol=0.0,
+            atol=32.0 * np.finfo(np.float64).eps,
+        ):
+            raise ValueError("reduced axial carrier does not match the nominal phase")
+
+
 def scaled_dft_analytic_factor(signed_distance_mm: float) -> complex:
     """Return the fixed Fresnel factor omitted by PROPER's unitary DFT."""
 
@@ -172,7 +199,7 @@ def propagate_ptp_fresnel(
     wavelength_vacuum_mm: float,
     refractive_index: float,
     distance_mm: float,
-) -> PointField2D:
+) -> FresnelPropagationResult:
     """Propagate point values with the same-grid periodic Fresnel kernel."""
 
     if not isinstance(field, PointField2D):
@@ -189,8 +216,12 @@ def propagate_ptp_fresnel(
         wavelength_medium_mm=wavelength_medium_mm,
         signed_distance_mm=distance,
     ) / np.sqrt(field.grid.pixel_area_mm2)
-    _, carrier = _axial_phase(k_per_mm, distance)
-    return PointField2D(propagated * carrier, field.grid)
+    reduced, carrier = _axial_phase(k_per_mm, distance)
+    return FresnelPropagationResult(
+        field=PointField2D(propagated * carrier, field.grid),
+        axial_carrier_nominal_rad=float(k_per_mm * distance),
+        axial_carrier_reduced_rad=reduced,
+    )
 
 
 def propagate_scaled_fresnel(
@@ -201,7 +232,7 @@ def propagate_scaled_fresnel(
     refractive_index: float,
     distance_mm: float,
     batch_size: int = 128,
-) -> PointField2D:
+) -> FresnelPropagationResult:
     """Evaluate the finite-domain scaled Fresnel integral in absolute units."""
 
     if not isinstance(field, PointField2D):
@@ -233,11 +264,16 @@ def propagate_scaled_fresnel(
         * np.exp(1j * q_output)
         / (1j * wavelength_medium_mm * distance)
     )
-    _, carrier = _axial_phase(k_per_mm, distance)
-    return PointField2D(envelope * carrier, target_grid)
+    reduced, carrier = _axial_phase(k_per_mm, distance)
+    return FresnelPropagationResult(
+        field=PointField2D(envelope * carrier, target_grid),
+        axial_carrier_nominal_rad=float(k_per_mm * distance),
+        axial_carrier_reduced_rad=reduced,
+    )
 
 
 __all__ = [
+    "FresnelPropagationResult",
     "ScaledDftResult",
     "propagate_ptp_fresnel",
     "propagate_scaled_fresnel",

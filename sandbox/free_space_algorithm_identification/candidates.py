@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+import struct
 import warnings
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -16,6 +18,7 @@ with warnings.catch_warnings():
     import proper
 
 from .field_contract import (
+    MappedZbfField,
     PilotState,
     quadratic_reference_phase,
     reference_phases,
@@ -34,6 +37,10 @@ from .models import PointField2D, SegmentSpec, UniformGrid2D
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _CROP_ENERGY_LIMIT = 1.0e-10
 _EDGE_ENERGY_LIMIT = 1.0e-10
+HalfOpenRegion = tuple[float, float, float, float]
+CandidateOperator = Literal["F_Q", "R_Phi_given_Q", "R_Phi_given_Phi"]
+Branch = Literal["OO", "OI", "IO"]
+ReferenceKind = Literal["q", "phi"]
 
 
 def _require_sha256(value: str, *, label: str) -> str:
@@ -42,17 +49,117 @@ def _require_sha256(value: str, *, label: str) -> str:
     return value
 
 
-def _field_sha256(field: PointField2D) -> str:
+def _canonical_sha256(
+    schema: str, records: tuple[tuple[str, bytes], ...]
+) -> str:
     digest = hashlib.sha256()
-    digest.update(np.asarray(field.values, dtype="<c16").tobytes(order="C"))
+
+    def add(payload: bytes) -> None:
+        digest.update(struct.pack("<Q", len(payload)))
+        digest.update(payload)
+
+    add(schema.encode("ascii"))
+    for label, payload in records:
+        add(label.encode("ascii"))
+        add(bytes(payload))
     return digest.hexdigest()
+
+
+def _shape_bytes(shape: tuple[int, ...]) -> bytes:
+    return np.asarray(shape, dtype="<i8").tobytes(order="C")
 
 
 def _grid_sha256(grid: UniformGrid2D) -> str:
-    digest = hashlib.sha256()
-    digest.update(np.asarray(grid.x_mm, dtype="<f8").tobytes(order="C"))
-    digest.update(np.asarray(grid.y_mm, dtype="<f8").tobytes(order="C"))
-    return digest.hexdigest()
+    if not isinstance(grid, UniformGrid2D):
+        raise ValueError("grid hash requires a UniformGrid2D")
+    x_values = np.asarray(grid.x_mm, dtype="<f8", order="C")
+    y_values = np.asarray(grid.y_mm, dtype="<f8", order="C")
+    return _canonical_sha256(
+        "bts.uniform_grid_2d/v2",
+        (
+            ("dtype", b"<f8"),
+            ("shape", _shape_bytes((grid.ny, grid.nx))),
+            ("ny", struct.pack("<Q", grid.ny)),
+            ("nx", struct.pack("<Q", grid.nx)),
+            ("x_axis_length", struct.pack("<Q", x_values.size)),
+            ("y_axis_length", struct.pack("<Q", y_values.size)),
+            ("x_axis", x_values.tobytes(order="C")),
+            ("y_axis", y_values.tobytes(order="C")),
+        ),
+    )
+
+
+def _field_sha256(
+    field: PointField2D, *, sample_kind: str = "physical_point_field"
+) -> str:
+    if not isinstance(field, PointField2D):
+        raise ValueError("field hash requires a PointField2D")
+    if not isinstance(sample_kind, str) or not sample_kind:
+        raise ValueError("field hash requires a nonempty sample kind")
+    values = np.asarray(field.values, dtype="<c16", order="C")
+    return _canonical_sha256(
+        "bts.point_field_2d/v2",
+        (
+            ("sample_kind", sample_kind.encode("ascii")),
+            ("dtype", b"<c16"),
+            ("shape", _shape_bytes(values.shape)),
+            ("ny", struct.pack("<Q", field.grid.ny)),
+            ("nx", struct.pack("<Q", field.grid.nx)),
+            ("grid_sha256", _grid_sha256(field.grid).encode("ascii")),
+            ("values", values.tobytes(order="C")),
+        ),
+    )
+
+
+def _array_hash_records(
+    label: str, values: np.ndarray, *, dtype: str
+) -> tuple[tuple[str, bytes], ...]:
+    array = np.asarray(values, dtype=dtype, order="C")
+    return (
+        (f"{label}_dtype", dtype.encode("ascii")),
+        (f"{label}_shape", _shape_bytes(array.shape)),
+        (label, array.tobytes(order="C")),
+    )
+
+
+def _mapped_input_sha256(mapped: MappedZbfField) -> str:
+    if not isinstance(mapped, MappedZbfField):
+        raise ValueError("mapped-field hash requires MappedZbfField evidence")
+    pilot = np.asarray(
+        [mapped.pilot.zeta_mm, mapped.pilot.rayleigh_mm, mapped.pilot.waist_mm],
+        dtype="<f8",
+    )
+    records: tuple[tuple[str, bytes], ...] = (
+        ("source_sha256", mapped.source_sha256.encode("ascii")),
+        (
+            "convention_evidence_sha256",
+            mapped.convention_evidence_sha256.encode("ascii"),
+        ),
+        (
+            "sample_value_convention",
+            mapped.sample_value_convention.encode("ascii"),
+        ),
+        ("grid_sha256", _grid_sha256(mapped.physical.grid).encode("ascii")),
+        ("pilot_dtype", b"<f8"),
+        ("pilot_shape", _shape_bytes(pilot.shape)),
+        ("pilot", pilot.tobytes(order="C")),
+        ("pilot_inside", b"\x01" if mapped.pilot.inside else b"\x00"),
+    )
+    records += _array_hash_records("q_rad", mapped.references.q_rad, dtype="<f8")
+    records += _array_hash_records("phi_rad", mapped.references.phi_rad, dtype="<f8")
+    records += _array_hash_records(
+        "reference_relative", mapped.reference_relative, dtype="<c16"
+    )
+    records += _array_hash_records(
+        "physical", mapped.physical.values, dtype="<c16"
+    )
+    records += (
+        (
+            "physical_field_sha256",
+            _field_sha256(mapped.physical).encode("ascii"),
+        ),
+    )
+    return _canonical_sha256("bts.mapped_zbf_candidate_input/v2", records)
 
 
 def _same_grid(left: UniformGrid2D, right: UniformGrid2D) -> bool:
@@ -62,6 +169,232 @@ def _same_grid(left: UniformGrid2D, right: UniformGrid2D) -> bool:
         and np.allclose(left.x_mm, right.x_mm, rtol=2e-13, atol=0.0)
         and np.allclose(left.y_mm, right.y_mm, rtol=2e-13, atol=0.0)
     )
+
+
+@dataclass(frozen=True)
+class PathSpec:
+    """One fixed residual-reference path; no phase kind is caller-selectable."""
+
+    path_id: str
+    operator_id: CandidateOperator
+    branch: Branch
+    input_reference: ReferenceKind
+    internal_phase: ReferenceKind
+    stage_order: tuple[str, str]
+    output_reference: ReferenceKind
+    branch_constant: complex
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path_id, str) or not self.path_id:
+            raise ValueError("path id must be nonempty")
+        if self.operator_id not in {
+            "F_Q",
+            "R_Phi_given_Q",
+            "R_Phi_given_Phi",
+        }:
+            raise ValueError("unknown path operator")
+        expected_input = "q" if self.operator_id == "F_Q" else "phi"
+        expected_internal = (
+            "phi" if self.operator_id == "R_Phi_given_Phi" else "q"
+        )
+        expected_output = "q" if self.operator_id == "F_Q" else "phi"
+        if (
+            self.input_reference != expected_input
+            or self.internal_phase != expected_internal
+            or self.output_reference != expected_output
+        ):
+            raise ValueError("path references do not match the fixed operator")
+        expected_stages = {
+            "OO": ("STW:a", "WTS:b"),
+            "OI": ("STW:a", "PTP:b"),
+            "IO": ("PTP:a", "WTS:b"),
+        }
+        if self.branch not in expected_stages or self.stage_order != expected_stages[
+            self.branch
+        ]:
+            raise ValueError("path stage order does not match the fixed branch")
+        expected_constant = 1.0 + 0.0j if self.branch == "OO" else -1.0j
+        if complex(self.branch_constant) != expected_constant:
+            raise ValueError("path branch constant does not match the fixed branch")
+
+    @property
+    def path_sha256(self) -> str:
+        constant = np.asarray(
+            [self.branch_constant.real, self.branch_constant.imag], dtype="<f8"
+        )
+        return _canonical_sha256(
+            "bts.fresnel_path_spec/v1",
+            (
+                ("path_id", self.path_id.encode("ascii")),
+                ("operator_id", self.operator_id.encode("ascii")),
+                ("branch", self.branch.encode("ascii")),
+                ("input_reference", self.input_reference.encode("ascii")),
+                ("internal_phase", self.internal_phase.encode("ascii")),
+                ("stage_0", self.stage_order[0].encode("ascii")),
+                ("stage_1", self.stage_order[1].encode("ascii")),
+                ("output_reference", self.output_reference.encode("ascii")),
+                ("branch_constant_dtype", b"<f8"),
+                ("branch_constant", constant.tobytes(order="C")),
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class PairedTargetEvidence:
+    """Immutable binding of one target ZBF to its segment and start evidence."""
+
+    segment_key: str
+    start_source_sha256: str
+    start_evidence_sha256: str
+    target_zbf_name: str
+    target: MappedZbfField
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.segment_key, str) or not self.segment_key:
+            raise ValueError("paired target requires a segment key")
+        _require_sha256(
+            self.start_source_sha256, label="paired-target start source hash"
+        )
+        _require_sha256(
+            self.start_evidence_sha256, label="paired-target start evidence hash"
+        )
+        if not isinstance(self.target_zbf_name, str) or not self.target_zbf_name:
+            raise ValueError("paired target requires the expected target ZBF name")
+        if not isinstance(self.target, MappedZbfField):
+            raise ValueError("paired target requires MappedZbfField evidence")
+
+    @classmethod
+    def bind(
+        cls,
+        *,
+        segment: SegmentSpec,
+        start: MappedZbfField,
+        target: MappedZbfField,
+    ) -> "PairedTargetEvidence":
+        if not isinstance(segment, SegmentSpec):
+            raise ValueError("paired target requires a SegmentSpec")
+        if not isinstance(start, MappedZbfField):
+            raise ValueError("paired target requires MappedZbfField start evidence")
+        return cls(
+            segment_key=segment.key,
+            start_source_sha256=start.source_sha256,
+            start_evidence_sha256=_mapped_input_sha256(start),
+            target_zbf_name=segment.target_zbf_name,
+            target=target,
+        )
+
+    @property
+    def pair_sha256(self) -> str:
+        return _canonical_sha256(
+            "bts.paired_target_evidence/v1",
+            (
+                ("segment_key", self.segment_key.encode("utf-8")),
+                (
+                    "start_source_sha256",
+                    self.start_source_sha256.encode("ascii"),
+                ),
+                (
+                    "start_evidence_sha256",
+                    self.start_evidence_sha256.encode("ascii"),
+                ),
+                ("target_zbf_name", self.target_zbf_name.encode("utf-8")),
+                (
+                    "target_evidence_sha256",
+                    _mapped_input_sha256(self.target).encode("ascii"),
+                ),
+            ),
+        )
+
+
+PATH_SPECS: tuple[PathSpec, ...] = (
+    PathSpec(
+        "F_Q:OO:v1",
+        "F_Q",
+        "OO",
+        "q",
+        "q",
+        ("STW:a", "WTS:b"),
+        "q",
+        1.0 + 0.0j,
+    ),
+    PathSpec(
+        "F_Q:OI:v1", "F_Q", "OI", "q", "q", ("STW:a", "PTP:b"), "q", -1.0j
+    ),
+    PathSpec(
+        "F_Q:IO:v1", "F_Q", "IO", "q", "q", ("PTP:a", "WTS:b"), "q", -1.0j
+    ),
+    PathSpec(
+        "R_Phi_given_Q:OO:v1",
+        "R_Phi_given_Q",
+        "OO",
+        "phi",
+        "q",
+        ("STW:a", "WTS:b"),
+        "phi",
+        1.0 + 0.0j,
+    ),
+    PathSpec(
+        "R_Phi_given_Q:OI:v1",
+        "R_Phi_given_Q",
+        "OI",
+        "phi",
+        "q",
+        ("STW:a", "PTP:b"),
+        "phi",
+        -1.0j,
+    ),
+    PathSpec(
+        "R_Phi_given_Q:IO:v1",
+        "R_Phi_given_Q",
+        "IO",
+        "phi",
+        "q",
+        ("PTP:a", "WTS:b"),
+        "phi",
+        -1.0j,
+    ),
+    PathSpec(
+        "R_Phi_given_Phi:OO:v1",
+        "R_Phi_given_Phi",
+        "OO",
+        "phi",
+        "phi",
+        ("STW:a", "WTS:b"),
+        "phi",
+        1.0 + 0.0j,
+    ),
+    PathSpec(
+        "R_Phi_given_Phi:OI:v1",
+        "R_Phi_given_Phi",
+        "OI",
+        "phi",
+        "phi",
+        ("STW:a", "PTP:b"),
+        "phi",
+        -1.0j,
+    ),
+    PathSpec(
+        "R_Phi_given_Phi:IO:v1",
+        "R_Phi_given_Phi",
+        "IO",
+        "phi",
+        "phi",
+        ("PTP:a", "WTS:b"),
+        "phi",
+        -1.0j,
+    ),
+)
+
+
+def _select_path(operator_id: CandidateOperator, branch: str) -> PathSpec:
+    selected = tuple(
+        spec
+        for spec in PATH_SPECS
+        if spec.operator_id == operator_id and spec.branch == branch
+    )
+    if len(selected) != 1:
+        raise ValueError("operator and branch do not select exactly one fixed path")
+    return selected[0]
 
 
 @dataclass(frozen=True)
@@ -104,6 +437,17 @@ class FiniteSupportMap:
     field: PointField2D
     eta_crop: float
     square_axis: Literal["x", "y"]
+    source_half_open_region: HalfOpenRegion
+    target_half_open_region: HalfOpenRegion
+    intersection_half_open_region: HalfOpenRegion
+    cropped_half_open_regions: tuple[HalfOpenRegion, ...]
+    added_half_open_regions: tuple[HalfOpenRegion, ...]
+    source_sample_count: int
+    target_sample_count: int
+    intersection_source_sample_count: int
+    intersection_target_sample_count: int
+    cropped_sample_count: int
+    added_sample_count: int
     interpolation_id: Literal["zero_padded_fourier_5pct"] = (
         "zero_padded_fourier_5pct"
     )
@@ -117,6 +461,42 @@ class FiniteSupportMap:
             raise ValueError("square axis must be x or y")
         if self.interpolation_id != "zero_padded_fourier_5pct":
             raise ValueError("unknown finite-support interpolation")
+        region_names = (
+            "source_half_open_region",
+            "target_half_open_region",
+            "intersection_half_open_region",
+        )
+        for name in region_names:
+            region = _validated_half_open_region(getattr(self, name), label=name)
+            object.__setattr__(self, name, region)
+        for name in ("cropped_half_open_regions", "added_half_open_regions"):
+            regions = tuple(
+                _validated_half_open_region(region, label=name)
+                for region in getattr(self, name)
+            )
+            object.__setattr__(self, name, regions)
+        count_names = (
+            "source_sample_count",
+            "target_sample_count",
+            "intersection_source_sample_count",
+            "intersection_target_sample_count",
+            "cropped_sample_count",
+            "added_sample_count",
+        )
+        for name in count_names:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+                raise ValueError("finite-support sample counts must be integers")
+            if int(value) < 0:
+                raise ValueError("finite-support sample counts must be nonnegative")
+            object.__setattr__(self, name, int(value))
+        if (
+            self.intersection_source_sample_count + self.cropped_sample_count
+            != self.source_sample_count
+            or self.intersection_target_sample_count + self.added_sample_count
+            != self.target_sample_count
+        ):
+            raise ValueError("finite-support sample counts do not close")
 
 
 def _window_edges(grid: UniformGrid2D) -> tuple[float, float, float, float]:
@@ -125,6 +505,52 @@ def _window_edges(grid: UniformGrid2D) -> tuple[float, float, float, float]:
         float(grid.x_mm[0] + grid.nx * grid.dx_mm),
         float(grid.y_mm[0]),
         float(grid.y_mm[0] + grid.ny * grid.dy_mm),
+    )
+
+
+def _validated_half_open_region(
+    region: tuple[float, float, float, float], *, label: str
+) -> HalfOpenRegion:
+    values = tuple(float(value) for value in region)
+    if len(values) != 4 or not np.all(np.isfinite(values)):
+        raise ValueError(f"{label} must contain four finite edges")
+    left, right, bottom, top = values
+    if not left < right or not bottom < top:
+        raise ValueError(f"{label} must be a nonempty half-open rectangle")
+    return left, right, bottom, top
+
+
+def _region_intersection(left: HalfOpenRegion, right: HalfOpenRegion) -> HalfOpenRegion:
+    intersection = (
+        max(left[0], right[0]),
+        min(left[1], right[1]),
+        max(left[2], right[2]),
+        min(left[3], right[3]),
+    )
+    return _validated_half_open_region(intersection, label="support intersection")
+
+
+def _region_difference(
+    outer: HalfOpenRegion, intersection: HalfOpenRegion
+) -> tuple[HalfOpenRegion, ...]:
+    left, right, bottom, top = outer
+    ix_left, ix_right, iy_bottom, iy_top = intersection
+    candidates = (
+        (left, ix_left, bottom, top),
+        (ix_right, right, bottom, top),
+        (ix_left, ix_right, bottom, iy_bottom),
+        (ix_left, ix_right, iy_top, top),
+    )
+    return tuple(
+        _validated_half_open_region(region, label="support difference")
+        for region in candidates
+        if region[0] < region[1] and region[2] < region[3]
+    )
+
+
+def _region_json(value: object) -> str:
+    return json.dumps(
+        value, separators=(",", ":"), ensure_ascii=True, allow_nan=False
     )
 
 
@@ -193,10 +619,15 @@ def map_slow_field_to_square(
     eta_crop = removed / total
     if not np.isfinite(eta_crop) or eta_crop > _CROP_ENERGY_LIMIT:
         raise ValueError("finite-support crop energy exceeds the 1e-10 hard gate")
-    mapped = _zero_padded_fourier_resample(slow_field, square)
-    source_left, source_right, source_bottom, source_top = _window_edges(
-        slow_field.grid
+    explicitly_cropped = np.array(slow_field.values, dtype=np.complex128, copy=True)
+    explicitly_cropped[cropped] = 0.0j
+    mapped = _zero_padded_fourier_resample(
+        PointField2D(explicitly_cropped, slow_field.grid), square
     )
+    source_region = _window_edges(slow_field.grid)
+    target_region = _window_edges(square)
+    intersection_region = _region_intersection(source_region, target_region)
+    source_left, source_right, source_bottom, source_top = source_region
     tx, ty = np.meshgrid(square.x_mm, square.y_mm)
     added = (
         (tx < source_left)
@@ -207,7 +638,22 @@ def map_slow_field_to_square(
     if np.any(mapped.values[added] != 0.0j):
         raise RuntimeError("finite-support extension did not create exact complex zeros")
     return FiniteSupportMap(
-        field=mapped, eta_crop=float(eta_crop), square_axis=square_axis
+        field=mapped,
+        eta_crop=float(eta_crop),
+        square_axis=square_axis,
+        source_half_open_region=source_region,
+        target_half_open_region=target_region,
+        intersection_half_open_region=intersection_region,
+        cropped_half_open_regions=_region_difference(
+            source_region, intersection_region
+        ),
+        added_half_open_regions=_region_difference(target_region, intersection_region),
+        source_sample_count=int(slow_field.grid.nx * slow_field.grid.ny),
+        target_sample_count=int(square.nx * square.ny),
+        intersection_source_sample_count=int(np.count_nonzero(~cropped)),
+        intersection_target_sample_count=int(np.count_nonzero(~added)),
+        cropped_sample_count=int(np.count_nonzero(cropped)),
+        added_sample_count=int(np.count_nonzero(added)),
     )
 
 
@@ -291,9 +737,120 @@ def lift_q_relative_slow_field(
     )
 
 
+def _validate_mapped_evidence(
+    mapped: MappedZbfField,
+    *,
+    wavelength_vacuum_mm: float,
+    refractive_index: float,
+    label: str,
+) -> None:
+    if not isinstance(mapped, MappedZbfField):
+        raise ValueError(f"{label} must be MappedZbfField evidence")
+    _medium_parameters(
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+    )
+    expected_rayleigh_mm = (
+        np.pi
+        * refractive_index
+        * mapped.pilot.waist_mm**2
+        / wavelength_vacuum_mm
+    )
+    if not np.isclose(
+        mapped.pilot.rayleigh_mm,
+        expected_rayleigh_mm,
+        rtol=1.0e-8,
+        atol=1.0e-12,
+    ):
+        raise ValueError(
+            f"{label} pilot violates the Rayleigh relation for wavelength and index"
+        )
+    expected_references = reference_phases(
+        mapped.physical.grid,
+        mapped.pilot,
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+    )
+    for phase_label, actual, expected in (
+        ("Q", mapped.references.q_rad, expected_references.q_rad),
+        ("Phi", mapped.references.phi_rad, expected_references.phi_rad),
+    ):
+        if not np.allclose(actual, expected, rtol=2.0e-13, atol=2.0e-12):
+            raise ValueError(
+                f"{label} reference {phase_label} does not match pilot, wavelength, index, and grid"
+            )
+    reconstructed = mapped.reference_relative * np.exp(
+        1j * mapped.references.phi_rad
+    )
+    scale = max(1.0, float(np.max(np.abs(reconstructed))))
+    if not np.allclose(
+        mapped.physical.values,
+        reconstructed,
+        rtol=2.0e-13,
+        atol=2.0e-14 * scale,
+    ):
+        raise ValueError(
+            f"{label} physical field is not chi times exp(+i Phi)"
+        )
+    _mapped_input_sha256(mapped)
+
+
+def _validate_paired_target(
+    *,
+    evidence: PairedTargetEvidence,
+    start: MappedZbfField,
+    segment: SegmentSpec,
+    wavelength_vacuum_mm: float,
+    refractive_index: float,
+) -> MappedZbfField:
+    if not isinstance(evidence, PairedTargetEvidence):
+        raise ValueError("target must be immutable paired-target evidence")
+    if (
+        evidence.segment_key != segment.key
+        or evidence.target_zbf_name != segment.target_zbf_name
+    ):
+        raise ValueError("paired-target segment binding does not match the candidate")
+    if evidence.start_source_sha256 != start.source_sha256:
+        raise ValueError("paired-target start source binding does not match")
+    if evidence.start_evidence_sha256 != _mapped_input_sha256(start):
+        raise ValueError("paired-target start evidence binding does not match")
+    target = evidence.target
+    _validate_mapped_evidence(
+        target,
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+        label="target ZBF",
+    )
+    if target.source_sha256 == start.source_sha256:
+        raise ValueError("paired target requires distinct start and target ZBF sources")
+    if target.convention_evidence_sha256 != start.convention_evidence_sha256:
+        raise ValueError("paired target does not share current-run convention evidence")
+    if target.sample_value_convention != start.sample_value_convention:
+        raise ValueError("paired target sample-value convention does not match start")
+    expected_inside = segment.branch[1] == "I"
+    if target.pilot.inside != expected_inside:
+        raise ValueError("target pilot classification does not match the segment branch")
+    if not np.allclose(
+        [target.pilot.rayleigh_mm, target.pilot.waist_mm],
+        [start.pilot.rayleigh_mm, start.pilot.waist_mm],
+        rtol=1.0e-10,
+        atol=1.0e-12,
+    ):
+        raise ValueError("target pilot invariant does not match the paired start ZBF")
+    actual_distance = target.pilot.zeta_mm - start.pilot.zeta_mm
+    if not np.isclose(
+        actual_distance,
+        segment.model_distance_mm,
+        rtol=1.0e-10,
+        atol=1.0e-12,
+    ):
+        raise ValueError("paired-target pilot distance does not match the segment")
+    return target
+
+
 def _validate_branch(
     segment: SegmentSpec, start_pilot: PilotState
-) -> tuple[float, float, complex, PilotState]:
+) -> tuple[float, float, PilotState]:
     if not isinstance(segment, SegmentSpec):
         raise ValueError("segment must be a SegmentSpec")
     if not isinstance(start_pilot, PilotState):
@@ -314,18 +871,56 @@ def _validate_branch(
     if segment.branch == "OO":
         if not (a < 0.0 and b > 0.0):
             raise ValueError("current S7-to-S8 OO constant requires a<0 and b>0")
-        constant = 1.0 + 0.0j
     elif segment.branch == "OI":
         if not (a > 0.0 and b < 0.0):
             raise ValueError("current S12-to-S13 OI constant requires a>0 and b<0")
-        constant = -1.0j
     elif segment.branch == "IO":
         if not (a > 0.0 and b > 0.0):
             raise ValueError("current S13-to-S14 IO constant requires a>0 and b>0")
-        constant = -1.0j
     else:
         raise ValueError("unsupported segment branch")
-    return float(a), float(b), complex(constant), predicted
+    return float(a), float(b), predicted
+
+
+def _natural_output_grid(
+    *,
+    segment: SegmentSpec,
+    start: MappedZbfField,
+    wavelength_vacuum_mm: float,
+    refractive_index: float,
+) -> UniformGrid2D:
+    """Return the fixed-path natural grid without evaluating a field."""
+
+    _validate_mapped_evidence(
+        start,
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+        label="start ZBF",
+    )
+    a_mm, b_mm, _ = _validate_branch(segment, start.pilot)
+    path = _select_path("F_Q", segment.branch)
+    wavelength_medium_mm, _ = _medium_parameters(
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+    )
+    distances = {"a": a_mm, "b": b_mm}
+    current = start.physical.grid
+    for stage in path.stage_order:
+        operator, distance_id = stage.split(":", maxsplit=1)
+        if operator == "PTP":
+            continue
+        distance = distances[distance_id]
+        current = UniformGrid2D.centered(
+            nx=current.nx,
+            ny=current.ny,
+            dx_mm=wavelength_medium_mm
+            * abs(distance)
+            / (current.nx * current.dx_mm),
+            dy_mm=wavelength_medium_mm
+            * abs(distance)
+            / (current.ny * current.dy_mm),
+        )
+    return current
 
 
 def _phase_for_kind(
@@ -430,8 +1025,7 @@ def _branch_cell_operator(
     cell_samples: np.ndarray,
     grid: UniformGrid2D,
     *,
-    branch: Literal["OO", "OI", "IO"],
-    internal_kind: Literal["q", "phi"],
+    path: PathSpec,
     a_mm: float,
     b_mm: float,
     wavelength_vacuum_mm: float,
@@ -441,126 +1035,109 @@ def _branch_cell_operator(
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
     )
-    if branch == "OO":
-        values, current = _stw(
-            cell_samples,
-            grid,
-            kind=internal_kind,
-            signed_distance_mm=a_mm,
-            **common,
-        )
-        return _wts(
-            values,
-            current,
-            kind=internal_kind,
-            signed_distance_mm=b_mm,
-            **common,
-        )
-    if branch == "OI":
-        values, current = _stw(
-            cell_samples,
-            grid,
-            kind=internal_kind,
-            signed_distance_mm=a_mm,
-            **common,
-        )
-        return _ptp(
-            values,
-            current,
-            signed_distance_mm=b_mm,
-            **common,
-        )
-    values, current = _ptp(
-        cell_samples,
-        grid,
-        signed_distance_mm=a_mm,
-        **common,
-    )
-    return _wts(
-        values,
-        current,
-        kind=internal_kind,
-        signed_distance_mm=b_mm,
-        **common,
-    )
-
-
-def _validate_target_reference(
-    target_grid: UniformGrid2D,
-    target_phi_rad: np.ndarray,
-    target_zbf_sha256: str,
-) -> np.ndarray:
-    _require_sha256(target_zbf_sha256, label="target ZBF hash")
-    phi = np.asarray(target_phi_rad, dtype=np.float64)
-    if phi.shape != (target_grid.ny, target_grid.nx) or not np.all(np.isfinite(phi)):
-        raise ValueError("target reference phase must match the captured target grid")
-    return phi
+    values = np.asarray(cell_samples, dtype=np.complex128)
+    current = grid
+    distances = {"a": a_mm, "b": b_mm}
+    for stage in path.stage_order:
+        operator, distance_id = stage.split(":", maxsplit=1)
+        distance = distances[distance_id]
+        if operator == "STW":
+            values, current = _stw(
+                values,
+                current,
+                kind=path.internal_phase,
+                signed_distance_mm=distance,
+                **common,
+            )
+        elif operator == "WTS":
+            values, current = _wts(
+                values,
+                current,
+                kind=path.internal_phase,
+                signed_distance_mm=distance,
+                **common,
+            )
+        elif operator == "PTP":
+            values, current = _ptp(
+                values,
+                current,
+                signed_distance_mm=distance,
+                **common,
+            )
+        else:
+            raise RuntimeError("fixed path contains an unknown propagation stage")
+    return values, current
 
 
 def _candidate(
     *,
     segment: SegmentSpec,
-    physical_start: PointField2D,
-    start_pilot: PilotState,
+    start: MappedZbfField,
     wavelength_vacuum_mm: float,
     refractive_index: float,
-    operator_id: Literal["F_Q", "R_Phi_given_Q", "R_Phi_given_Phi"],
-    target_grid: UniformGrid2D | None,
-    target_phi_rad: np.ndarray | None,
-    target_zbf_sha256: str | None,
+    operator_id: CandidateOperator,
+    paired_target: PairedTargetEvidence | None,
 ) -> CandidateResult:
-    if not isinstance(physical_start, PointField2D):
-        raise ValueError("physical_start must be a PointField2D")
-    a_mm, b_mm, constant, predicted = _validate_branch(segment, start_pilot)
-    start_refs = reference_phases(
-        physical_start.grid,
-        start_pilot,
+    _validate_mapped_evidence(
+        start,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
+        label="start ZBF",
     )
+    a_mm, b_mm, predicted = _validate_branch(segment, start.pilot)
+    path = _select_path(operator_id, segment.branch)
+    if paired_target is not None:
+        target = _validate_paired_target(
+            evidence=paired_target,
+            start=start,
+            segment=segment,
+            wavelength_vacuum_mm=wavelength_vacuum_mm,
+            refractive_index=refractive_index,
+        )
+    elif path.output_reference == "phi":
+        raise ValueError("a paired target ZBF is required for a Phi output reference")
+    else:
+        target = None
+
     start_reference = (
-        start_refs.q_rad if operator_id == "F_Q" else start_refs.phi_rad
+        start.references.q_rad
+        if path.input_reference == "q"
+        else start.references.phi_rad
     )
-    residual = physical_start.values * np.exp(-1j * start_reference)
-    cell_samples = np.sqrt(physical_start.grid.pixel_area_mm2) * residual
-    internal_kind: Literal["q", "phi"] = (
-        "phi" if operator_id == "R_Phi_given_Phi" else "q"
-    )
+    residual = start.physical.values * np.exp(-1j * start_reference)
+    cell_samples = np.sqrt(start.physical.grid.pixel_area_mm2) * residual
     propagated_cell, natural_output_grid = _branch_cell_operator(
         cell_samples,
-        physical_start.grid,
-        branch=segment.branch,
-        internal_kind=internal_kind,
+        start.physical.grid,
+        path=path,
         a_mm=a_mm,
         b_mm=b_mm,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
     )
     natural_slow = PointField2D(
-        constant
+        path.branch_constant
         * propagated_cell
         / np.sqrt(natural_output_grid.pixel_area_mm2),
         natural_output_grid,
     )
-    actual_output_grid = natural_output_grid if target_grid is None else target_grid
+    actual_output_grid = (
+        natural_output_grid if target is None else target.physical.grid
+    )
     mapped_slow, eta_edge, output_resampled = _map_computed_slow_field(
         natural_slow, actual_output_grid
     )
-    if operator_id == "F_Q":
+    if path.output_reference == "q":
         boundary = reference_phases(
             actual_output_grid,
             predicted,
             wavelength_vacuum_mm=wavelength_vacuum_mm,
             refractive_index=refractive_index,
         ).q_rad
-        target_hash_diagnostic = ""
     else:
-        if target_grid is None or target_phi_rad is None or target_zbf_sha256 is None:
-            raise ValueError("target reference and target ZBF hash are required")
-        boundary = _validate_target_reference(
-            target_grid, target_phi_rad, target_zbf_sha256
-        )
-        target_hash_diagnostic = target_zbf_sha256
+        if target is None:
+            raise RuntimeError("fixed Phi path lost its paired target ZBF")
+        boundary = target.references.phi_rad
     _, k_per_mm = _medium_parameters(
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
@@ -570,14 +1147,40 @@ def _candidate(
         mapped_slow.values * np.exp(1j * boundary) * carrier,
         actual_output_grid,
     )
+    target_source_sha256 = "" if target is None else target.source_sha256
+    target_evidence_sha256 = "" if target is None else _mapped_input_sha256(target)
+    target_convention_sha256 = (
+        "" if target is None else target.convention_evidence_sha256
+    )
+    target_sample_convention = (
+        "" if target is None else target.sample_value_convention
+    )
+    target_pair_sha256 = (
+        "" if paired_target is None else paired_target.pair_sha256
+    )
     diagnostics: dict[str, float | str | bool] = {
         "branch": segment.branch,
-        "branch_constant_real": float(constant.real),
-        "branch_constant_imag": float(constant.imag),
+        "path_id": path.path_id,
+        "path_sha256": path.path_sha256,
+        "input_reference": path.input_reference,
+        "internal_phase": path.internal_phase,
+        "stage_order": ",".join(path.stage_order),
+        "output_reference": path.output_reference,
+        "a_mm": a_mm,
+        "b_mm": b_mm,
+        "branch_constant_real": float(path.branch_constant.real),
+        "branch_constant_imag": float(path.branch_constant.imag),
         "axial_carrier_nominal_rad": float(k_per_mm * segment.model_distance_mm),
         "axial_carrier_reduced_rad": reduced,
-        "target_zbf_sha256": target_hash_diagnostic,
-        "uses_predicted_target_q": operator_id == "F_Q",
+        "start_zbf_sha256": start.source_sha256,
+        "start_convention_evidence_sha256": start.convention_evidence_sha256,
+        "start_sample_value_convention": start.sample_value_convention,
+        "target_zbf_sha256": target_source_sha256,
+        "target_evidence_sha256": target_evidence_sha256,
+        "target_convention_evidence_sha256": target_convention_sha256,
+        "target_sample_value_convention": target_sample_convention,
+        "target_pair_sha256": target_pair_sha256,
+        "uses_predicted_target_q": path.output_reference == "q",
         "natural_output_grid_sha256": _grid_sha256(natural_output_grid),
         "target_output_grid_sha256": _grid_sha256(actual_output_grid),
         "output_resampled": output_resampled,
@@ -589,8 +1192,8 @@ def _candidate(
     return CandidateResult(
         segment_key=segment.key,
         operator_id=operator_id,
-        input_sha256=_field_sha256(physical_start),
-        input_grid_sha256=_grid_sha256(physical_start.grid),
+        input_sha256=_mapped_input_sha256(start),
+        input_grid_sha256=_grid_sha256(start.physical.grid),
         output=output,
         predicted_target_zeta_mm=predicted.zeta_mm,
         diagnostics=diagnostics,
@@ -600,72 +1203,54 @@ def _candidate(
 def candidate_f_q(
     *,
     segment: SegmentSpec,
-    physical_start: PointField2D,
-    start_pilot: PilotState,
+    start: MappedZbfField,
+    target: PairedTargetEvidence,
     wavelength_vacuum_mm: float,
     refractive_index: float,
-    target_grid: UniformGrid2D | None = None,
 ) -> CandidateResult:
     return _candidate(
         segment=segment,
-        physical_start=physical_start,
-        start_pilot=start_pilot,
+        start=start,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
         operator_id="F_Q",
-        target_grid=target_grid,
-        target_phi_rad=None,
-        target_zbf_sha256=None,
+        paired_target=target,
     )
 
 
 def candidate_r_phi_given_q(
     *,
     segment: SegmentSpec,
-    physical_start: PointField2D,
-    start_pilot: PilotState,
-    target_grid: UniformGrid2D,
-    target_phi_rad: np.ndarray,
-    target_zbf_sha256: str,
+    start: MappedZbfField,
+    target: PairedTargetEvidence,
     wavelength_vacuum_mm: float,
     refractive_index: float,
 ) -> CandidateResult:
-    _validate_target_reference(target_grid, target_phi_rad, target_zbf_sha256)
     return _candidate(
         segment=segment,
-        physical_start=physical_start,
-        start_pilot=start_pilot,
+        start=start,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
         operator_id="R_Phi_given_Q",
-        target_grid=target_grid,
-        target_phi_rad=target_phi_rad,
-        target_zbf_sha256=target_zbf_sha256,
+        paired_target=target,
     )
 
 
 def candidate_r_phi_given_phi(
     *,
     segment: SegmentSpec,
-    physical_start: PointField2D,
-    start_pilot: PilotState,
-    target_grid: UniformGrid2D,
-    target_phi_rad: np.ndarray,
-    target_zbf_sha256: str,
+    start: MappedZbfField,
+    target: PairedTargetEvidence,
     wavelength_vacuum_mm: float,
     refractive_index: float,
 ) -> CandidateResult:
-    _validate_target_reference(target_grid, target_phi_rad, target_zbf_sha256)
     return _candidate(
         segment=segment,
-        physical_start=physical_start,
-        start_pilot=start_pilot,
+        start=start,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
         operator_id="R_Phi_given_Phi",
-        target_grid=target_grid,
-        target_phi_rad=target_phi_rad,
-        target_zbf_sha256=target_zbf_sha256,
+        paired_target=target,
     )
 
 
@@ -708,38 +1293,49 @@ def _center_shift_with_receipt(
     shifted = np.asarray(proper.prop_shift_center(source), dtype=np.complex128)
     if shifted.shape != source.shape or not np.all(np.isfinite(shifted)):
         raise ValueError("center-shift output must preserve finite array shape")
-    digest = hashlib.sha256()
-    digest.update(stage.encode("ascii"))
-    digest.update(np.asarray(source.shape, dtype="<i8").tobytes(order="C"))
-    digest.update(np.asarray(source, dtype="<c16").tobytes(order="C"))
-    digest.update(np.asarray(shifted, dtype="<c16").tobytes(order="C"))
-    return shifted, digest.hexdigest()
+    receipt = _canonical_sha256(
+        "bts.proper_center_shift/v2",
+        (
+            ("stage", stage.encode("ascii")),
+            ("dtype", b"<c16"),
+            ("shape", _shape_bytes(source.shape)),
+            ("source", np.asarray(source, dtype="<c16").tobytes(order="C")),
+            ("shifted", np.asarray(shifted, dtype="<c16").tobytes(order="C")),
+        ),
+    )
+    return shifted, receipt
 
 
 def run_stock_proper_fq(
     *,
     segment: SegmentSpec,
-    physical_start: PointField2D,
-    start_pilot: PilotState,
-    target_grid: UniformGrid2D,
+    start: MappedZbfField,
+    target: PairedTargetEvidence,
     wavelength_vacuum_mm: float,
     refractive_index: float,
     square_axis: Literal["x", "y"],
 ) -> CandidateResult:
     """Run unmodified PROPER with explicit Q-relative cell-energy samples."""
 
-    a_mm, b_mm, constant, predicted = _validate_branch(segment, start_pilot)
-    del a_mm, b_mm
-    start_refs = reference_phases(
-        physical_start.grid,
-        start_pilot,
+    _validate_mapped_evidence(
+        start,
+        wavelength_vacuum_mm=wavelength_vacuum_mm,
+        refractive_index=refractive_index,
+        label="start ZBF",
+    )
+    target_field = _validate_paired_target(
+        evidence=target,
+        start=start,
+        segment=segment,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
     )
-    chi_phi = PointField2D(
-        physical_start.values * np.exp(-1j * start_refs.phi_rad),
-        physical_start.grid,
-    )
+    a_mm, b_mm, predicted = _validate_branch(segment, start.pilot)
+    path = _select_path("F_Q", segment.branch)
+    constant = path.branch_constant
+    start_pilot = start.pilot
+    target_grid = target_field.physical.grid
+    chi_phi = PointField2D(start.reference_relative, start.physical.grid)
     mapped = map_slow_field_to_square(chi_phi, square_axis=square_axis)
     square_refs = reference_phases(
         mapped.field.grid,
@@ -831,10 +1427,41 @@ def run_stock_proper_fq(
     square_physical = PointField2D(
         mapped.field.values * np.exp(1j * square_refs.phi_rad), mapped.field.grid
     )
+    square_evidence = MappedZbfField(
+        physical=square_physical,
+        reference_relative=mapped.field.values,
+        references=square_refs,
+        pilot=start_pilot,
+        source_sha256=_field_sha256(
+            square_physical, sample_kind="derived_square_physical_point_field"
+        ),
+        convention_evidence_sha256=start.convention_evidence_sha256,
+        sample_value_convention="point_value",
+    )
+    closure_relative = np.ones(
+        (native_grid.ny, native_grid.nx), dtype=np.complex128
+    )
+    closure_physical = PointField2D(
+        closure_relative * np.exp(1j * predicted_refs.phi_rad), native_grid
+    )
+    closure_target = MappedZbfField(
+        physical=closure_physical,
+        reference_relative=closure_relative,
+        references=predicted_refs,
+        pilot=predicted,
+        source_sha256=_field_sha256(
+            closure_physical, sample_kind="internal_closure_target_point_field"
+        ),
+        convention_evidence_sha256=start.convention_evidence_sha256,
+        sample_value_convention="point_value",
+    )
+    closure_pair = PairedTargetEvidence.bind(
+        segment=segment, start=square_evidence, target=closure_target
+    )
     independent = candidate_f_q(
         segment=segment,
-        physical_start=square_physical,
-        start_pilot=start_pilot,
+        start=square_evidence,
+        target=closure_pair,
         wavelength_vacuum_mm=wavelength_vacuum_mm,
         refractive_index=refractive_index,
     )
@@ -855,9 +1482,36 @@ def run_stock_proper_fq(
     output_resampled = not _same_grid(native_grid, target_grid)
     diagnostics: dict[str, float | str | bool] = {
         "branch": segment.branch,
+        "path_id": path.path_id,
+        "path_sha256": path.path_sha256,
+        "input_reference": path.input_reference,
+        "internal_phase": path.internal_phase,
+        "stage_order": ",".join(path.stage_order),
+        "output_reference": path.output_reference,
+        "a_mm": a_mm,
+        "b_mm": b_mm,
         "square_axis": square_axis,
         "eta_crop": float(mapped.eta_crop),
         "input_mapping": mapped.interpolation_id,
+        "source_half_open_region": _region_json(mapped.source_half_open_region),
+        "target_half_open_region": _region_json(mapped.target_half_open_region),
+        "intersection_half_open_region": _region_json(
+            mapped.intersection_half_open_region
+        ),
+        "cropped_half_open_regions": _region_json(
+            mapped.cropped_half_open_regions
+        ),
+        "added_half_open_regions": _region_json(mapped.added_half_open_regions),
+        "source_sample_count": float(mapped.source_sample_count),
+        "target_sample_count": float(mapped.target_sample_count),
+        "intersection_source_sample_count": float(
+            mapped.intersection_source_sample_count
+        ),
+        "intersection_target_sample_count": float(
+            mapped.intersection_target_sample_count
+        ),
+        "cropped_sample_count": float(mapped.cropped_sample_count),
+        "added_sample_count": float(mapped.added_sample_count),
         "eta_edge": _edge_energy_fraction(slow_q_native),
         "natural_output_grid_sha256": _grid_sha256(native_grid),
         "target_output_grid_sha256": _grid_sha256(target_grid),
@@ -873,13 +1527,28 @@ def run_stock_proper_fq(
         "output_center_shift_sha256": shift_receipts["output"],
         "branch_constant_real": float(constant.real),
         "branch_constant_imag": float(constant.imag),
+        "axial_carrier_nominal_rad": float(
+            k_per_mm * segment.model_distance_mm
+        ),
         "axial_carrier_reduced_rad": reduced,
+        "start_zbf_sha256": start.source_sha256,
+        "start_convention_evidence_sha256": start.convention_evidence_sha256,
+        "start_sample_value_convention": start.sample_value_convention,
+        "target_zbf_sha256": target_field.source_sha256,
+        "target_evidence_sha256": _mapped_input_sha256(target_field),
+        "target_convention_evidence_sha256": (
+            target_field.convention_evidence_sha256
+        ),
+        "target_sample_value_convention": (
+            target_field.sample_value_convention
+        ),
+        "target_pair_sha256": target.pair_sha256,
     }
     return CandidateResult(
         segment_key=segment.key,
         operator_id="F_Q",
-        input_sha256=_field_sha256(physical_start),
-        input_grid_sha256=_grid_sha256(physical_start.grid),
+        input_sha256=_mapped_input_sha256(start),
+        input_grid_sha256=_grid_sha256(start.physical.grid),
         output=mapped_output,
         predicted_target_zeta_mm=predicted.zeta_mm,
         diagnostics=diagnostics,
@@ -889,6 +1558,9 @@ def run_stock_proper_fq(
 __all__ = [
     "CandidateResult",
     "FiniteSupportMap",
+    "PATH_SPECS",
+    "PairedTargetEvidence",
+    "PathSpec",
     "candidate_f_q",
     "candidate_r_phi_given_phi",
     "candidate_r_phi_given_q",

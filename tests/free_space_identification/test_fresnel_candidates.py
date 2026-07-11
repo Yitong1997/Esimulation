@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 
 import numpy as np
@@ -17,7 +18,9 @@ from sandbox.free_space_algorithm_identification.candidates import (
     run_stock_proper_fq,
 )
 from sandbox.free_space_algorithm_identification.field_contract import (
+    MappedZbfField,
     PilotState,
+    ReferencePhases,
     reference_phases,
 )
 from sandbox.free_space_algorithm_identification.fresnel import (
@@ -45,16 +48,9 @@ def _segment(key: str, distance_mm: float) -> SegmentSpec:
     return replace(original, model_distance_mm=distance_mm)
 
 
-def _grid_hash_for_test(grid: UniformGrid2D) -> str:
-    digest = hashlib.sha256()
-    digest.update(np.asarray(grid.x_mm, dtype="<f8").tobytes(order="C"))
-    digest.update(np.asarray(grid.y_mm, dtype="<f8").tobytes(order="C"))
-    return digest.hexdigest()
-
-
-def _gaussian_start(
-    *, grid: UniformGrid2D, pilot: PilotState
-) -> PointField2D:
+def _mapped_gaussian(
+    *, grid: UniformGrid2D, pilot: PilotState, evidence_label: str
+) -> MappedZbfField:
     references = reference_phases(
         grid,
         pilot,
@@ -66,7 +62,29 @@ def _gaussian_start(
         1.0 + (pilot.zeta_mm / pilot.rayleigh_mm) ** 2
     )
     chi_phi = (pilot.waist_mm / width) * np.exp(-(x * x + y * y) / width**2)
-    return PointField2D(chi_phi * np.exp(1j * references.phi_rad), grid)
+    return MappedZbfField(
+        physical=PointField2D(
+            chi_phi * np.exp(1j * references.phi_rad), grid
+        ),
+        reference_relative=chi_phi.astype(np.complex128),
+        references=references,
+        pilot=pilot,
+        source_sha256=hashlib.sha256(
+            ("source:" + evidence_label).encode("utf-8")
+        ).hexdigest(),
+        convention_evidence_sha256=hashlib.sha256(
+            b"shared-current-run-convention"
+        ).hexdigest(),
+        sample_value_convention="point_value",
+    )
+
+
+def _paired_target(
+    *, segment: SegmentSpec, start: MappedZbfField, target: MappedZbfField
+) -> candidate_module.PairedTargetEvidence:
+    return candidate_module.PairedTargetEvidence.bind(
+        segment=segment, start=start, target=target
+    )
 
 
 def _branch_cases() -> tuple[tuple[SegmentSpec, PilotState], ...]:
@@ -167,7 +185,14 @@ def test_scaled_fresnel_matches_dense_integral_and_analytic_gaussian() -> None:
         refractive_index=1.25,
         distance_mm=1.2,
     )
-    np.testing.assert_allclose(result.values, expected, rtol=2e-12, atol=2e-12)
+    np.testing.assert_allclose(result.field.values, expected, rtol=2e-12, atol=2e-12)
+    expected_nominal = 2.0 * np.pi * 1.25 * 1.2 / 0.4
+    assert result.axial_carrier_nominal_rad == pytest.approx(expected_nominal)
+    assert result.axial_carrier_reduced_rad == pytest.approx(
+        np.remainder(expected_nominal, 2.0 * np.pi)
+    )
+    with pytest.raises((AttributeError, TypeError)):
+        result.axial_carrier_reduced_rad = 0.0
 
     gaussian_grid = UniformGrid2D.centered(
         nx=128, ny=128, dx_mm=0.05, dy_mm=0.05
@@ -197,7 +222,7 @@ def test_scaled_fresnel_matches_dense_integral_and_analytic_gaussian() -> None:
             2.0 * np.pi * distance_mm / _WAVELENGTH_MM, 2.0 * np.pi
         )
     )
-    relative_l2 = np.linalg.norm(propagated.values - analytic) / np.linalg.norm(
+    relative_l2 = np.linalg.norm(propagated.field.values - analytic) / np.linalg.norm(
         analytic
     )
     assert relative_l2 < 2e-10
@@ -266,7 +291,12 @@ def test_cell_energy_dft_power_sampling_and_signed_constant() -> None:
     expected_mode = mode.values * np.exp(
         -1j * np.pi * wavelength * distance * (fx * fx + fy * fy)
     ) * np.exp(1j * np.remainder(k * distance, 2.0 * np.pi))
-    np.testing.assert_allclose(ptp.values, expected_mode, rtol=2e-14, atol=2e-14)
+    np.testing.assert_allclose(ptp.field.values, expected_mode, rtol=2e-14, atol=2e-14)
+    expected_nominal = k * distance
+    assert ptp.axial_carrier_nominal_rad == pytest.approx(expected_nominal)
+    assert ptp.axial_carrier_reduced_rad == pytest.approx(
+        np.remainder(expected_nominal, 2.0 * np.pi)
+    )
 
 
 def test_all_branches_stock_proper_match_square_fresnel_without_fit(
@@ -291,19 +321,39 @@ def test_all_branches_stock_proper_match_square_fresnel_without_fit(
     monkeypatch.setattr(proper, "verbose", True)
 
     for segment, pilot in _branch_cases():
-        physical = _gaussian_start(grid=grid, pilot=pilot)
+        start = _mapped_gaussian(
+            grid=grid, pilot=pilot, evidence_label=f"{segment.key}:start"
+        )
+        natural_grid = candidate_module._natural_output_grid(
+            segment=segment,
+            start=start,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=_REFRACTIVE_INDEX,
+        )
+        predicted = PilotState(
+            zeta_mm=pilot.zeta_mm + segment.model_distance_mm,
+            rayleigh_mm=pilot.rayleigh_mm,
+            waist_mm=pilot.waist_mm,
+        )
+        target_field = _mapped_gaussian(
+            grid=natural_grid,
+            pilot=predicted,
+            evidence_label=f"{segment.key}:target",
+        )
+        target = _paired_target(
+            segment=segment, start=start, target=target_field
+        )
         independent = candidate_f_q(
             segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
+            start=start,
+            target=target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=_REFRACTIVE_INDEX,
         )
         stock = run_stock_proper_fq(
             segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
-            target_grid=independent.output.grid,
+            start=start,
+            target=target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=_REFRACTIVE_INDEX,
             square_axis="x",
@@ -321,6 +371,65 @@ def test_all_branches_stock_proper_match_square_fresnel_without_fit(
         assert len(stock.diagnostics["input_center_shift_sha256"]) == 64
         assert len(stock.diagnostics["output_center_shift_sha256"]) == 64
         assert stock.diagnostics["output_mapping"] == "identity"
+        assert stock.diagnostics["a_mm"] == pytest.approx(-pilot.zeta_mm)
+        assert stock.diagnostics["b_mm"] == pytest.approx(predicted.zeta_mm)
+        nominal = (
+            2.0
+            * np.pi
+            * _REFRACTIVE_INDEX
+            * segment.model_distance_mm
+            / _WAVELENGTH_MM
+        )
+        assert stock.diagnostics["axial_carrier_nominal_rad"] == pytest.approx(
+            nominal
+        )
+        assert stock.diagnostics["axial_carrier_reduced_rad"] == pytest.approx(
+            np.remainder(nominal, 2.0 * np.pi)
+        )
+        assert len(stock.diagnostics["path_sha256"]) == 64
+        assert stock.diagnostics["path_id"].startswith("F_Q:")
+        for name in (
+            "source_half_open_region",
+            "target_half_open_region",
+            "intersection_half_open_region",
+            "cropped_half_open_regions",
+            "added_half_open_regions",
+        ):
+            assert isinstance(stock.diagnostics[name], str)
+        for name in (
+            "source_sample_count",
+            "target_sample_count",
+            "intersection_source_sample_count",
+            "intersection_target_sample_count",
+            "cropped_sample_count",
+            "added_sample_count",
+        ):
+            assert stock.diagnostics[name] >= 0.0
+        stock_input_map = map_slow_field_to_square(
+            PointField2D(start.reference_relative, start.physical.grid),
+            square_axis="x",
+        )
+        assert json.loads(stock.diagnostics["source_half_open_region"]) == list(
+            stock_input_map.source_half_open_region
+        )
+        assert json.loads(stock.diagnostics["target_half_open_region"]) == list(
+            stock_input_map.target_half_open_region
+        )
+        assert json.loads(
+            stock.diagnostics["intersection_half_open_region"]
+        ) == list(stock_input_map.intersection_half_open_region)
+        assert json.loads(stock.diagnostics["cropped_half_open_regions"]) == [
+            list(region) for region in stock_input_map.cropped_half_open_regions
+        ]
+        assert json.loads(stock.diagnostics["added_half_open_regions"]) == [
+            list(region) for region in stock_input_map.added_half_open_regions
+        ]
+        assert stock.diagnostics["cropped_sample_count"] == float(
+            stock_input_map.cropped_sample_count
+        )
+        assert stock.diagnostics["added_sample_count"] == float(
+            stock_input_map.added_sample_count
+        )
 
     assert shift_calls == 2 * len(_branch_cases())
     assert proper.phase_offset is True
@@ -346,11 +455,59 @@ def test_square_variants_use_finite_support_and_resample_q_slow_field() -> None:
     np.testing.assert_array_equal(expanded.field.values[outside_source, :], 0.0j)
     assert expanded.eta_crop == 0.0
     assert expanded.interpolation_id == "zero_padded_fourier_5pct"
+    assert expanded.cropped_half_open_regions == ()
+    assert len(expanded.added_half_open_regions) == 2
+    assert expanded.intersection_source_sample_count == 100
+    assert expanded.intersection_target_sample_count == 50
+    assert expanded.cropped_sample_count == 0
+    assert expanded.added_sample_count == 50
 
     cropped = map_slow_field_to_square(slow, square_axis="y")
     assert cropped.field.grid.dx_mm == pytest.approx(0.1)
     assert cropped.field.grid.dy_mm == pytest.approx(0.1)
     assert cropped.eta_crop == 0.0
+    assert cropped.source_half_open_region == pytest.approx((-1.0, 1.0, -0.5, 0.5))
+    assert cropped.target_half_open_region == pytest.approx((-0.5, 0.5, -0.5, 0.5))
+    assert cropped.intersection_half_open_region == pytest.approx(
+        (-0.5, 0.5, -0.5, 0.5)
+    )
+    assert len(cropped.cropped_half_open_regions) == 2
+    assert cropped.added_half_open_regions == ()
+    assert cropped.source_sample_count == 100
+    assert cropped.target_sample_count == 100
+    assert cropped.intersection_source_sample_count == 50
+    assert cropped.intersection_target_sample_count == 100
+    assert cropped.cropped_sample_count == 50
+    assert cropped.added_sample_count == 0
+
+    tiny_crop_values = slow_values.copy()
+    source_x, source_y = np.meshgrid(source_grid.x_mm, source_grid.y_mm)
+    target_left, target_right, target_bottom, target_top = (
+        cropped.target_half_open_region
+    )
+    crop_mask = (
+        (source_x < target_left)
+        | (source_x >= target_right)
+        | (source_y < target_bottom)
+        | (source_y >= target_top)
+    )
+    tiny_crop_values[crop_mask] = 1.0e-7 - 2.0e-7j
+    tiny_crop = map_slow_field_to_square(
+        PointField2D(tiny_crop_values, source_grid), square_axis="y"
+    )
+    assert 0.0 < tiny_crop.eta_crop < 1.0e-10
+    explicitly_precropped = tiny_crop_values.copy()
+    explicitly_precropped[crop_mask] = 0.0j
+    precrop_oracle = _dense_zero_padded_resample(
+        PointField2D(explicitly_precropped, source_grid), tiny_crop.field.grid
+    )
+    untrimmed_oracle = _dense_zero_padded_resample(
+        PointField2D(tiny_crop_values, source_grid), tiny_crop.field.grid
+    )
+    np.testing.assert_allclose(
+        tiny_crop.field.values, precrop_oracle, rtol=3e-14, atol=3e-14
+    )
+    assert np.linalg.norm(tiny_crop.field.values - untrimmed_oracle) > 1.0e-8
     edge_values = slow_values.copy()
     edge_values[:, 0] = 1.0
     with pytest.raises(ValueError, match="crop"):
@@ -392,30 +549,71 @@ def test_square_variants_use_finite_support_and_resample_q_slow_field() -> None:
 
 def test_fixed_candidates_bind_input_q_phi_and_structural_identities() -> None:
     grid = UniformGrid2D.centered(nx=128, ny=128, dx_mm=0.02, dy_mm=0.02)
-    target_hash = hashlib.sha256(b"current-run-target-zbf").hexdigest()
+
+    assert len(candidate_module.PATH_SPECS) == 9
+    assert len({spec.path_id for spec in candidate_module.PATH_SPECS}) == 9
+    assert len({spec.path_sha256 for spec in candidate_module.PATH_SPECS}) == 9
+    expected_stages = {
+        "OO": ("STW:a", "WTS:b"),
+        "OI": ("STW:a", "PTP:b"),
+        "IO": ("PTP:a", "WTS:b"),
+    }
+    for spec in candidate_module.PATH_SPECS:
+        assert spec.stage_order == expected_stages[spec.branch]
+        assert spec.input_reference == ("q" if spec.operator_id == "F_Q" else "phi")
+        assert spec.internal_phase == (
+            "phi" if spec.operator_id == "R_Phi_given_Phi" else "q"
+        )
+        assert spec.output_reference == (
+            "q" if spec.operator_id == "F_Q" else "phi"
+        )
+        assert spec.branch_constant == (
+            1.0 + 0.0j if spec.branch == "OO" else -1.0j
+        )
+    with pytest.raises((AttributeError, TypeError)):
+        candidate_module.PATH_SPECS[0].path_id = "tampered"
+
+    collision_grid_2x4 = UniformGrid2D(
+        x_mm=np.array([0.0, 1.0, 2.0, 3.0]),
+        y_mm=np.array([4.0, 5.0]),
+    )
+    collision_grid_4x2 = UniformGrid2D(
+        x_mm=np.array([0.0, 1.0]),
+        y_mm=np.array([2.0, 3.0, 4.0, 5.0]),
+    )
+    concatenated_2x4 = np.concatenate(
+        (collision_grid_2x4.x_mm, collision_grid_2x4.y_mm)
+    ).astype("<f8").tobytes()
+    concatenated_4x2 = np.concatenate(
+        (collision_grid_4x2.x_mm, collision_grid_4x2.y_mm)
+    ).astype("<f8").tobytes()
+    assert concatenated_2x4 == concatenated_4x2
+    assert candidate_module._grid_sha256(
+        collision_grid_2x4
+    ) != candidate_module._grid_sha256(collision_grid_4x2)
+    flat_values = np.arange(8, dtype=np.float64).astype(np.complex128)
+    field_2x4 = PointField2D(flat_values.reshape(2, 4), collision_grid_2x4)
+    field_4x2 = PointField2D(flat_values.reshape(4, 2), collision_grid_4x2)
+    assert field_2x4.values.tobytes(order="C") == field_4x2.values.tobytes(order="C")
+    assert candidate_module._field_sha256(
+        field_2x4
+    ) != candidate_module._field_sha256(field_4x2)
 
     for segment, pilot in _branch_cases():
-        physical = _gaussian_start(grid=grid, pilot=pilot)
-        natural_fq = candidate_f_q(
+        start = _mapped_gaussian(
+            grid=grid, pilot=pilot, evidence_label=f"{segment.key}:start"
+        )
+        natural_output_grid = candidate_module._natural_output_grid(
             segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
+            start=start,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=1.0,
         )
         target_grid = UniformGrid2D.centered(
-            nx=natural_fq.output.grid.nx,
-            ny=natural_fq.output.grid.ny,
-            dx_mm=natural_fq.output.grid.dx_mm * (1.0 - 1.0e-4),
-            dy_mm=natural_fq.output.grid.dy_mm * (1.0 - 2.0e-4),
-        )
-        fq = candidate_f_q(
-            segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
-            target_grid=target_grid,
-            wavelength_vacuum_mm=_WAVELENGTH_MM,
-            refractive_index=1.0,
+            nx=natural_output_grid.nx,
+            ny=natural_output_grid.ny,
+            dx_mm=natural_output_grid.dx_mm * (1.0 - 1.0e-4),
+            dy_mm=natural_output_grid.dy_mm * (1.0 - 2.0e-4),
         )
         predicted = PilotState(
             zeta_mm=pilot.zeta_mm + segment.model_distance_mm,
@@ -423,33 +621,36 @@ def test_fixed_candidates_bind_input_q_phi_and_structural_identities() -> None:
             waist_mm=pilot.waist_mm,
         )
         observed_target = PilotState(
-            zeta_mm=predicted.zeta_mm + (0.02 if not predicted.inside else 0.0),
+            zeta_mm=predicted.zeta_mm,
             rayleigh_mm=predicted.rayleigh_mm,
             waist_mm=predicted.waist_mm,
         )
-        target_phi = reference_phases(
-            target_grid,
-            observed_target,
+        target_field = _mapped_gaussian(
+            grid=target_grid,
+            pilot=observed_target,
+            evidence_label=f"{segment.key}:target",
+        )
+        target = _paired_target(
+            segment=segment, start=start, target=target_field
+        )
+        fq = candidate_f_q(
+            segment=segment,
+            start=start,
+            target=target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=1.0,
-        ).phi_rad
+        )
         r_phi_q = candidate_r_phi_given_q(
             segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
-            target_grid=target_grid,
-            target_phi_rad=target_phi,
-            target_zbf_sha256=target_hash,
+            start=start,
+            target=target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=1.0,
         )
         r_phi_phi = candidate_r_phi_given_phi(
             segment=segment,
-            physical_start=physical,
-            start_pilot=pilot,
-            target_grid=target_grid,
-            target_phi_rad=target_phi,
-            target_zbf_sha256=target_hash,
+            start=start,
+            target=target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=1.0,
         )
@@ -471,11 +672,33 @@ def test_fixed_candidates_bind_input_q_phi_and_structural_identities() -> None:
         assert r_phi_q.diagnostics["output_resampled"] is True
         assert fq.diagnostics["output_mapping"] == "zero_padded_fourier_5pct"
         assert fq.diagnostics["eta_edge"] <= 1e-10
-        assert fq.diagnostics["natural_output_grid_sha256"] == _grid_hash_for_test(
-            natural_fq.output.grid
+        assert fq.diagnostics["natural_output_grid_sha256"] == candidate_module._grid_sha256(
+            natural_output_grid
         )
-        assert r_phi_q.diagnostics["target_zbf_sha256"] == target_hash
-        assert r_phi_phi.diagnostics["target_zbf_sha256"] == target_hash
+        for result in (fq, r_phi_q, r_phi_phi):
+            spec = next(
+                spec
+                for spec in candidate_module.PATH_SPECS
+                if spec.operator_id == result.operator_id
+                and spec.branch == segment.branch
+            )
+            assert result.diagnostics["path_id"] == spec.path_id
+            assert result.diagnostics["path_sha256"] == spec.path_sha256
+            assert result.diagnostics["input_reference"] == spec.input_reference
+            assert result.diagnostics["internal_phase"] == spec.internal_phase
+            assert result.diagnostics["stage_order"] == ",".join(spec.stage_order)
+            assert result.diagnostics["output_reference"] == spec.output_reference
+            assert result.diagnostics["a_mm"] == pytest.approx(-pilot.zeta_mm)
+            assert result.diagnostics["b_mm"] == pytest.approx(predicted.zeta_mm)
+            assert result.diagnostics["target_zbf_sha256"] == (
+                target.target.source_sha256
+            )
+            assert result.diagnostics["target_evidence_sha256"] == (
+                candidate_module._mapped_input_sha256(target.target)
+            )
+            assert result.diagnostics["target_pair_sha256"] == target.pair_sha256
+        assert fq.diagnostics["uses_predicted_target_q"] is True
+        assert r_phi_q.diagnostics["uses_predicted_target_q"] is False
 
         if segment.branch == "IO":
             np.testing.assert_allclose(
@@ -492,19 +715,233 @@ def test_fixed_candidates_bind_input_q_phi_and_structural_identities() -> None:
             ).q_rad
             np.testing.assert_allclose(
                 r_phi_q.output.values,
-                fq.output.values * np.exp(1j * (target_phi - q_target)),
+                fq.output.values
+                * np.exp(1j * (target.target.references.phi_rad - q_target)),
                 rtol=3e-14,
                 atol=3e-14,
             )
 
-    with pytest.raises(ValueError, match="target reference"):
+        relabelled_source = replace(
+            start,
+            source_sha256=hashlib.sha256(
+                f"{segment.key}:other-source".encode("utf-8")
+            ).hexdigest(),
+        )
+        relabelled_convention = replace(
+            start,
+            convention_evidence_sha256=hashlib.sha256(
+                f"{segment.key}:other-convention".encode("utf-8")
+            ).hexdigest(),
+        )
+        alternate_sample_kind = replace(
+            start, sample_value_convention="cell_energy"
+        )
+        assert len(
+            {
+                candidate_module._mapped_input_sha256(start),
+                candidate_module._mapped_input_sha256(relabelled_source),
+                candidate_module._mapped_input_sha256(relabelled_convention),
+                candidate_module._mapped_input_sha256(alternate_sample_kind),
+            }
+        ) == 4
+
+    segment, pilot = _branch_cases()[0]
+    start = _mapped_gaussian(grid=grid, pilot=pilot, evidence_label="bad:start")
+    natural_grid = candidate_module._natural_output_grid(
+        segment=segment,
+        start=start,
+        wavelength_vacuum_mm=_WAVELENGTH_MM,
+        refractive_index=1.0,
+    )
+    target_pilot = PilotState(
+        zeta_mm=pilot.zeta_mm + segment.model_distance_mm,
+        rayleigh_mm=pilot.rayleigh_mm,
+        waist_mm=pilot.waist_mm,
+    )
+    target_field = _mapped_gaussian(
+        grid=natural_grid, pilot=target_pilot, evidence_label="bad:target"
+    )
+    target = _paired_target(
+        segment=segment, start=start, target=target_field
+    )
+    wrong_physical = PointField2D(
+        start.physical.values * np.exp(0.01j), start.physical.grid
+    )
+    with pytest.raises(ValueError, match="physical"):
+        candidate_f_q(
+            segment=segment,
+            start=replace(start, physical=wrong_physical),
+            target=target,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    with pytest.raises(ValueError, match="pilot|reference"):
+        candidate_f_q(
+            segment=segment,
+            start=replace(
+                start,
+                pilot=PilotState(
+                    pilot.zeta_mm + 0.01, pilot.rayleigh_mm, pilot.waist_mm
+                ),
+            ),
+            target=target,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    wrong_refs = ReferencePhases(
+        q_rad=target_field.references.q_rad + 0.01,
+        phi_rad=target_field.references.phi_rad,
+    )
+    with pytest.raises(ValueError, match="reference"):
         candidate_r_phi_given_q(
-            segment=_branch_cases()[0][0],
-            physical_start=_gaussian_start(grid=grid, pilot=_branch_cases()[0][1]),
-            start_pilot=_branch_cases()[0][1],
-            target_grid=grid,
-            target_phi_rad=np.zeros((3, 3)),
-            target_zbf_sha256=target_hash,
+            segment=segment,
+            start=start,
+            target=replace(
+                target, target=replace(target_field, references=wrong_refs)
+            ),
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    wrong_branch_target = _mapped_gaussian(
+        grid=target_field.physical.grid,
+        pilot=PilotState(
+            0.0, target_field.pilot.rayleigh_mm, target_field.pilot.waist_mm
+        ),
+        evidence_label="wrong-branch-target",
+    )
+    with pytest.raises(ValueError, match="target pilot classification"):
+        candidate_r_phi_given_q(
+            segment=segment,
+            start=start,
+            target=replace(target, target=wrong_branch_target),
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    wrong_target_physical = PointField2D(
+        target_field.physical.values * np.exp(-0.02j), target_field.physical.grid
+    )
+    with pytest.raises(ValueError, match="physical"):
+        candidate_r_phi_given_q(
+            segment=segment,
+            start=start,
+            target=replace(
+                target,
+                target=replace(target_field, physical=wrong_target_physical),
+            ),
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    with pytest.raises(ValueError, match="pilot|reference"):
+        candidate_r_phi_given_phi(
+            segment=segment,
+            start=start,
+            target=replace(
+                target,
+                target=replace(
+                    target_field,
+                    pilot=PilotState(
+                        target_field.pilot.zeta_mm + 0.01,
+                        target_field.pilot.rayleigh_mm,
+                        target_field.pilot.waist_mm,
+                    ),
+                ),
+            ),
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+
+    same_endpoint = _paired_target(segment=segment, start=start, target=start)
+    with pytest.raises(ValueError, match="distinct start and target"):
+        candidate_r_phi_given_q(
+            segment=segment,
+            start=start,
+            target=same_endpoint,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    with pytest.raises(ValueError, match="segment binding"):
+        candidate_f_q(
+            segment=segment,
+            start=start,
+            target=replace(target, segment_key="S13_S14"),
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+
+    inside_segment, inside_pilot = _branch_cases()[2]
+    inside_start = _mapped_gaussian(
+        grid=grid, pilot=inside_pilot, evidence_label="inside:start"
+    )
+    inside_natural_grid = candidate_module._natural_output_grid(
+        segment=inside_segment,
+        start=inside_start,
+        wavelength_vacuum_mm=_WAVELENGTH_MM,
+        refractive_index=1.0,
+    )
+    inside_target_pilot = PilotState(
+        inside_pilot.zeta_mm + inside_segment.model_distance_mm,
+        inside_pilot.rayleigh_mm,
+        inside_pilot.waist_mm,
+    )
+    inside_target_field = _mapped_gaussian(
+        grid=inside_natural_grid,
+        pilot=inside_target_pilot,
+        evidence_label="inside:target",
+    )
+    inside_target = _paired_target(
+        segment=inside_segment,
+        start=inside_start,
+        target=inside_target_field,
+    )
+    bad_waist_start = replace(
+        inside_start,
+        pilot=PilotState(
+            inside_pilot.zeta_mm,
+            inside_pilot.rayleigh_mm,
+            1.1 * inside_pilot.waist_mm,
+        ),
+    )
+    with pytest.raises(ValueError, match="Rayleigh"):
+        candidate_f_q(
+            segment=inside_segment,
+            start=bad_waist_start,
+            target=inside_target,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    bad_inside_zeta = replace(
+        inside_start,
+        pilot=PilotState(
+            -0.1, inside_pilot.rayleigh_mm, inside_pilot.waist_mm
+        ),
+    )
+    np.testing.assert_array_equal(
+        reference_phases(
+            grid,
+            bad_inside_zeta.pilot,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        ).phi_rad,
+        inside_start.references.phi_rad,
+    )
+    with pytest.raises(ValueError, match="start evidence binding"):
+        candidate_f_q(
+            segment=inside_segment,
+            start=bad_inside_zeta,
+            target=inside_target,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
+    rebound_bad_inside_target = _paired_target(
+        segment=inside_segment,
+        start=bad_inside_zeta,
+        target=inside_target_field,
+    )
+    with pytest.raises(ValueError, match="pilot distance"):
+        candidate_f_q(
+            segment=inside_segment,
+            start=bad_inside_zeta,
+            target=rebound_bad_inside_target,
             wavelength_vacuum_mm=_WAVELENGTH_MM,
             refractive_index=1.0,
         )
