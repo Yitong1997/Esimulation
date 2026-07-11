@@ -37,6 +37,9 @@ from .models import PointField2D, SegmentSpec, UniformGrid2D
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _CROP_ENERGY_LIMIT = 1.0e-10
 _EDGE_ENERGY_LIMIT = 1.0e-10
+_PAIRED_PILOT_RELATIVE_TOLERANCE = 1.0e-8
+_PAIRED_PILOT_ABSOLUTE_TOLERANCE_MM = 1.0e-12
+_PAIRED_DISTANCE_ABSOLUTE_TOLERANCE_MM = 2.0e-6
 HalfOpenRegion = tuple[float, float, float, float]
 CandidateOperator = Literal["F_Q", "R_Phi_given_Q", "R_Phi_given_Phi"]
 Branch = Literal["OO", "OI", "IO"]
@@ -833,16 +836,16 @@ def _validate_paired_target(
     if not np.allclose(
         [target.pilot.rayleigh_mm, target.pilot.waist_mm],
         [start.pilot.rayleigh_mm, start.pilot.waist_mm],
-        rtol=1.0e-10,
-        atol=1.0e-12,
+        rtol=_PAIRED_PILOT_RELATIVE_TOLERANCE,
+        atol=_PAIRED_PILOT_ABSOLUTE_TOLERANCE_MM,
     ):
         raise ValueError("target pilot invariant does not match the paired start ZBF")
     actual_distance = target.pilot.zeta_mm - start.pilot.zeta_mm
     if not np.isclose(
         actual_distance,
         segment.model_distance_mm,
-        rtol=1.0e-10,
-        atol=1.0e-12,
+        rtol=0.0,
+        atol=_PAIRED_DISTANCE_ABSOLUTE_TOLERANCE_MM,
     ):
         raise ValueError("paired-target pilot distance does not match the segment")
     return target

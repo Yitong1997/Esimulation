@@ -764,6 +764,51 @@ def test_fixed_candidates_bind_input_q_phi_and_structural_identities() -> None:
     target = _paired_target(
         segment=segment, start=start, target=target_field
     )
+    drifted_waist = target_pilot.waist_mm * (1.0 + 2.2e-9)
+    drifted_target_pilot = PilotState(
+        zeta_mm=target_pilot.zeta_mm + 1.35e-6,
+        rayleigh_mm=np.pi * drifted_waist**2 / _WAVELENGTH_MM,
+        waist_mm=drifted_waist,
+    )
+    drifted_target_field = _mapped_gaussian(
+        grid=natural_grid,
+        pilot=drifted_target_pilot,
+        evidence_label="real-header-roundtrip-drift:target",
+    )
+    drifted_target = _paired_target(
+        segment=segment,
+        start=start,
+        target=drifted_target_field,
+    )
+    candidate_f_q(
+        segment=segment,
+        start=start,
+        target=drifted_target,
+        wavelength_vacuum_mm=_WAVELENGTH_MM,
+        refractive_index=1.0,
+    )
+    excessive_distance_pilot = PilotState(
+        zeta_mm=target_pilot.zeta_mm + 2.1e-6,
+        rayleigh_mm=drifted_target_pilot.rayleigh_mm,
+        waist_mm=drifted_target_pilot.waist_mm,
+    )
+    excessive_distance_target = _paired_target(
+        segment=segment,
+        start=start,
+        target=_mapped_gaussian(
+            grid=natural_grid,
+            pilot=excessive_distance_pilot,
+            evidence_label="beyond-real-header-roundtrip-drift:target",
+        ),
+    )
+    with pytest.raises(ValueError, match="pilot distance"):
+        candidate_f_q(
+            segment=segment,
+            start=start,
+            target=excessive_distance_target,
+            wavelength_vacuum_mm=_WAVELENGTH_MM,
+            refractive_index=1.0,
+        )
     wrong_physical = PointField2D(
         start.physical.values * np.exp(0.01j), start.physical.grid
     )
