@@ -1,0 +1,22 @@
+Propagating beam distance:	-3.6860E+02
+Starting delta X, Y size:	2.5001E-01	2.5001E-01
+Starting array X, Y size:	2.5601E+02	2.5601E+02
+Starting pilot beam waist    x, y:	5.0788E-02	5.0788E-02
+Starting pilot beam position x, y:	-2.3998E+02	-2.3998E+02
+Starting pilot beam Rayleigh x, y:	7.6159E-01	7.6159E-01
+X Outside Rayleigh range.
+Y Outside Rayleigh range.
+Starting pilot beam size x, y:	1.6004E+01	1.6004E+01
+Starting pilot X, Y pixels:	64.01	64.01
+Internal transmittance    :	1.000000
+Using Outside to Outside propagator.
+Starting delta X, Y size:	6.3400E-01	6.3402E-01
+Starting array X, Y size:	6.4922E+02	6.4923E+02
+Starting pilot beam waist    x, y:	5.0788E-02	5.0788E-02
+Starting pilot beam position x, y:	-6.0858E+02	-6.0858E+02
+Starting pilot beam Rayleigh x, y:	7.6159E-01	7.6159E-01
+X Outside Rayleigh range.
+Y Outside Rayleigh range.
+Starting pilot beam size x, y:	4.0584E+01	4.0584E+01
+Starting pilot X, Y pixels:	64.01	64.01
+Internal transmittance    :	1.000000
