@@ -39,6 +39,8 @@ def _request() -> NativePopRequest:
         x_width_mm=256.01,
         y_width_mm=256.01,
         wavelength_number=1,
+        wavelength_vacuum_mm=0.01064,
+        refractive_index=1.0,
         field_number=1,
         use_polarization=False,
         normalization_mode="total_power",
@@ -66,6 +68,8 @@ def _header(
     rayleigh_mm: float = 0.76159,
     waist_mm: float = 0.050788,
     is_polarized: int = 0,
+    wavelength_vacuum_mm: float = 0.01064,
+    refractive_index: float = 1.0,
 ) -> RawZbfHeader:
     ints = (1, nx, ny, is_polarized, 0, 0, 0, 0, 0)
     doubles = (
@@ -77,8 +81,8 @@ def _header(
         zx_mm if zy_mm is None else zy_mm,
         rayleigh_mm,
         waist_mm,
-        0.0006328,
-        1.0,
+        wavelength_vacuum_mm,
+        refractive_index,
         1.0,
         1.0,
         0.0,
@@ -93,18 +97,105 @@ def _header(
     return RawZbfHeader.from_bytes(struct.pack("<9i20d", *ints, *doubles))
 
 
-def _oo_headers() -> tuple[RawZbfHeader, RawZbfHeader]:
-    source = _header(
-        dx_mm=256.01 / 1024,
-        dy_mm=256.01 / 1024,
-        zx_mm=-239.98,
+def _compact_parts(name: str) -> tuple[str, str]:
+    text = _fixture(name)
+    marker = "Starting delta X, Y size:"
+    first = text.index(marker)
+    second = text.index(marker, first + len(marker))
+    return text[:second], text[second:]
+
+
+def _synthetic_full_report() -> str:
+    oo_start, oo_end = _compact_parts("native_oo_report.txt")
+    oi_start, _ = _compact_parts("native_oi_report.txt")
+    io_start, io_end = _compact_parts("native_io_report.txt")
+    return "\n".join(
+        (
+            "Surface transfer from before 7 to after 7",
+            oo_start,
+            "Surface transfer from before 8 to after 8",
+            oo_end,
+            "Surface transfer from before 12 to after 12",
+            oi_start,
+            "Surface transfer from before 13 to after 13",
+            io_start,
+            "Surface transfer from before 14 to after 14",
+            io_end,
+        )
     )
-    target = _header(
-        dx_mm=0.634,
-        dy_mm=0.6340155,
-        zx_mm=-608.58,
+
+
+def _segment_headers(index: int) -> tuple[RawZbfHeader, RawZbfHeader]:
+    values = (
+        (
+            dict(
+                dx_mm=0.25000748338153306,
+                dy_mm=0.25001199074957775,
+                zx_mm=-239.98296622683966,
+                rayleigh_mm=0.7615935452618818,
+                waist_mm=0.05078757830533947,
+            ),
+            dict(
+                dx_mm=0.6340045637732635,
+                dy_mm=0.6340159941987548,
+                zx_mm=-608.5829675817045,
+                rayleigh_mm=0.7615935486486892,
+                waist_mm=0.05078757841826568,
+            ),
+        ),
+        (
+            dict(
+                dx_mm=0.6339798581276602,
+                dy_mm=0.634037020947161,
+                zx_mm=-608.6152636354115,
+                rayleigh_mm=0.7616788040351931,
+                waist_mm=0.05079042100632709,
+            ),
+            dict(
+                dx_mm=0.00997491149385745,
+                dy_mm=0.00997401218664598,
+                zx_mm=-0.015263632633932584,
+                rayleigh_mm=0.7616788040351954,
+                waist_mm=0.05079042100632716,
+            ),
+        ),
+        (
+            dict(
+                dx_mm=0.00997491149385745,
+                dy_mm=0.00997401218664598,
+                zx_mm=-0.015263632633932584,
+                rayleigh_mm=0.7616788040351954,
+                waist_mm=0.05079042100632716,
+            ),
+            dict(
+                dx_mm=0.002067452060096705,
+                dy_mm=0.002067638471995169,
+                zx_mm=1.9847363702338578,
+                rayleigh_mm=0.7616788066082827,
+                waist_mm=0.050790421092116726,
+            ),
+        ),
     )
-    return source, target
+    source_values, output_values = values[index]
+    return _header(**source_values), _header(**output_values)
+
+
+def _header_like(header: RawZbfHeader, **changes) -> RawZbfHeader:
+    values = dict(
+        nx=header.nx,
+        ny=header.ny,
+        dx_mm=header.dx,
+        dy_mm=header.dy,
+        zx_mm=header.zx,
+        zy_mm=header.zy,
+        rayleigh_mm=header.rx,
+        waist_mm=header.wx,
+        is_polarized=header.is_polarized,
+        wavelength_vacuum_mm=header.wavelength_vacuum_mm,
+        refractive_index=header.refractive_index,
+    )
+    values.update(changes)
+    return _header(**values)
 
 
 @pytest.mark.parametrize(
@@ -116,6 +207,7 @@ def _oo_headers() -> tuple[RawZbfHeader, RawZbfHeader]:
         "input_grid",
         "output_grid",
         "warnings",
+        "segment_index",
     ),
     (
         (
@@ -126,6 +218,7 @@ def _oo_headers() -> tuple[RawZbfHeader, RawZbfHeader]:
             ((0.25001, 0.25001), (256.01, 256.01)),
             ((0.63400, 0.63402), (649.22, 649.23)),
             (),
+            0,
         ),
         (
             "native_oi_report.txt",
@@ -135,6 +228,7 @@ def _oo_headers() -> tuple[RawZbfHeader, RawZbfHeader]:
             ((0.63398, 0.63404), (649.20, 649.25)),
             ((0.0099749, 0.0099740), (10.214, 10.213)),
             ("**** WARNING: Low sampling of pilot beam detected.",),
+            1,
         ),
         (
             "native_io_report.txt",
@@ -147,6 +241,7 @@ def _oo_headers() -> tuple[RawZbfHeader, RawZbfHeader]:
                 "**** WARNING: Low sampling of pilot beam detected.",
                 "**** WARNING: Low sampling of pilot beam detected.",
             ),
+            2,
         ),
     ),
 )
@@ -158,8 +253,16 @@ def test_parses_literal_oo_oi_io_distance_grids_and_all_warnings(
     input_grid: tuple[tuple[float, float], tuple[float, float]],
     output_grid: tuple[tuple[float, float], tuple[float, float]],
     warnings: tuple[str, ...],
+    segment_index: int,
 ) -> None:
     report = parse_native_pop_report(_fixture(fixture_name))
+    segment = BICONIC_SEGMENTS[segment_index]
+    selected = parse_native_pop_report(
+        _synthetic_full_report(), segment=segment
+    )
+    selected_by_start = parse_native_pop_report(
+        _synthetic_full_report(), start_surface=segment.start_surface
+    )
 
     assert report.branch == branch
     assert report.propagator_label == label
@@ -177,6 +280,27 @@ def test_parses_literal_oo_oi_io_distance_grids_and_all_warnings(
         value.value for value in report.output_sampling.width_mm
     ) == output_grid[1]
     assert report.warnings == warnings
+    assert selected == report
+    assert selected_by_start == report
+
+    if segment_index == 0:
+        full = _synthetic_full_report()
+        with pytest.raises(ValueError, match="selector"):
+            parse_native_pop_report(full)
+        with pytest.raises(ValueError, match="unique"):
+            parse_native_pop_report(
+                full + "\n" + full.split("Surface transfer from before 8", 1)[0],
+                segment=segment,
+            )
+        with pytest.raises(ValueError, match="adjacent output"):
+            parse_native_pop_report(
+                full.replace(
+                    "Surface transfer from before 8 to after 8",
+                    "Surface transfer from before 9 to after 9",
+                    1,
+                ),
+                segment=segment,
+            )
 
 
 @pytest.mark.parametrize("end_surface", (8, 7), ids=("transfer", "identity"))
@@ -197,6 +321,8 @@ def test_api_readback_alone_proves_start_end_n_enum_and_width(
             "ny",
             "sample_size_enum",
             "wavelength_number",
+            "wavelength_vacuum_mm",
+            "refractive_index",
             "field_number",
             "normalization_mode",
         }
@@ -211,6 +337,8 @@ def test_api_readback_alone_proves_start_end_n_enum_and_width(
         "x_width_mm": 256.02,
         "y_width_mm": 256.02,
         "wavelength_number": 2,
+        "wavelength_vacuum_mm": 0.01065,
+        "refractive_index": 1.1,
         "field_number": 2,
         "use_polarization": True,
         "normalization_mode": "peak_irradiance",
@@ -227,36 +355,58 @@ def test_api_readback_alone_proves_start_end_n_enum_and_width(
                 replace(readback, **{field_name: wrong_value}),
             )
 
+    for invalid_enum in ("S_512x512", "1024x1024", "S_auto"):
+        with pytest.raises(ValueError, match="sample_size_enum"):
+            replace(request, sample_size_enum=invalid_enum)
+    for numeric_field in (
+        "x_width_mm",
+        "y_width_mm",
+        "wavelength_vacuum_mm",
+        "refractive_index",
+        "normalization_value",
+    ):
+        for invalid_value in (True, 1, "1.0"):
+            with pytest.raises(ValueError, match=numeric_field):
+                replace(request, **{numeric_field: invalid_value})
 
-def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
-    request = _request()
+
+@pytest.mark.parametrize(
+    ("fixture_name", "segment_index"),
+    (
+        ("native_oo_report.txt", 0),
+        ("native_oi_report.txt", 1),
+        ("native_io_report.txt", 2),
+    ),
+)
+def test_request_readback_report_and_zbf_consistency_fails_closed(
+    fixture_name: str,
+    segment_index: int,
+) -> None:
+    segment = BICONIC_SEGMENTS[segment_index]
+    source, target = _segment_headers(segment_index)
+    request = replace(
+        _request(),
+        start_surface=segment.start_surface,
+        end_surface=segment.end_surface,
+        x_width_mm=source.nx * source.dx,
+        y_width_mm=source.ny * source.dy,
+        input_beam_file=segment.source_zbf_name,
+        output_beam_file=segment.target_zbf_name,
+    )
     readback = _readback(request)
-    report = parse_native_pop_report(_fixture("native_oo_report.txt"))
-    segment = BICONIC_SEGMENTS[0]
-    source, target = _oo_headers()
+    report = parse_native_pop_report(_fixture(fixture_name))
 
     validate_settings_readback(request, readback)
     validate_output_sampling(report, readback, source, target)
     validate_native_transfer(report, segment, source, target)
     assert S7.axis_sign == -1
     assert report.signed_distance_mm.contains(
-        S7.axis_sign * segment.model_distance_mm
+        segment.start_convention.axis_sign * segment.model_distance_mm
     )
+    assert report.signed_distance_mm.contains(target.zx - source.zx)
+    assert report.signed_distance_mm.contains(target.zy - source.zy)
 
-    inside_rayleigh = (
-        ReportNumber.from_token("7.0000E+02"),
-        ReportNumber.from_token("7.0000E+02"),
-    )
-    oi_report = replace(
-        report,
-        branch="OI",
-        propagator_label="Using Outside to Inside propagator.",
-        end_pilot=replace(
-            report.end_pilot,
-            rayleigh_mm=inside_rayleigh,
-            inside=(True, True),
-        ),
-    )
+    polarized_readback = replace(readback, use_polarization=True)
     failures = (
         (
             "settings readback",
@@ -270,13 +420,7 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
                 report,
                 readback,
                 source,
-                _header(
-                    nx=512,
-                    ny=512,
-                    dx_mm=0.634,
-                    dy_mm=0.6340155,
-                    zx_mm=-608.58,
-                ),
+                _header_like(target, nx=512, ny=512),
             ),
         ),
         (
@@ -284,11 +428,7 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
             lambda: validate_output_sampling(
                 report,
                 readback,
-                _header(
-                    dx_mm=0.25002,
-                    dy_mm=256.01 / 1024,
-                    zx_mm=-239.98,
-                ),
+                _header_like(source, dx_mm=source.dx * 1.01),
                 target,
             ),
         ),
@@ -298,11 +438,37 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
                 report,
                 readback,
                 source,
-                _header(
-                    dx_mm=0.635,
-                    dy_mm=0.6340155,
-                    zx_mm=-608.58,
+                _header_like(target, dx_mm=target.dx * 1.01),
+            ),
+        ),
+        (
+            "wavelength",
+            lambda: validate_output_sampling(
+                report,
+                readback,
+                source,
+                _header_like(
+                    target,
+                    wavelength_vacuum_mm=target.wavelength_vacuum_mm * 1.01,
                 ),
+            ),
+        ),
+        (
+            "refractive index",
+            lambda: validate_output_sampling(
+                report,
+                readback,
+                source,
+                _header_like(target, refractive_index=1.01),
+            ),
+        ),
+        (
+            "polarization",
+            lambda: validate_output_sampling(
+                report,
+                polarized_readback,
+                _header_like(source, is_polarized=2),
+                _header_like(target, is_polarized=2),
             ),
         ),
         (
@@ -310,7 +476,7 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
             lambda: validate_native_transfer(
                 replace(
                     report,
-                    signed_distance_mm=ReportNumber.from_token("3.6860E+02"),
+                    signed_distance_mm=ReportNumber.from_token("0.0000E+00"),
                 ),
                 segment,
                 source,
@@ -323,11 +489,16 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
                 report,
                 segment,
                 source,
-                _header(
-                    dx_mm=0.634,
-                    dy_mm=0.6340155,
-                    zx_mm=-608.57,
-                ),
+                _header_like(target, zx_mm=target.zx + 0.01),
+            ),
+        ),
+        (
+            "axis-sign distance",
+            lambda: validate_native_transfer(
+                report,
+                segment,
+                source,
+                _header_like(target, zy_mm=target.zy + 0.01),
             ),
         ),
         (
@@ -336,26 +507,16 @@ def test_request_readback_report_and_zbf_consistency_fails_closed() -> None:
                 report,
                 segment,
                 source,
-                _header(
-                    dx_mm=0.634,
-                    dy_mm=0.6340155,
-                    zx_mm=-608.58,
-                    waist_mm=0.06,
-                ),
+                _header_like(target, waist_mm=target.wx * 1.1),
             ),
         ),
         (
             "branch",
             lambda: validate_native_transfer(
-                oi_report,
-                segment,
+                report,
+                BICONIC_SEGMENTS[(segment_index + 1) % 3],
                 source,
-                _header(
-                    dx_mm=0.634,
-                    dy_mm=0.6340155,
-                    zx_mm=-608.58,
-                    rayleigh_mm=700.0,
-                ),
+                target,
             ),
         ),
     )

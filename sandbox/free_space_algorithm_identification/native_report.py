@@ -22,6 +22,12 @@ _BRANCH_STATES: dict[Branch, tuple[bool, bool]] = {
     "OI": (False, True),
     "IO": (True, False),
 }
+_SAMPLE_SIZE_ENUM = re.compile(r"S_(\d+)x(\d+)")
+_SURFACE_TRANSFER_MARKER = re.compile(
+    r"^[ \t]*Surface transfer from (before|after)[ \t]+(\d+)"
+    r"[ \t]+to[ \t]+(before|after)[ \t]+(\d+)[ \t]*$",
+    flags=re.MULTILINE,
+)
 
 
 NumberPair = tuple[ReportNumber, ReportNumber]
@@ -106,6 +112,8 @@ class _NativePopSettings:
     x_width_mm: float
     y_width_mm: float
     wavelength_number: int
+    wavelength_vacuum_mm: float
+    refractive_index: float
     field_number: int
     use_polarization: bool
     normalization_mode: str
@@ -132,10 +140,16 @@ class _NativePopSettings:
         for name, value in (
             ("x_width_mm", self.x_width_mm),
             ("y_width_mm", self.y_width_mm),
+            ("wavelength_vacuum_mm", self.wavelength_vacuum_mm),
+            ("refractive_index", self.refractive_index),
             ("normalization_value", self.normalization_value),
         ):
-            if not math.isfinite(value) or value <= 0.0:
-                raise ValueError(f"{name} must be positive and finite")
+            if (
+                type(value) is not float
+                or not math.isfinite(value)
+                or value <= 0.0
+            ):
+                raise ValueError(f"{name} must be a positive finite float")
         for name, value in (
             ("sample_size_enum", self.sample_size_enum),
             ("normalization_mode", self.normalization_mode),
@@ -144,6 +158,17 @@ class _NativePopSettings:
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a nonempty string")
+        sample_size_match = _SAMPLE_SIZE_ENUM.fullmatch(self.sample_size_enum)
+        if sample_size_match is None:
+            raise ValueError(
+                "sample_size_enum must have the literal form S_<nx>x<ny>"
+            )
+        enum_grid = tuple(int(value) for value in sample_size_match.groups())
+        if enum_grid != (self.nx, self.ny):
+            raise ValueError(
+                "sample_size_enum must match nx and ny exactly: "
+                f"enum={enum_grid}, grid={(self.nx, self.ny)}"
+            )
         for name, value in (
             ("use_polarization", self.use_polarization),
             ("save_output_beam", self.save_output_beam),
@@ -209,11 +234,8 @@ def _two_axis_states(
     return parsed[0], parsed[1]
 
 
-def parse_native_pop_report(text: str) -> NativePopReport:
-    """Parse only the literals that a compact, single-transfer POP TXT proves."""
-
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("native report text must be nonempty")
+def _parse_compact_transfer(text: str) -> NativePopReport:
+    """Parse a compact text containing exactly one native transfer."""
 
     distance_match = _unique_match(
         text,
@@ -296,6 +318,138 @@ def parse_native_pop_report(text: str) -> NativePopReport:
     )
 
 
+def _selected_transfer_text(
+    text: str,
+    markers: tuple[re.Match[str], ...],
+    *,
+    start_surface: int | None,
+    segment: SegmentSpec | None,
+) -> str:
+    if segment is not None and not isinstance(segment, SegmentSpec):
+        raise ValueError("segment selector must be a SegmentSpec")
+    if start_surface is not None and (
+        type(start_surface) is not int or start_surface < 0
+    ):
+        raise ValueError("start_surface selector must be a nonnegative integer")
+
+    if segment is None and start_surface is None:
+        raise ValueError(
+            "a full native report requires a start_surface or segment selector"
+        )
+    selected_surface = segment.start_surface if segment is not None else start_surface
+    if start_surface is not None and segment is not None:
+        if start_surface != segment.start_surface:
+            raise ValueError("start_surface and segment selectors disagree")
+    assert selected_surface is not None
+
+    selected_indices = tuple(
+        index
+        for index, marker in enumerate(markers)
+        if marker.group(1) == "before"
+        and int(marker.group(2)) == selected_surface
+        and marker.group(3) == "after"
+        and int(marker.group(4)) == selected_surface
+    )
+    if len(selected_indices) != 1:
+        raise ValueError(
+            "full native report must contain a unique surface-transfer marker "
+            f"for selected start surface {selected_surface}"
+        )
+    selected_index = selected_indices[0]
+    if selected_index + 1 >= len(markers):
+        raise ValueError("selected transfer has no adjacent output surface state")
+
+    output_marker = markers[selected_index + 1]
+    output_surface = int(output_marker.group(2))
+    output_marker_is_state = (
+        output_marker.group(1) == "before"
+        and output_marker.group(3) == "after"
+        and int(output_marker.group(4)) == output_surface
+    )
+    expected_output_surface = (
+        segment.end_surface if segment is not None else output_surface
+    )
+    if not output_marker_is_state or output_surface != expected_output_surface:
+        raise ValueError(
+            "selected transfer has no adjacent output surface state matching "
+            f"surface {expected_output_surface}"
+        )
+
+    current_section = text[markers[selected_index].end() : output_marker.start()]
+    next_marker_start = (
+        markers[selected_index + 2].start()
+        if selected_index + 2 < len(markers)
+        else len(text)
+    )
+    output_section = text[output_marker.end() : next_marker_start]
+    output_patterns = (
+        (
+            rf"^[ \t]*Starting delta X, Y size:[ \t]*"
+            rf"{_FLOAT_TOKEN}[ \t]+{_FLOAT_TOKEN}[ \t]*$",
+            "output starting sampling-interval",
+        ),
+        (
+            rf"^[ \t]*Starting array X, Y size:[ \t]*"
+            rf"{_FLOAT_TOKEN}[ \t]+{_FLOAT_TOKEN}[ \t]*$",
+            "output starting array-width",
+        ),
+        (
+            rf"^[ \t]*Starting pilot beam waist[ \t]+x, y:[ \t]*"
+            rf"{_FLOAT_TOKEN}[ \t]+{_FLOAT_TOKEN}[ \t]*$",
+            "output starting pilot-waist",
+        ),
+        (
+            rf"^[ \t]*Starting pilot beam position[ \t]+x, y:[ \t]*"
+            rf"{_FLOAT_TOKEN}[ \t]+{_FLOAT_TOKEN}[ \t]*$",
+            "output starting pilot-position",
+        ),
+        (
+            rf"^[ \t]*Starting pilot beam Rayleigh[ \t]+x, y:[ \t]*"
+            rf"{_FLOAT_TOKEN}[ \t]+{_FLOAT_TOKEN}[ \t]*$",
+            "output starting pilot-Rayleigh",
+        ),
+        (
+            r"^[ \t]*X (?:Inside|Outside) Rayleigh range\.[ \t]*$",
+            "output X-axis pilot-state",
+        ),
+        (
+            r"^[ \t]*Y (?:Inside|Outside) Rayleigh range\.[ \t]*$",
+            "output Y-axis pilot-state",
+        ),
+    )
+    output_lines = tuple(
+        _unique_match(output_section, pattern, label=label).group(0)
+        for pattern, label in output_patterns
+    )
+    return "\n".join((current_section, *output_lines))
+
+
+def parse_native_pop_report(
+    text: str,
+    *,
+    start_surface: int | None = None,
+    segment: SegmentSpec | None = None,
+) -> NativePopReport:
+    """Parse one transfer from a compact or explicitly selected native report."""
+
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("native report text must be nonempty")
+    markers = tuple(_SURFACE_TRANSFER_MARKER.finditer(text))
+    if markers:
+        text = _selected_transfer_text(
+            text,
+            markers,
+            start_surface=start_surface,
+            segment=segment,
+        )
+    elif start_surface is not None or segment is not None:
+        raise ValueError(
+            "a selector can only be used with a full native report containing "
+            "surface-transfer markers"
+        )
+    return _parse_compact_transfer(text)
+
+
 def _float_equal(left: float, right: float) -> bool:
     scale = max(1.0, abs(float(left)), abs(float(right)))
     return abs(float(left) - float(right)) <= 64.0 * math.ulp(scale)
@@ -339,8 +493,27 @@ def _require_header_grid(
         for value in (header.dx, header.dy)
     ):
         raise ValueError(f"sampling mismatch: {role} ZBF intervals must be positive")
-    if bool(header.is_polarized) != readback.use_polarization:
+    if type(header.is_polarized) is not int or header.is_polarized not in (0, 1):
+        raise ValueError(
+            f"sampling contract mismatch for {role} ZBF polarization: "
+            f"is_polarized must be exactly 0 or 1, got {header.is_polarized!r}"
+        )
+    if header.is_polarized != int(readback.use_polarization):
         raise ValueError(f"sampling contract mismatch for {role} ZBF polarization")
+    if not _float_equal(
+        header.wavelength_vacuum_mm, readback.wavelength_vacuum_mm
+    ):
+        raise ValueError(
+            f"wavelength mismatch for {role} ZBF: "
+            f"header={header.wavelength_vacuum_mm!r}, "
+            f"readback={readback.wavelength_vacuum_mm!r}"
+        )
+    if not _float_equal(header.refractive_index, readback.refractive_index):
+        raise ValueError(
+            f"refractive index mismatch for {role} ZBF: "
+            f"header={header.refractive_index!r}, "
+            f"readback={readback.refractive_index!r}"
+        )
 
 
 def _require_printed_grid(
