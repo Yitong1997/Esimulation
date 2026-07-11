@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import re
+import stat
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from numbers import Integral
@@ -15,9 +17,11 @@ from typing import Iterable, Mapping
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_COMPONENT_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
-_RECEIPT_NAME_RE = re.compile(r"([0-9]{4})_.+\.json\Z")
+_RECEIPT_NAME_RE = re.compile(r"([0-9]{4})\.json\Z")
 _SEGMENTS = ("S07_S08", "S12_S13", "S13_S14")
 _ROOT_HASH_NAME = "hashes.sha256"
+_RUN_INSTANCE_RE = re.compile(r"[0-9a-f]{32}\Z")
+_RESERVED_WRITER_PATHS = frozenset({_ROOT_HASH_NAME, "model/hashes.sha256"})
 
 
 def _safe_component(value: object, *, label: str) -> str:
@@ -91,6 +95,7 @@ class ArtifactHash:
 @dataclass(frozen=True)
 class RunLayout:
     run_id: str
+    run_instance_uuid: str
     run_dir: Path
     manifest_path: Path
     provenance_path: Path
@@ -108,11 +113,16 @@ class RunLayout:
 
     def __post_init__(self) -> None:
         _safe_component(self.run_id, label="run_id")
+        if (
+            not isinstance(self.run_instance_uuid, str)
+            or _RUN_INSTANCE_RE.fullmatch(self.run_instance_uuid) is None
+        ):
+            raise ValueError("run instance UUID must be lowercase 32-hex")
         run_dir = Path(self.run_dir).resolve()
         if not run_dir.is_dir():
             raise ValueError("run directory must exist")
         for name, value in asdict(self).items():
-            if name in {"run_id", "run_dir"}:
+            if name in {"run_id", "run_instance_uuid", "run_dir"}:
                 continue
             path = Path(value).resolve(strict=False)
             if not path.is_relative_to(run_dir):
@@ -123,6 +133,7 @@ class RunLayout:
 @dataclass(frozen=True)
 class ArtifactRef:
     run_id: str
+    run_instance_uuid: str
     producer_stage: str
     producer_case: str
     relative_path: str
@@ -131,6 +142,11 @@ class ArtifactRef:
 
     def __post_init__(self) -> None:
         run_id = _safe_component(self.run_id, label="artifact run_id")
+        if (
+            not isinstance(self.run_instance_uuid, str)
+            or _RUN_INSTANCE_RE.fullmatch(self.run_instance_uuid) is None
+        ):
+            raise ValueError("artifact run instance UUID must be lowercase 32-hex")
         stage = _logical_identifier(self.producer_stage, label="producer stage")
         case = _logical_identifier(self.producer_case, label="producer case")
         relative_path = _canonical_relative_path(self.relative_path)
@@ -156,6 +172,7 @@ class ArtifactRef:
         digest = hash_artifact(path)
         return cls(
             run_id=layout.run_id,
+            run_instance_uuid=layout.run_instance_uuid,
             producer_stage=producer_stage,
             producer_case=producer_case,
             relative_path=canonical,
@@ -173,11 +190,34 @@ def _require_layout(layout: object) -> RunLayout:
     return layout
 
 
+def _is_link_or_reparse(path: Path) -> bool:
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    attributes = int(getattr(metadata, "st_file_attributes", 0))
+    reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return bool(stat.S_ISLNK(metadata.st_mode) or attributes & reparse_flag)
+
+
+def _reject_link_chain(run: RunLayout, candidate: Path) -> None:
+    lexical = Path(os.path.abspath(candidate))
+    root = Path(os.path.abspath(run.run_dir))
+    while lexical != root:
+        if _is_link_or_reparse(lexical):
+            raise ValueError("artifact paths cannot contain a link or reparse point")
+        parent = lexical.parent
+        if parent == lexical:
+            raise ValueError("artifact path must remain inside the current run")
+        lexical = parent
+
+
 def _resolve_new_run_file(layout: RunLayout, relative_path: object) -> tuple[str, Path]:
     run = _require_layout(layout)
     canonical = _canonical_relative_path(relative_path)
     pure = PurePosixPath(canonical)
     destination = run.run_dir.joinpath(*pure.parts)
+    _reject_link_chain(run, destination.parent)
     if not destination.parent.is_dir():
         raise ValueError("artifact parent directory must be predeclared in the run layout")
     resolved_parent = destination.parent.resolve(strict=True)
@@ -190,6 +230,7 @@ def _resolve_existing_run_file(layout: RunLayout, relative_path: object) -> Path
     run = _require_layout(layout)
     canonical = _canonical_relative_path(relative_path)
     candidate = run.run_dir.joinpath(*PurePosixPath(canonical).parts)
+    _reject_link_chain(run, candidate)
     try:
         resolved = candidate.resolve(strict=True)
     except FileNotFoundError as exc:
@@ -235,6 +276,8 @@ def write_json_once(
 
     run = _require_layout(layout)
     canonical, destination = _resolve_new_run_file(run, relative_path)
+    if canonical in _RESERVED_WRITER_PATHS:
+        raise ValueError("hash-manifest paths are reserved for the manifest writer")
     _guard_not_finalized(run, destination_relative=canonical)
     if canonical == "provenance.json":
         _validate_provenance_payload(run, payload)
@@ -256,12 +299,15 @@ def _validate_provenance_payload(layout: RunLayout, payload: object) -> None:
         "host",
         "pop_sample_enums",
         "run_id",
+        "run_instance_uuid",
         "versions",
     }
     if not required.issubset(payload):
         raise ValueError("provenance is missing required reproducibility metadata")
     if payload["run_id"] != layout.run_id:
         raise ValueError("provenance run_id does not match the run layout")
+    if payload["run_instance_uuid"] != layout.run_instance_uuid:
+        raise ValueError("provenance run instance does not match the run layout")
 
     versions = payload["versions"]
     version_keys = {"opticstudio", "zos_api", "zospy", "python", "numpy", "scipy"}
@@ -304,6 +350,16 @@ def _validate_provenance_payload(layout: RunLayout, payload: object) -> None:
     }
     if any(artifact_hashes.get(key) != value for key, value in expected_hashes.items()):
         raise ValueError("provenance model or CFG hash does not match the run copy")
+    input_hashes = artifact_hashes.get("canonical_input_zbf_sha256")
+    if (
+        not isinstance(input_hashes, Mapping)
+        or set(input_hashes) != {"S7", "S12", "S13"}
+        or any(
+            not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None
+            for value in input_hashes.values()
+        )
+    ):
+        raise ValueError("provenance canonical input ZBF hashes are incomplete")
 
     conventions = payload["conventions"]
     convention_keys = {
@@ -313,16 +369,20 @@ def _validate_provenance_payload(layout: RunLayout, payload: object) -> None:
         "polarization",
         "power",
         "reflection",
+        "surface_axis_signs",
     }
     if (
         not isinstance(conventions, Mapping)
         or not convention_keys.issubset(conventions)
         or any(
             not isinstance(conventions[key], str) or not conventions[key].strip()
-            for key in convention_keys
+            for key in convention_keys - {"surface_axis_signs"}
         )
     ):
         raise ValueError("provenance physical conventions are incomplete")
+    axis_signs = conventions["surface_axis_signs"]
+    if axis_signs != {"S7": -1, "S8": -1, "S12": 1, "S13": 1, "S14": 1}:
+        raise ValueError("provenance surface axis signs are invalid")
 
     sample_enums = payload["pop_sample_enums"]
     if (
@@ -349,6 +409,8 @@ def copy_file_once(
     if not source_path.is_file():
         raise ValueError("copy source must be a regular file")
     canonical, destination = _resolve_new_run_file(run, relative_path)
+    if canonical in _RESERVED_WRITER_PATHS:
+        raise ValueError("hash-manifest paths are reserved for the manifest writer")
     _guard_not_finalized(run, destination_relative=canonical)
     created = False
     expected_hash = hashlib.sha256()
@@ -417,7 +479,11 @@ def create_run_layout(
     manifest_payload: Mapping[str, object],
     case_matrix: Mapping[str, Iterable[str]],
 ) -> RunLayout:
-    """Exclusively initialize one immutable diagnostic run directory."""
+    """Exclusively initialize one immutable diagnostic run directory.
+
+    An initialization failure deliberately leaves a fail-closed partial directory;
+    that run ID is permanently burned and must not be retried or repaired in place.
+    """
 
     run_name = _safe_component(run_id, label="run_id")
     model_source_path = Path(model_source).resolve(strict=True)
@@ -426,18 +492,20 @@ def create_run_layout(
         raise ValueError("model and CFG sources must be regular files")
     if not isinstance(manifest_payload, Mapping):
         raise ValueError("manifest payload must be a mapping")
-    reserved = {"format_version", "run_id", "case_matrix"}
+    reserved = {"format_version", "run_id", "run_instance_uuid", "case_matrix"}
     if reserved.intersection(manifest_payload):
         raise ValueError("manifest payload cannot override immutable run fields")
     if "planned_stage_graph" not in manifest_payload:
         raise ValueError("manifest requires the complete planned stage graph")
     cases = _normalized_case_matrix(case_matrix)
+    run_instance_uuid = uuid.uuid4().hex
     manifest = dict(manifest_payload)
     manifest.update(
         {
             "case_matrix": cases,
             "format_version": 1,
             "run_id": run_name,
+            "run_instance_uuid": run_instance_uuid,
         }
     )
     _json_bytes(manifest)
@@ -475,6 +543,7 @@ def create_run_layout(
 
     layout = RunLayout(
         run_id=run_name,
+        run_instance_uuid=run_instance_uuid,
         run_dir=run_dir,
         manifest_path=run_dir / "manifest.json",
         provenance_path=run_dir / "provenance.json",
@@ -515,6 +584,8 @@ def verify_artifact_ref(
         raise ValueError("artifact reference must be an ArtifactRef")
     if reference.run_id != run.run_id:
         raise ValueError("artifact reference does not belong to the current run")
+    if reference.run_instance_uuid != run.run_instance_uuid:
+        raise ValueError("artifact reference does not belong to this run instance")
     expected_stage = _logical_identifier(
         expected_producer_stage, label="expected producer stage"
     )
@@ -532,14 +603,6 @@ def verify_artifact_ref(
     if digest.sha256 != reference.sha256:
         raise ValueError("artifact hash does not match its reference")
     return path
-
-
-def _receipt_slug(value: str) -> str:
-    logical = _logical_identifier(value, label="receipt identifier")
-    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", logical).strip("._")
-    if not slug:
-        raise ValueError("receipt identifier cannot form a filename")
-    return slug
 
 
 def _parse_utc_timestamp(value: object, *, label: str) -> datetime:
@@ -636,13 +699,12 @@ def write_stage_receipt(
         "outputs": [reference.to_dict() for reference in outputs],
         "producer_case": case_id,
         "run_id": run.run_id,
+        "run_instance_uuid": run.run_instance_uuid,
         "sequence": sequence,
         "stage": stage_id,
         "started_utc": started_utc,
     }
-    filename = (
-        f"{sequence:04d}_{_receipt_slug(stage_id)}_{_receipt_slug(case_id)}.json"
-    )
+    filename = f"{sequence:04d}.json"
     relative = f"receipts/{filename}"
     write_json_once(run, relative, payload)
     return ArtifactRef.from_file(
@@ -660,8 +722,8 @@ def _listed_run_files(
 ) -> tuple[str, ...]:
     relative_paths: list[str] = []
     for path in layout.run_dir.rglob("*"):
-        if path.is_symlink():
-            raise ValueError("hash manifests do not permit symbolic links")
+        if _is_link_or_reparse(path):
+            raise ValueError("hash manifests do not permit links or reparse points")
         if not path.is_file():
             continue
         relative = path.relative_to(layout.run_dir).as_posix()
@@ -699,6 +761,111 @@ def _verify_model_hash_manifest(layout: RunLayout) -> None:
             )
 
 
+def _verify_receipt_history(layout: RunLayout) -> tuple[dict[str, object], ...]:
+    entries = tuple(sorted(layout.receipts_dir.iterdir(), key=lambda path: path.name))
+    if any(
+        not path.is_file() or _RECEIPT_NAME_RE.fullmatch(path.name) is None
+        for path in entries
+    ):
+        raise ValueError("receipt directory contains a noncanonical entry")
+    if [path.name for path in entries] != [
+        f"{sequence:04d}.json" for sequence in range(1, len(entries) + 1)
+    ]:
+        raise ValueError("receipt sequence history is not contiguous")
+    payloads: list[dict[str, object]] = []
+    for sequence, path in enumerate(entries, start=1):
+        if _is_link_or_reparse(path):
+            raise ValueError("receipt paths cannot contain a link or reparse point")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("stage receipt is malformed") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("stage receipt must be a JSON object")
+        if (
+            payload.get("sequence") != sequence
+            or payload.get("run_id") != layout.run_id
+            or payload.get("run_instance_uuid") != layout.run_instance_uuid
+        ):
+            raise ValueError("stage receipt identity or sequence is invalid")
+        stage_id = _logical_identifier(payload.get("stage"), label="receipt stage")
+        case_id = _logical_identifier(
+            payload.get("producer_case"), label="receipt producer case"
+        )
+        status = payload.get("gate_status")
+        exception = payload.get("exception_text")
+        if status not in {"passed", "failed"}:
+            raise ValueError("stage receipt gate status is invalid")
+        has_exception = isinstance(exception, str) and bool(exception.strip())
+        if (status == "failed") != has_exception:
+            raise ValueError("stage receipt exception semantics are invalid")
+        start = _parse_utc_timestamp(payload.get("started_utc"), label="receipt start")
+        end = _parse_utc_timestamp(payload.get("ended_utc"), label="receipt end")
+        if end < start:
+            raise ValueError("stage receipt timestamps are invalid")
+        for role in ("inputs", "outputs"):
+            raw_refs = payload.get(role)
+            if not isinstance(raw_refs, list):
+                raise ValueError("stage receipt artifact lists are invalid")
+            for raw in raw_refs:
+                if not isinstance(raw, dict):
+                    raise ValueError("stage receipt artifact reference is invalid")
+                try:
+                    reference = ArtifactRef(**raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("stage receipt artifact reference is invalid") from exc
+                if role == "outputs" and (
+                    reference.producer_stage != stage_id
+                    or reference.producer_case != case_id
+                ):
+                    raise ValueError("stage receipt output producer is invalid")
+                verify_artifact_ref(
+                    layout,
+                    reference,
+                    expected_producer_stage=reference.producer_stage,
+                    expected_producer_case=reference.producer_case,
+                )
+        payloads.append(payload)
+    return tuple(payloads)
+
+
+def _verify_finalization_prerequisites(layout: RunLayout) -> None:
+    try:
+        provenance_path = _resolve_existing_run_file(layout, "provenance.json")
+    except ValueError as exc:
+        raise ValueError("provenance is required before finalization") from exc
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("provenance is missing or malformed") from exc
+    _validate_provenance_payload(layout, provenance)
+    try:
+        final_report = _resolve_existing_run_file(layout, "final_report.md")
+    except ValueError as exc:
+        raise ValueError("final report is required before finalization") from exc
+    receipts = _verify_receipt_history(layout)
+    if not receipts:
+        raise ValueError("final report requires a passed report receipt")
+    last = receipts[-1]
+    if last.get("stage") != "report" or last.get("gate_status") != "passed":
+        raise ValueError("final report must be the output of the last passed receipt")
+    report_refs = []
+    for raw in last.get("outputs", []):
+        reference = ArtifactRef(**raw)
+        if reference.relative_path == "final_report.md":
+            report_refs.append(reference)
+    if len(report_refs) != 1:
+        raise ValueError("final report receipt must bind exactly one final report")
+    verified = verify_artifact_ref(
+        layout,
+        report_refs[0],
+        expected_producer_stage="report",
+        expected_producer_case=str(last["producer_case"]),
+    )
+    if verified != final_report:
+        raise ValueError("final report receipt points to the wrong artifact")
+
+
 def write_hash_manifest(
     layout: RunLayout,
     *,
@@ -711,7 +878,10 @@ def write_hash_manifest(
     output_relative, output = _resolve_new_run_file(run, relative_path)
     _guard_not_finalized(run, destination_relative=output_relative)
     if output_relative == _ROOT_HASH_NAME:
+        if include_relative_paths is not None:
+            raise ValueError("the complete root hash manifest cannot use a subset")
         _verify_model_hash_manifest(run)
+        _verify_finalization_prerequisites(run)
     if include_relative_paths is None:
         paths = _listed_run_files(run, excluded_relative=output_relative)
     else:
@@ -733,6 +903,7 @@ def verify_hash_manifest(layout: RunLayout) -> tuple[str, ...]:
 
     run = _require_layout(layout)
     _verify_model_hash_manifest(run)
+    _verify_finalization_prerequisites(run)
     manifest = _resolve_existing_run_file(run, _ROOT_HASH_NAME)
     try:
         lines = manifest.read_text(encoding="ascii").splitlines()
