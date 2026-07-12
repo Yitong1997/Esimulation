@@ -39,11 +39,11 @@ class ZbfField:
 
     @property
     def x_coords(self) -> np.ndarray:
-        return (np.arange(self.nx) - self.nx / 2.0 + 0.5) * self.dx
+        return (np.arange(self.nx) - self.nx // 2) * self.dx
 
     @property
     def y_coords(self) -> np.ndarray:
-        return (np.arange(self.ny) - self.ny / 2.0 + 0.5) * self.dy
+        return (np.arange(self.ny) - self.ny // 2) * self.dy
 
     @property
     def amplitude(self) -> np.ndarray:
@@ -54,7 +54,52 @@ class ZbfField:
 
     @property
     def physical_field(self) -> np.ndarray:
-        return self.ex * np.exp(1j * zbf_reference_phase(self))
+        return self.ex * np.exp(-1j * zbf_reference_phase(self))
+
+    @property
+    def reference_relative_field_pop_convention(self) -> np.ndarray:
+        return zbf_reference_relative_field_pop_convention(self)
+
+    @property
+    def physical_field_pop_convention(self) -> np.ndarray:
+        return zbf_physical_field_pop_convention(self)
+
+
+def zemax_zbf_field_to_pop_convention(field: np.ndarray) -> np.ndarray:
+    """Convert raw Zemax ZBF samples to the POP complex-field convention."""
+
+    return np.conj(np.asarray(field, dtype=np.complex128))
+
+
+def pop_field_to_zemax_zbf_convention(field: np.ndarray) -> np.ndarray:
+    """Convert a POP complex field to the raw Zemax ZBF convention."""
+
+    return np.conj(np.asarray(field, dtype=np.complex128))
+
+
+def zbf_reference_relative_field_pop_convention(zbf: ZbfField) -> np.ndarray:
+    """Return raw ZBF ``Ex`` as a POP reference-relative field."""
+
+    return zemax_zbf_field_to_pop_convention(zbf.ex)
+
+
+def zbf_physical_field_pop_convention(zbf: ZbfField) -> np.ndarray:
+    """Return the ZBF physical field in the POP phasor convention."""
+
+    return zbf_physical_field_pop_convention_for_axis(zbf, axis_sign=1.0)
+
+
+def zbf_physical_field_pop_convention_for_axis(
+    zbf: ZbfField,
+    *,
+    axis_sign: float,
+) -> np.ndarray:
+    """Lift the ZBF residual field with its signed local-axis reference phase."""
+
+    sign = 1.0 if float(axis_sign) >= 0.0 else -1.0
+    return zbf_reference_relative_field_pop_convention(zbf) * np.exp(
+        1j * sign * zbf_reference_phase(zbf)
+    )
 
 
 def read_zbf(path: str | Path) -> ZbfField:
@@ -150,7 +195,7 @@ def write_zbf(path: str | Path, zbf: ZbfField) -> None:
 
 
 def zbf_reference_phase(zbf: ZbfField) -> np.ndarray:
-    """Compute the Zemax reference phase represented by the ZBF header."""
+    """Compute the validated reference phase represented by the ZBF header."""
 
     x_grid, y_grid = np.meshgrid(zbf.x_coords, zbf.y_coords)
     phase = np.zeros((zbf.ny, zbf.nx), dtype=np.float64)
@@ -160,15 +205,7 @@ def zbf_reference_phase(zbf: ZbfField) -> np.ndarray:
     rcx = _zbf_reference_radius(zbf.zx, zbf.rx)
     rcy = _zbf_reference_radius(zbf.zy, zbf.ry)
     k = 2.0 * np.pi * zbf.index / zbf.wavelength
-    if np.isfinite(rcx) and np.isfinite(rcy) and np.isclose(
-        rcx, rcy, rtol=5e-8, atol=1e-8
-    ):
-        return k * _signed_spherical_opd(x_grid**2 + y_grid**2, 0.5 * (rcx + rcy))
-    if np.isfinite(rcx):
-        phase += k * _signed_spherical_opd(x_grid**2, rcx)
-    if np.isfinite(rcy):
-        phase += k * _signed_spherical_opd(y_grid**2, rcy)
-    return phase
+    return k * _validated_reference_opd(x_grid**2, y_grid**2, rcx, rcy)
 
 
 def _read_complex_grid(f, nx: int, ny: int, path: Path, label: str) -> np.ndarray:
@@ -200,3 +237,25 @@ def _signed_spherical_opd(transverse_sq: np.ndarray, radius: float) -> np.ndarra
         return np.zeros_like(transverse_sq, dtype=np.float64)
     abs_radius = abs(radius)
     return np.sign(radius) * (np.sqrt(abs_radius**2 + transverse_sq) - abs_radius)
+
+
+def _validated_reference_opd(
+    x_sq: np.ndarray,
+    y_sq: np.ndarray,
+    radius_x: float,
+    radius_y: float,
+) -> np.ndarray:
+    finite_x = np.isfinite(radius_x)
+    finite_y = np.isfinite(radius_y)
+    if finite_x and finite_y:
+        if not np.isclose(radius_x, radius_y, rtol=1e-12, atol=1e-15):
+            raise NotImplementedError(
+                "Unequal X/Y ZBF reference radii are not validated; use the "
+                "reference-relative field or an explicit plane-reference export."
+            )
+        return _signed_spherical_opd(x_sq + y_sq, radius_x)
+    if finite_x:
+        return _signed_spherical_opd(x_sq, radius_x)
+    if finite_y:
+        return _signed_spherical_opd(y_sq, radius_y)
+    return np.zeros_like(x_sq, dtype=np.float64)

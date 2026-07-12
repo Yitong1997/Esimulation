@@ -53,8 +53,8 @@ def test_zbf_source_reference_relative_writes_ex_to_proper_wfarr(
     amplitude, phase, pilot, wfo = source.create_initial_wavefront()
 
     np.testing.assert_allclose(amplitude, np.abs(ex))
-    np.testing.assert_allclose(phase, np.angle(ex))
-    np.testing.assert_allclose(proper.prop_shift_center(wfo.wfarr), ex)
+    np.testing.assert_allclose(phase, np.angle(np.conj(ex)))
+    np.testing.assert_allclose(proper.prop_shift_center(wfo.wfarr), np.conj(ex))
     assert pilot.wavelength_um == pytest.approx(10.0)
     assert pilot.waist_radius_mm == pytest.approx(2.0)
 
@@ -70,7 +70,7 @@ def test_zbf_source_physical_mode_returns_physical_phase(tmp_path: Path) -> None
 
     np.testing.assert_allclose(amplitude, np.ones((3, 3)))
     np.testing.assert_allclose(
-        np.exp(1j * phase), np.exp(1j * zbf_reference_phase(zbf))
+        np.exp(1j * phase), np.exp(-1j * zbf_reference_phase(zbf))
     )
 
 
@@ -105,3 +105,23 @@ def test_zbf_source_accepts_small_zemax_xy_sampling_roundoff(tmp_path: Path) -> 
     amplitude, _phase, _pilot, _wfo = source.create_initial_wavefront()
 
     np.testing.assert_allclose(amplitude, np.ones((2, 2)))
+
+
+def test_zbf_source_uses_explicit_reflected_axis_for_pilot_sign(tmp_path: Path) -> None:
+    ex = np.ones((3, 3), dtype=np.complex128)
+    zbf = _field(ex, zx=2.0, rayleigh=4.0)
+    path = tmp_path / "reflected.ZBF"
+    write_zbf(path, zbf)
+
+    source = ZbfSource(
+        path,
+        coordinate_z_axis=np.array([0.0, 0.0, -1.0]),
+        propagation_direction=np.array([0.0, 0.0, 1.0]),
+    )
+    _amplitude, phase, pilot, wfo = source.create_initial_wavefront()
+
+    assert pilot.q_parameter.real == pytest.approx(-2.0)
+    assert wfo.z == pytest.approx(-2.0e-3)
+    np.testing.assert_allclose(
+        np.exp(1j * phase), np.exp(-1j * zbf_reference_phase(zbf))
+    )

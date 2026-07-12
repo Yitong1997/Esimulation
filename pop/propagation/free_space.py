@@ -13,6 +13,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pop.core import GridSampling, OpticalAxisState, PilotBeamParams, PropagationState
+from pop.reference_frames import snapshot_reference_frame
 from pop.utils import format_trace_context
 
 
@@ -268,8 +269,11 @@ def _compute_signed_distance(
     current_axis: OpticalAxisState,
     target_axis: OpticalAxisState,
 ) -> float:
-    # Prefer traced optical-axis path length when available; this is the most
-    # physically consistent quantity for q-parameter propagation.
+    # ``path_length`` is the accumulated physical optical-axis distance.  The
+    # PROPER wavefront is already expressed in a beam-following propagation
+    # coordinate, so this distance remains positive after a reflection.  The
+    # sign of a Zemax surface-local z axis belongs to the reference/header
+    # conversion, not to the physical distance passed to PROPER.
     current_path = getattr(current_axis, "path_length", None)
     target_path = getattr(target_axis, "path_length", None)
     if current_path is not None and target_path is not None:
@@ -277,7 +281,7 @@ def _compute_signed_distance(
             delta_path = float(target_path) - float(current_path)
             if np.isfinite(delta_path):
                 return delta_path
-        except Exception:
+        except (TypeError, OverflowError):
             pass
 
     displacement = target_axis.position - current_axis.position
@@ -1166,6 +1170,14 @@ def propagate_state(
             proper_wfo=state.proper_wfo,
             force_asm=state.force_asm, # Preserve
             propagation_algorithm="N/A (Zero Dist)",
+            reference_relative_field=(
+                None
+                if state.reference_relative_field is None
+                else state.reference_relative_field.copy()
+            ),
+            reference_phase=(
+                None if state.reference_phase is None else state.reference_phase.copy()
+            ),
         )
         return _apply_refit_and_resample(
             intermediate_state,
@@ -1206,6 +1218,10 @@ def propagate_state(
     )
 
     new_force_asm = effective_force_asm if effective_force_asm is not None else state.force_asm
+    reference_relative_field, reference_phase = snapshot_reference_frame(
+        state.proper_wfo,
+        phase,
+    )
 
     final_state = PropagationState(
         surface_index=target_surface_index,
@@ -1218,6 +1234,8 @@ def propagate_state(
         proper_wfo=state.proper_wfo,
         force_asm=new_force_asm,
         propagation_algorithm=algo_used,
+        reference_relative_field=reference_relative_field,
+        reference_phase=reference_phase,
     )
 
     return _apply_refit_and_resample(
@@ -1431,6 +1449,11 @@ def _apply_refit_and_resample(
                 except Exception as exc:
                     print(f"[POP][Resample Debug] 绘图失败: {exc}")
 
+    reference_relative_field, reference_phase = snapshot_reference_frame(
+        state.proper_wfo,
+        phase,
+    )
+
     # Return updated state
     return PropagationState(
         surface_index=state.surface_index,
@@ -1444,4 +1467,6 @@ def _apply_refit_and_resample(
         force_asm=state.force_asm,
         propagation_algorithm=state.propagation_algorithm,
         messages=(state.messages or []) + _refit_messages + _resample_messages,
+        reference_relative_field=reference_relative_field,
+        reference_phase=reference_phase,
     )

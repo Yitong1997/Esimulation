@@ -414,9 +414,11 @@ class CustomSource:
 class ZbfSource:
     """Zemax Beam File source adapter.
 
-    The default mode preserves Zemax's reference-relative Ex samples in the
-    PROPER wavefront while exposing the corresponding physical phase on the
-    returned source arrays.
+    The default mode keeps the ZBF residual field in PROPER while exposing the
+    corresponding physical phase on the returned source arrays.  When the ZBF
+    plane belongs to a reflected branch, ``coordinate_z_axis`` and
+    ``propagation_direction`` define the sign needed to convert the ZBF local
+    reference into the beam-following q coordinate.
     """
 
     zbf_path: str | Path
@@ -425,6 +427,8 @@ class ZbfSource:
     allow_astigmatic_approximation: bool = False
     radial_rtol: float = 1e-4
     radial_atol: float = 1e-9
+    coordinate_z_axis: Optional[np.ndarray] = None
+    propagation_direction: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         mode = str(self.reference_mode).strip().lower()
@@ -432,6 +436,22 @@ class ZbfSource:
             raise ValueError("reference_mode must be 'reference_relative' or 'physical'")
         self.reference_mode = mode
         self.zbf_path = Path(self.zbf_path)
+        if self.coordinate_z_axis is not None:
+            axis = np.asarray(self.coordinate_z_axis, dtype=float)
+            if axis.shape != (3,):
+                raise ValueError("coordinate_z_axis must be shape (3,)")
+            norm = np.linalg.norm(axis)
+            if norm < 1e-12:
+                raise ValueError("coordinate_z_axis cannot be zero")
+            self.coordinate_z_axis = axis / norm
+        if self.propagation_direction is not None:
+            direction = np.asarray(self.propagation_direction, dtype=float)
+            if direction.shape != (3,):
+                raise ValueError("propagation_direction must be shape (3,)")
+            norm = np.linalg.norm(direction)
+            if norm < 1e-12:
+                raise ValueError("propagation_direction cannot be zero")
+            self.propagation_direction = direction / norm
 
     @property
     def wavelength_um(self) -> float:
@@ -444,17 +464,24 @@ class ZbfSource:
     ) -> Tuple[np.ndarray, np.ndarray, PilotBeamParams, Any]:
         import proper
 
-        from .io.zbf import read_zbf, zbf_reference_phase
+        from .io.zbf import (
+            read_zbf,
+            zbf_physical_field_pop_convention_for_axis,
+            zbf_reference_relative_field_pop_convention,
+        )
 
         zbf = read_zbf(self.zbf_path)
         if zbf.is_polarized and not self.allow_polarized_ex_only:
             raise ValueError("ZBF polarized input is not supported by default")
         self._validate_radial_header(zbf)
 
-        pilot_beam = self._pilot_from_zbf(zbf)
-        reference_relative_field = np.asarray(zbf.ex, dtype=np.complex128)
-        reference_phase = zbf_reference_phase(zbf)
-        physical_field = reference_relative_field * np.exp(1j * reference_phase)
+        axis_sign = self._coordinate_axis_sign()
+        pilot_beam = self._pilot_from_zbf(zbf, axis_sign=axis_sign)
+        reference_relative_field = zbf_reference_relative_field_pop_convention(zbf)
+        physical_field = zbf_physical_field_pop_convention_for_axis(
+            zbf,
+            axis_sign=axis_sign,
+        )
 
         if self.reference_mode == "physical":
             wfarr_field = physical_field
@@ -477,7 +504,7 @@ class ZbfSource:
         )
         wfo.w0 = pilot_beam.waist_radius_mm * 1e-3
         wfo.z_Rayleigh = pilot_beam.rayleigh_length_mm * 1e-3
-        wfo.z = float(zbf.zx) * 1e-3
+        wfo.z = float(axis_sign * zbf.zx) * 1e-3
         wfo.z_w0 = 0.0
         wfo._dx = sampling_m
         if abs(zbf.zx) < proper.rayleigh_factor * max(abs(zbf.rx), 1e-15):
@@ -508,11 +535,24 @@ class ZbfSource:
                         f"ZBF astigmatic header is not supported: {name} differs"
                     )
 
-    def _pilot_from_zbf(self, zbf: Any) -> PilotBeamParams:
+    def _coordinate_axis_sign(self) -> float:
+        if self.coordinate_z_axis is None:
+            return 1.0
+        direction = self.propagation_direction
+        if direction is None:
+            direction = np.array([0.0, 0.0, 1.0])
+        alignment = float(np.dot(direction, self.coordinate_z_axis))
+        if abs(alignment) < 1e-8:
+            raise ValueError(
+                "ZBF coordinate_z_axis is nearly orthogonal to propagation_direction"
+            )
+        return 1.0 if alignment > 0.0 else -1.0
+
+    def _pilot_from_zbf(self, zbf: Any, *, axis_sign: float = 1.0) -> PilotBeamParams:
         wavelength_um = zbf.wavelength * 1e3
         waist_radius_mm = float(zbf.wx)
         rayleigh_mm = float(zbf.rx)
-        q = complex(float(zbf.zx), rayleigh_mm)
+        q = complex(float(axis_sign) * float(zbf.zx), rayleigh_mm)
         spot_size_mm = waist_radius_mm
         if abs(rayleigh_mm) > 1e-15:
             spot_size_mm = waist_radius_mm * np.sqrt(
@@ -520,13 +560,13 @@ class ZbfSource:
             )
         curvature_radius_mm = np.inf
         if abs(float(zbf.zx)) > 1e-15:
-            curvature_radius_mm = float(zbf.zx) * (
+            curvature_radius_mm = float(axis_sign) * float(zbf.zx) * (
                 1.0 + (rayleigh_mm / float(zbf.zx)) ** 2
             )
         return PilotBeamParams(
             wavelength_um=wavelength_um,
             waist_radius_mm=waist_radius_mm,
-            waist_position_mm=-float(zbf.zx),
+            waist_position_mm=-float(axis_sign) * float(zbf.zx),
             curvature_radius_mm=curvature_radius_mm,
             spot_size_mm=float(spot_size_mm),
             q_parameter=q,

@@ -61,7 +61,7 @@ def check_vendor_imports() -> dict[str, bool]:
 
 configure_vendor_paths()
 
-from . import coordinates, core, io, propagation, source, utils, visualization, wavefront
+from . import coordinates, core, io, propagation, reference_frames, source, utils, visualization, wavefront
 from .options import DebugOptions, PlotOptions, PropagationOptions
 from .result import PropagationResult, SurfaceRecord
 from .source import CustomSource, GaussianSource, ZbfSource
@@ -354,6 +354,7 @@ def _build_optical_axis_states(surfaces, chief_ray_data, coordinate_priority: st
     path_length = 0.0
     prev_frame = None
     prev_euler = None
+    active_coordinate_z_axis = current_direction.copy()
 
     for i, surface in enumerate(surfaces):
         if i < len(chief_ray_data):
@@ -379,6 +380,7 @@ def _build_optical_axis_states(surfaces, chief_ray_data, coordinate_priority: st
             coord_sys=None,
             path_length=path_length,
             euler=entrance_euler,
+            coordinate_z_axis=active_coordinate_z_axis,
         )
 
         exit_frame = coordinates.transforms.build_min_rotation_frame(
@@ -394,6 +396,7 @@ def _build_optical_axis_states(surfaces, chief_ray_data, coordinate_priority: st
             coord_sys=None,
             path_length=path_length,
             euler=exit_euler,
+            coordinate_z_axis=np.asarray(surface.orientation, dtype=float)[:, 2],
         )
         axis_states.append({"entrance": entrance_axis, "exit": exit_axis})
 
@@ -401,6 +404,7 @@ def _build_optical_axis_states(surfaces, chief_ray_data, coordinate_priority: st
         current_direction = exit_direction
         prev_frame = exit_frame
         prev_euler = exit_euler
+        active_coordinate_z_axis = exit_axis.coordinate_z_axis.copy()
 
     return axis_states
 
@@ -417,7 +421,27 @@ def _propagate_paraxial(
 
     focal_length_mm = surface.focal_length
     if np.isinf(focal_length_mm):
-        return state
+        return core.PropagationState(
+            surface_index=surface.index,
+            position="exit",
+            amplitude=state.amplitude.copy(),
+            phase=state.phase.copy(),
+            pilot_beam_params=state.pilot_beam_params,
+            optical_axis_state=exit_axis,
+            grid_sampling=state.grid_sampling,
+            proper_wfo=state.proper_wfo,
+            force_asm=state.force_asm,
+            propagation_algorithm="paraxial",
+            messages=state.messages.copy(),
+            reference_relative_field=(
+                None
+                if state.reference_relative_field is None
+                else state.reference_relative_field.copy()
+            ),
+            reference_phase=(
+                None if state.reference_phase is None else state.reference_phase.copy()
+            ),
+        )
     proper.prop_lens(state.proper_wfo, focal_length_mm * 1e-3)
     new_pilot = state.pilot_beam_params.apply_lens(focal_length_mm)
     propagation.free_space._sync_proper_gaussian_params(state.proper_wfo, new_pilot)
@@ -428,6 +452,10 @@ def _propagate_paraxial(
         new_pilot,
         auto_unwarp_at_incident=auto_unwarp_at_incident,
         trace_context=trace_context,
+    )
+    reference_relative_field, reference_phase = reference_frames.snapshot_reference_frame(
+        state.proper_wfo,
+        phase,
     )
     return core.PropagationState(
         surface_index=surface.index,
@@ -440,6 +468,8 @@ def _propagate_paraxial(
         proper_wfo=state.proper_wfo,
         force_asm=state.force_asm,
         propagation_algorithm="paraxial",
+        reference_relative_field=reference_relative_field,
+        reference_phase=reference_phase,
     )
 
 
@@ -774,14 +804,28 @@ def propagate(
 
     amplitude, phase, pilot_beam, proper_wfo = source.create_initial_wavefront()
     grid_sampling = core.GridSampling.from_proper(proper_wfo)
+    source_direction = getattr(source, "propagation_direction", None)
+    if source_direction is None:
+        source_direction = np.array([0.0, 0.0, 1.0])
+    else:
+        source_direction = np.asarray(source_direction, dtype=float)
+    source_direction_norm = float(np.linalg.norm(source_direction))
+    if source_direction.shape != (3,) or source_direction_norm < 1e-12:
+        raise ValueError("source propagation_direction must be a nonzero 3-vector")
+    source_direction = source_direction / source_direction_norm
+    reference_relative_field, reference_phase = reference_frames.snapshot_reference_frame(
+        proper_wfo,
+        phase,
+    )
     source_axis = core.OpticalAxisState(
         position=np.array([0.0, 0.0, 0.0]),
-        direction=np.array([0.0, 0.0, 1.0]),
+        direction=source_direction,
         frame=coordinates.transforms.build_min_rotation_frame(
-            np.array([0.0, 0.0, 1.0]), priority_axis=coordinate_priority
+            source_direction, priority_axis=coordinate_priority
         ),
         coord_sys=None,
         path_length=0.0,
+        coordinate_z_axis=getattr(source, "coordinate_z_axis", None),
     )
 
     current_state = core.PropagationState(
@@ -793,6 +837,8 @@ def propagate(
         optical_axis_state=source_axis,
         grid_sampling=grid_sampling,
         proper_wfo=proper_wfo,
+        reference_relative_field=reference_relative_field,
+        reference_phase=reference_phase,
     )
 
     surface_states = []
@@ -1031,6 +1077,7 @@ __all__ = [
     "propagation",
     "propagate",
     "source",
+    "reference_frames",
     "utils",
     "visualization",
     "wavefront",

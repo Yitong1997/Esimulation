@@ -108,15 +108,14 @@ def test_write_zbf_round_trips(tmp_path: Path) -> None:
 def test_reference_phase_uses_spherical_header_metadata(tmp_path: Path) -> None:
     ex = np.ones((3, 3), dtype=np.complex128)
     path = tmp_path / "ref.ZBF"
-    _write_minimal_zbf(path, ex, dx=0.5, dy=0.5, zx=2.0, zy=2.0, rayleigh=4.0)
+    _write_minimal_zbf(path, ex, dx=0.5, dy=0.5, zx=4.0, zy=4.0, rayleigh=2.0)
     zbf = read_zbf(path)
 
     phase = zbf_reference_phase(zbf)
 
     xg, yg = np.meshgrid(zbf.x_coords, zbf.y_coords)
-    radius = zbf.zx * (1.0 + (zbf.rx / zbf.zx) ** 2)
     expected = (2.0 * np.pi * zbf.index / zbf.wavelength) * (
-        np.sqrt(radius**2 + xg**2 + yg**2) - abs(radius)
+        np.sqrt(zbf.zx**2 + xg**2 + yg**2) - abs(zbf.zx)
     )
     np.testing.assert_allclose(phase, expected)
 

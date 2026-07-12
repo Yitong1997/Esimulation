@@ -222,6 +222,7 @@ class OpticalAxisState:
     coord_sys: Optional[Any]
     path_length: float
     euler: Optional[Tuple[float, float, float]] = None
+    coordinate_z_axis: Optional[NDArray[np.floating]] = None
 
     def __post_init__(self) -> None:
         self.position = np.asarray(self.position, dtype=float)
@@ -233,6 +234,14 @@ class OpticalAxisState:
             raise ValueError("direction must be shape (3,)")
         if self.frame.shape != (3, 3):
             raise ValueError("frame must be shape (3, 3)")
+        if self.coordinate_z_axis is not None:
+            self.coordinate_z_axis = np.asarray(self.coordinate_z_axis, dtype=float)
+            if self.coordinate_z_axis.shape != (3,):
+                raise ValueError("coordinate_z_axis must be shape (3,)")
+            coordinate_norm = np.linalg.norm(self.coordinate_z_axis)
+            if coordinate_norm < 1e-12:
+                raise ValueError("coordinate_z_axis cannot be zero")
+            self.coordinate_z_axis = self.coordinate_z_axis / coordinate_norm
         norm = np.linalg.norm(self.direction)
         if norm < 1e-12:
             raise ValueError("direction vector cannot be zero")
@@ -240,6 +249,25 @@ class OpticalAxisState:
         if self.euler is not None:
             if len(self.euler) != 3:
                 raise ValueError("euler must be a 3-tuple when provided")
+
+    @property
+    def coordinate_axis_alignment(self) -> float:
+        """Return propagation direction projected onto the active local z axis."""
+
+        if self.coordinate_z_axis is None:
+            return 1.0
+        return float(np.dot(self.direction, self.coordinate_z_axis))
+
+    @property
+    def coordinate_axis_sign(self) -> int:
+        """Return the sign of propagation in the active local z coordinate."""
+
+        alignment = self.coordinate_axis_alignment
+        if abs(alignment) < 1e-8:
+            raise ValueError(
+                "propagation direction is nearly orthogonal to the active local z axis"
+            )
+        return 1 if alignment > 0.0 else -1
 
 
 @dataclass
@@ -275,6 +303,33 @@ class PropagationState:
     force_asm: Optional[bool] = None
     propagation_algorithm: str = "N/A"
     messages: list[str] = field(default_factory=list)
+    reference_relative_field: Optional[NDArray[np.complexfloating]] = None
+    reference_phase: Optional[NDArray[np.floating]] = None
+
+    def __post_init__(self) -> None:
+        self.amplitude = np.asarray(self.amplitude, dtype=float)
+        self.phase = np.asarray(self.phase, dtype=float)
+        if self.reference_relative_field is not None:
+            self.reference_relative_field = np.asarray(
+                self.reference_relative_field, dtype=np.complex128
+            ).copy()
+            if self.reference_relative_field.shape != self.amplitude.shape:
+                raise ValueError(
+                    "reference_relative_field must have the same shape as amplitude"
+                )
+        if self.reference_phase is not None:
+            self.reference_phase = np.asarray(self.reference_phase, dtype=float).copy()
+            if self.reference_phase.shape != self.amplitude.shape:
+                raise ValueError(
+                    "reference_phase must have the same shape as amplitude"
+                )
+        if (
+            self.reference_relative_field is not None
+            and self.reference_phase is None
+        ):
+            raise ValueError(
+                "reference_phase is required when reference_relative_field is provided"
+            )
 
     def get_complex_amplitude(self) -> NDArray[np.complexfloating]:
         return self.amplitude * np.exp(1j * self.phase)

@@ -22,6 +22,7 @@ from pop.propagation.free_space import (
 )
 from pop.propagation.pilot_beam import apply_mirror, apply_refraction
 from pop.propagation.ideal import propagate_ideal_mirror
+from pop.reference_frames import snapshot_reference_frame
 from pop.wavefront.reconstructor import reconstruct_wavefront
 from pop.wavefront.sampler import sample_rays_from_wavefront
 from pop.result import SurfaceDebugInfo
@@ -940,6 +941,7 @@ def propagate_element(
          # This is usually computed by the system trace before calling propagate_element.
          return propagate_ideal_mirror(
              state=state,
+             entrance_axis=entrance_axis,
              exit_axis=exit_axis,
              target_surface_index=target_surface_index,
              focal_length_mm=eff_focal_length,
@@ -1198,6 +1200,11 @@ def propagate_element(
         trace_context=trace_context,
     )
 
+    reference_relative_field, reference_phase = snapshot_reference_frame(
+        state.proper_wfo,
+        full_phase,
+    )
+
     new_state = PropagationState(
         surface_index=target_surface_index,
         position="exit",
@@ -1209,6 +1216,8 @@ def propagate_element(
         proper_wfo=state.proper_wfo,
         force_asm=state.force_asm,
         propagation_algorithm="element",
+        reference_relative_field=reference_relative_field,
+        reference_phase=reference_phase,
     )
 
     if debug:

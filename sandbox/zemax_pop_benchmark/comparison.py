@@ -7,7 +7,12 @@ from typing import Any
 
 import numpy as np
 
-from pop.io.zbf import ZbfField, zbf_reference_phase
+from pop.io.zbf import (
+    ZbfField,
+    zbf_physical_field_pop_convention_for_axis,
+    zbf_reference_phase,
+    zbf_reference_relative_field_pop_convention,
+)
 
 
 @dataclass
@@ -27,17 +32,20 @@ def compare_pop_state_to_zbf(
     zbf: ZbfField,
     surface_name: str,
     mask_threshold: float = 0.1,
+    zbf_axis_sign: float = 1.0,
 ) -> ComparisonResult:
-    """Compare a POP state field to a Zemax reference-relative ZBF field.
+    """Compare paired POP physical phase with a ZBF physical field.
 
-    ``pop_reference_relative`` and ``zbf.ex`` must be expressed under the same
-    reference convention. For the benchmark this is the Zemax spherical
-    reference stored in the ZBF header.
+    ``pop_reference_relative`` and ``pop_reference_phase`` are the paired
+    native field and lift recorded by POP.  The raw ZBF samples are first
+    converted to POP phasor convention and then lifted with the ZBF header
+    reference using the supplied local-axis sign.  No unrelated PROPER and
+    ZBF reference phases are combined.
     """
 
     pop_field = np.asarray(pop_reference_relative, dtype=np.complex128)
     pop_ref_phase = np.asarray(pop_reference_phase, dtype=np.float64)
-    zbf_field = np.asarray(zbf.ex, dtype=np.complex128)
+    zbf_field = zbf_reference_relative_field_pop_convention(zbf)
     if pop_field.shape != zbf_field.shape:
         raise ValueError(
             f"POP field shape {pop_field.shape} does not match ZBF field shape {zbf_field.shape}"
@@ -47,9 +55,13 @@ def compare_pop_state_to_zbf(
             f"POP reference phase shape {pop_ref_phase.shape} does not match POP field shape {pop_field.shape}"
         )
 
-    zbf_ref_phase = zbf_reference_phase(zbf)
     pop_physical = pop_field * np.exp(1j * pop_ref_phase)
-    zbf_physical = zbf_field * np.exp(1j * zbf_ref_phase)
+    axis_sign = 1.0 if float(zbf_axis_sign) >= 0.0 else -1.0
+    zbf_ref_phase = zbf_reference_phase(zbf)
+    zbf_physical = zbf_physical_field_pop_convention_for_axis(
+        zbf,
+        axis_sign=axis_sign,
+    )
 
     pop_amplitude = np.abs(pop_field)
     zbf_amplitude = zbf.amplitude
@@ -71,9 +83,10 @@ def compare_pop_state_to_zbf(
     wavelength_um = float(
         getattr(getattr(state, "pilot_beam_params", None), "wavelength_um", zbf.wavelength * 1e3)
     )
-    pixel_area_mm2 = sampling_mm**2
-    pop_energy = float(np.sum(pop_intensity) * pixel_area_mm2)
-    zbf_energy = float(np.sum(zbf_intensity) * pixel_area_mm2)
+    pop_pixel_area_mm2 = sampling_mm**2
+    zbf_pixel_area_mm2 = float(zbf.dx) * float(zbf.dy)
+    pop_energy = float(np.sum(pop_intensity) * pop_pixel_area_mm2)
+    zbf_energy = float(np.sum(zbf_intensity) * zbf_pixel_area_mm2)
     phase_rms_rad = _masked_rms(phase_residual_no_piston, mask)
     phase_pv_rad = _masked_peak_to_valley(phase_residual_no_piston, mask)
 
@@ -101,13 +114,16 @@ def compare_pop_state_to_zbf(
         "phase_pv_rad": phase_pv_rad,
         "phase_rms_waves": phase_rms_rad / (2.0 * np.pi),
         "phase_pv_waves": phase_pv_rad / (2.0 * np.pi),
-        "phase_comparison_reference": "zemax_spherical_reference_relative",
+        "phase_comparison_reference": "paired_physical_pop_vs_zbf",
+        "zbf_axis_sign": axis_sign,
     }
 
     fields = {
         "pop_reference_relative": pop_field,
         "pop_reference_phase": pop_ref_phase,
+        "pop_zbf_reference_relative": pop_physical * np.exp(-1j * axis_sign * zbf_ref_phase),
         "pop_physical": pop_physical,
+        "zbf_raw_ex": np.asarray(zbf.ex, dtype=np.complex128),
         "zbf_reference_relative": zbf_field,
         "zemax_reference_phase": zbf_ref_phase,
         "zbf_physical": zbf_physical,

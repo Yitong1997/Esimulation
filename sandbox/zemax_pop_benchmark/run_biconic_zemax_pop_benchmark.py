@@ -11,6 +11,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from pop.io.zbf import read_zbf
+from pop.reference_frames import reference_relative_field_from_state
 
 from .comparison import compare_pop_state_to_zbf
 from .config import BenchmarkConfig, PopSamplingConfig, ZbfInputConfig
@@ -210,6 +211,7 @@ def _compare_pop_result_to_zemax_outputs(
             zbf=read_zbf(zbf_path),
             surface_name=record.name,
             mask_threshold=mask_threshold,
+            zbf_axis_sign=_state_axis_sign(state),
         )
         rows.append(_jsonable(comparison.summary))
 
@@ -231,21 +233,23 @@ def _compare_pop_result_to_zemax_outputs(
 
 
 def _state_reference_relative_field(state: Any) -> tuple[np.ndarray, np.ndarray]:
-    if getattr(state, "proper_wfo", None) is None:
-        return np.asarray(state.get_complex_amplitude(), dtype=np.complex128), np.zeros_like(
-            state.phase,
-            dtype=np.float64,
-        )
-    import proper
-
-    from pop.propagation.free_space import _compute_proper_reference_phase
-
-    field = np.asarray(proper.prop_get_wavefront(state.proper_wfo), dtype=np.complex128)
-    reference_phase = _compute_proper_reference_phase(
-        state.proper_wfo,
-        state.grid_sampling,
+    if getattr(state, "reference_relative_field", None) is not None:
+        field = reference_relative_field_from_state(state)
+        reference_phase = getattr(state, "reference_phase", None)
+        if reference_phase is None:
+            reference_phase = np.zeros(field.shape, dtype=np.float64)
+        return field, np.asarray(reference_phase, dtype=np.float64)
+    return np.asarray(state.get_complex_amplitude(), dtype=np.complex128), np.zeros_like(
+        state.phase,
+        dtype=np.float64,
     )
-    return field, reference_phase
+
+
+def _state_axis_sign(state: Any) -> float:
+    axis = getattr(state, "optical_axis_state", None)
+    if axis is None:
+        return 1.0
+    return float(getattr(axis, "coordinate_axis_sign", 1.0))
 
 
 def _zbf_files_by_surface(zbf_dir: Path, zbf_glob: str) -> dict[int, Path]:

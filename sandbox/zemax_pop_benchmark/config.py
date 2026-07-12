@@ -39,6 +39,8 @@ class ZbfInputConfig:
 @dataclass
 class ComparisonConfig:
     surface_indices: Sequence[int] | None = None
+    # The POP analysis files are labelled by the incident surface boundary;
+    # retain the established entrance mapping for the benchmark geometry.
     pop_position: str = "entrance"
     mask_threshold: float = 0.1
     sampling_rtol: float = 1e-4

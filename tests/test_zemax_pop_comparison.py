@@ -49,7 +49,7 @@ def test_compare_reports_zero_residual_when_fields_match() -> None:
 
     result = compare_pop_state_to_zbf(
         state=state,
-        pop_reference_relative=ex,
+        pop_reference_relative=np.conj(ex),
         pop_reference_phase=np.zeros(ex.shape),
         zbf=_zbf(ex),
         surface_name="S3",
