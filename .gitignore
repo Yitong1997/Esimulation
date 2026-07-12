@@ -36,3 +36,7 @@ sandbox/
 
 # Git worktrees
 .worktrees/
+
+# Local Zemax binary inputs (kept on the machine, not committed to the source branch)
+DM_IF.mat
+Zemax_question/*.ZBF
